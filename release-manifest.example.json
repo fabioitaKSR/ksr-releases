@@ -1,0 +1,91 @@
+{
+  "schemaVersion": 1,
+  "product": "KerbalSpaceRace",
+  "version": "1.0.0",
+  "channel": "stable",
+  "minimumLauncherVersion": "1.0.0",
+  "components": [
+    {
+      "id": "ksr-core",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-Core-v1.0.0.zip",
+      "sha256": "REPLACE_WITH_SHA256",
+      "source": "GameData/KerbalSpaceRace",
+      "target": "GameData/KerbalSpaceRace",
+      "required": true
+    },
+    {
+      "id": "nation-selector",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-NationSelector-v1.0.0.zip",
+      "sha256": "REPLACE_WITH_SHA256",
+      "source": "GameData/KerbalSpaceRaceNationSelector",
+      "target": "GameData/KerbalSpaceRaceNationSelector",
+      "required": true
+    },
+    {
+      "id": "ksr-suit-pack",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-SuitPack-v1.0.0.zip",
+      "sha256": "REPLACE_WITH_SHA256",
+      "source": "GameData/KerbalSpaceRaceSuite",
+      "target": "GameData/KerbalSpaceRaceSuite",
+      "required": true
+    },
+    {
+      "id": "contract-pack",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-ContractPack-v1.0.0.zip",
+      "sha256": "REPLACE_WITH_SHA256",
+      "source": "GameData/ContractPacks/KerbalSpaceRace",
+      "target": "GameData/ContractPacks/KerbalSpaceRace",
+      "required": true
+    },
+    {
+      "id": "parameter-logger",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-ParameterLogger-v1.0.0.zip",
+      "sha256": "REPLACE_WITH_SHA256",
+      "source": "GameData/KSRParameterLogger",
+      "target": "GameData/KSRParameterLogger",
+      "required": true
+    },
+    {
+      "id": "disable-dbs-ui",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-DisableDBSUI-v1.0.0.zip",
+      "sha256": "REPLACE_WITH_SHA256",
+      "source": "GameData/KSRDisableDBSUI",
+      "target": "GameData/KSRDisableDBSUI",
+      "required": true
+    },
+    {
+      "id": "remote-logger-server",
+      "transactionGroup": "logger-server",
+      "asset": "KSR-RemoteLoggerServer-v1.0.0.zip",
+      "sha256": "REPLACE_WITH_SHA256",
+      "source": "RemoteLoggerServer",
+      "targetKind": "launcherData",
+      "target": "RemoteLoggerServer",
+      "required": true
+    }
+  ],
+  "preserve": [
+    "GameData/KerbalSpaceRace/PluginData/**",
+    "GameData/KerbalSpaceRaceNationSelector/PluginData/**",
+    "GameData/KerbalSpaceRaceNationSelector/Patches/Generated/**",
+    "GameData/KSRParameterLogger/PluginData/**",
+    "LauncherData/RemoteLoggerServer/remote_logger.sqlite3",
+    "LauncherData/RemoteLoggerServer/remote_logger_paths.json",
+    "LauncherData/RemoteLoggerServer/*.cfg",
+    "LauncherData/RemoteLoggerServer/*.log"
+  ],
+  "managedFilesInsidePreservedPaths": [
+    "GameData/KerbalSpaceRace/PluginData/KSRDifficultyReference.cfg"
+  ],
+  "delete": [],
+  "ksp": {
+    "minimumVersion": "1.12.0",
+    "maximumVersion": "1.12.99"
+  }
+}

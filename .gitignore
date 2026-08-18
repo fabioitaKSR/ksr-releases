@@ -1,0 +1,45 @@
+# Secrets and local configuration
+.env
+.env.*
+*.token
+*secret*
+RemoteLogger.cfg
+remote_logger_paths.json
+
+# Databases, runtime state and logs
+*.sqlite
+*.sqlite3
+*.db
+*.db-*
+*.log
+PluginData/
+saves/
+
+# Backups and development residues
+*.bak
+*.bak_*
+*.backup
+*.backup-*
+*.old
+*.old_*
+*.rar
+__pycache__/
+*.py[cod]
+
+# Build and temporary output
+bin/
+obj/
+dist/
+output/
+tmp/
+*.tmp
+*.user
+*.suo
+.vs/
+.idea/
+
+# Operating-system files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
