@@ -23,3 +23,6 @@ The launcher reads the latest published GitHub Release, validates the manifest a
 
 Player-generated files and server data are preserved during updates.
 
+## Release builds
+
+Package generation is handled by the safety-focused PowerShell script documented in [BUILDING.md](BUILDING.md). Generated archives are published as GitHub Release assets and are not committed to the repository.
