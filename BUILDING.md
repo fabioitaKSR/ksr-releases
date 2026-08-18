@@ -17,7 +17,7 @@ The build excludes:
 
 The Remote Logger Server package uses an explicit file allowlist.
 
-Before the first public production release, replace the development defaults `dev-token` and `admin` in the Remote Logger Server with a first-run credential setup. They are placeholders, not private credentials, but must not remain production defaults.
+Before the first public production release, replace the development token `dev-token` in the Remote Logger Server with a first-run token setup. It is a placeholder, not a private credential, but must not remain the production default. The server no longer exposes an admin login or admin password.
 
 ## Dry run
 

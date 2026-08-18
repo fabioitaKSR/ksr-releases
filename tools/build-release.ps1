@@ -262,9 +262,8 @@ if (-not [string]::IsNullOrWhiteSpace($ServerSource)) {
     $serverSourceFull = Resolve-ExistingDirectory -Path $ServerSource -Label 'Sorgente Remote Logger Server'
     $serverProgramPath = Join-Path $serverSourceFull 'remote_logger_server.py'
     $serverProgramText = Get-Content -LiteralPath $serverProgramPath -Raw
-    if ($serverProgramText -match 'DEFAULT_TOKEN\s*=\s*["'']dev-token["'']' -or
-        $serverProgramText -match 'DEFAULT_ADMIN_PASSWORD\s*=\s*["'']admin["'']') {
-        Write-Warning 'Il Remote Logger Server usa ancora credenziali predefinite di sviluppo. Sostituirle con una configurazione al primo avvio prima della release pubblica.'
+    if ($serverProgramText -match 'DEFAULT_TOKEN\s*=\s*["'']dev-token["'']') {
+        Write-Warning 'Il Remote Logger Server usa ancora il token predefinito di sviluppo. Sostituirlo con una configurazione al primo avvio prima della release pubblica.'
     }
 
     $definitions += @{
