@@ -309,11 +309,59 @@
         <!-- Admin area -->
         <Grid x:Name="AdminArea" Grid.Row="3" Margin="18,16,18,10" Visibility="Collapsed">
             <Border Style="{StaticResource Card}">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <TextBlock Text="NO CAMPAIGN SELECTED" Foreground="{StaticResource OrangeBrush}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" />
-                    <TextBlock Text="Select an administered campaign in Player Area to load its participants, nations and controls."
-                               Foreground="{StaticResource MutedBrush}" FontSize="16" Margin="0,10,0,0" />
-                </StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="1.3*" /><ColumnDefinition Width="24" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
+
+                    <StackPanel>
+                        <TextBlock Text="CREATE A RACE" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="Prepare a Career save in KSP, then select it here as the official campaign starting point."
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,18" />
+
+                        <TextBlock Text="CAMPAIGN NAME" Style="{StaticResource SmallLabel}" />
+                        <TextBox x:Name="CampaignNameTextBox" Margin="0,6,0,16" MaxLength="80" TextChanged="CampaignCreationInput_Changed" />
+
+                        <TextBlock Text="REFERENCE CAREER SAVE" Style="{StaticResource SmallLabel}" />
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="12" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBox x:Name="ReferenceSavePathTextBox" IsReadOnly="True" Text="No save selected" Foreground="{StaticResource MutedBrush}" />
+                            <Button Grid.Column="2" Content="BROWSE SAVE" Style="{StaticResource GhostButton}" MinWidth="145"
+                                    Click="BrowseReferenceSave_Click" />
+                        </Grid>
+
+                        <Border Background="#CC101518" BorderBrush="#FF3B3E40" BorderThickness="1" CornerRadius="5" Padding="14" Margin="0,18,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="14" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                <TextBlock Text="KSP INSTALLATION" Style="{StaticResource SmallLabel}" VerticalAlignment="Center" />
+                                <TextBlock x:Name="ResolvedKspPathText" Grid.Column="2" Text="Resolved automatically from the selected save"
+                                           Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <Border Grid.Column="2" Background="#D90B0F12" BorderBrush="#FF3B3E40" BorderThickness="1" CornerRadius="6" Padding="20">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="18" /><RowDefinition Height="*" /><RowDefinition Height="18" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="CAMPAIGN BASELINE" Foreground="{StaticResource OrangeBrush}" FontSize="19" FontWeight="Bold" />
+                                <TextBlock Text="The selected installation becomes the compatibility reference for this campaign."
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="2">
+                                <TextBlock Text="✓ Complete starting Master Save" Margin="0,0,0,9" />
+                                <TextBlock Text="✓ Career difficulty and save-scoped mod settings" Margin="0,0,0,9" />
+                                <TextBlock Text="✓ GameData mod inventory and file hashes" Margin="0,0,0,9" />
+                                <TextBlock Text="✓ Approved gameplay configuration" Margin="0,0,0,9" />
+                                <TextBlock Text="Private data, credentials, caches and logs are excluded." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="4">
+                                <TextBlock x:Name="CampaignCreationStatusText" Text="Select a Career save to continue."
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                                <Button x:Name="CreateRaceButton" Content="CREATE RACE" Style="{StaticResource PrimaryButton}"
+                                        IsEnabled="False" Click="CreateRace_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
             </Border>
         </Grid>
 

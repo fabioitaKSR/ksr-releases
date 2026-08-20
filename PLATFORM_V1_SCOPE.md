@@ -4,13 +4,13 @@ The confirmed V1 architecture is:
 
 `KSR Launcher -> local KSP with KSR Start/Logger -> KSR Server`
 
-The server is authoritative for accounts, campaigns, Master Saves, members, nation assignments, achievements, scores and standings. Campaign creation and nation selection happen inside KSP. The launcher handles account access, the user's campaigns, Master Save download, updates and game startup.
+The server is authoritative for accounts, campaigns, Master Saves, members, nation assignments, achievements, scores and standings. Campaign creation happens in the launcher from a Career save prepared in KSP. Nation selection happens inside KSP. The launcher also handles account access, the user's campaigns, Master Save download, updates and game startup.
 
 ## Log & Launch
 
 `Log & Launch` ("log and launch") is the first KSR gameplay workflow. It is campaign-specific; KSR does not impose one universal clean KSP installation.
 
-The campaign administrator creates and loads a new Career save inside KSP, chooses the difficulty and configures the installed gameplay mods. From the future KSR in-game administrator interface, the administrator selects `CREATE RACE`. KSR then captures and uploads an immutable campaign baseline containing:
+The campaign administrator creates a new Career save inside KSP, chooses the difficulty and configures the installed gameplay mods. The administrator then closes or leaves KSP, opens the launcher Admin Area, selects `CREATE RACE` and browses to the desired Career save folder. Selecting `.../saves/<save name>` also identifies the owning KSP installation automatically. The launcher validates the save and captures an immutable campaign baseline containing:
 
 - the complete starting Master Save;
 - the KSP version;
@@ -20,7 +20,7 @@ The campaign administrator creates and loads a new Career save inside KSP, choos
 
 When a player joins, KSR compares that player's installation with the campaign baseline, downloads and verifies the Master Save, and installs it under a name derived from `KSR <Campaign ID> Start`. The player loads that save, selects an available nation through the existing Nation Selector and begins the race.
 
-The in-game administrator interface is a confirmed subsequent deliverable. It must provide campaign creation from the currently loaded Career save, a summary and confirmation of the captured baseline, upload progress, the generated Campaign ID and clear server error handling.
+The launcher Admin Area must provide the campaign name, a Career save browser rooted in the selected KSP installation, the automatically resolved KSP destination, a summary and confirmation of the captured baseline, upload progress, the generated Campaign ID and clear server error handling. Campaign creation must not require an in-game administrator interface.
 
 ## Updater boundary
 

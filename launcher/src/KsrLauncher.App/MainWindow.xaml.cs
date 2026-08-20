@@ -12,6 +12,7 @@ namespace KsrLauncher.App;
 public partial class MainWindow : Window
 {
     private string? _kspRoot;
+    private string? _referenceSavePath;
     private readonly ObservableCollection<CampaignListItem> _campaigns = [];
     private readonly KsrPlatformClient _platformClient = new();
 
@@ -42,6 +43,92 @@ public partial class MainWindow : Window
         AdminArea.Visibility = Visibility.Visible;
         PlayerTabButton.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
         AdminTabButton.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+    }
+
+    private void BrowseReferenceSave_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new OpenFolderDialog
+        {
+            Title = "Select the Career save to use as the campaign starting point",
+            Multiselect = false
+        };
+        if (!string.IsNullOrWhiteSpace(_kspRoot)) picker.InitialDirectory = Path.Combine(_kspRoot, "saves");
+        if (picker.ShowDialog(this) != true) return;
+
+        if (!TryResolveCareerSave(picker.FolderName, out var resolvedKspRoot, out var error))
+        {
+            _referenceSavePath = null;
+            ReferenceSavePathTextBox.Text = "No valid Career save selected";
+            ResolvedKspPathText.Text = "Not resolved";
+            CampaignCreationStatusText.Text = error;
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            UpdateCreateRaceState();
+            return;
+        }
+
+        _referenceSavePath = Path.GetFullPath(picker.FolderName);
+        _kspRoot = resolvedKspRoot;
+        ReferenceSavePathTextBox.Text = _referenceSavePath;
+        ReferenceSavePathTextBox.Foreground = (System.Windows.Media.Brush)FindResource("ForegroundBrush");
+        ResolvedKspPathText.Text = _kspRoot;
+        ResolvedKspPathText.Foreground = (System.Windows.Media.Brush)FindResource("ForegroundBrush");
+        CampaignCreationStatusText.Text = "Career save validated. Enter a campaign name to continue.";
+        CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+        UpdateCreateRaceState();
+    }
+
+    private void CampaignCreationInput_Changed(object sender, TextChangedEventArgs e) => UpdateCreateRaceState();
+
+    private void UpdateCreateRaceState()
+    {
+        if (!IsInitialized) return;
+        CreateRaceButton.IsEnabled = LauncherSession.IsAuthenticated &&
+            !string.IsNullOrWhiteSpace(_referenceSavePath) &&
+            !string.IsNullOrWhiteSpace(CampaignNameTextBox.Text);
+    }
+
+    private void CreateRace_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show(
+            "The Career save is ready. Campaign upload will be enabled when the server snapshot contract is available.",
+            "Create KSR Race",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private static bool TryResolveCareerSave(string savePath, out string kspRoot, out string error)
+    {
+        kspRoot = string.Empty;
+        error = string.Empty;
+        var fullSavePath = Path.GetFullPath(savePath);
+        var saveDirectory = new DirectoryInfo(fullSavePath);
+        var savesDirectory = saveDirectory.Parent;
+        var candidateRoot = savesDirectory?.Parent;
+        if (savesDirectory is null || candidateRoot is null ||
+            !string.Equals(savesDirectory.Name, "saves", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Select a save folder located directly inside a KSP 'saves' directory.";
+            return false;
+        }
+        if (!File.Exists(Path.Combine(fullSavePath, "persistent.sfs")))
+        {
+            error = "The selected folder does not contain persistent.sfs.";
+            return false;
+        }
+        if (!File.Exists(Path.Combine(candidateRoot.FullName, "KSP_x64.exe")) ||
+            !Directory.Exists(Path.Combine(candidateRoot.FullName, "GameData")))
+        {
+            error = "The selected save does not belong to a valid KSP installation.";
+            return false;
+        }
+        if (!File.ReadLines(Path.Combine(fullSavePath, "persistent.sfs")).Take(250)
+            .Any(line => string.Equals(line.Trim(), "mode = CAREER", StringComparison.OrdinalIgnoreCase)))
+        {
+            error = "The selected save is not a Career game.";
+            return false;
+        }
+        kspRoot = candidateRoot.FullName;
+        return true;
     }
 
     private void CampaignsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -267,6 +354,7 @@ public partial class MainWindow : Window
         SignOutButton.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
         CreateAccountButton.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
         AccountNameText.Text = LauncherSession.Username;
+        UpdateCreateRaceState();
 
         var serverConfigured = !string.IsNullOrWhiteSpace(LauncherSession.ServerUrl);
         var statusBrush = (System.Windows.Media.Brush)FindResource("OrangeBrush");
