@@ -8,6 +8,7 @@
         <SolidColorBrush x:Key="PanelLightBrush" Color="#FF151A1E" />
         <SolidColorBrush x:Key="OrangeBrush" Color="#FFF57C00" />
         <SolidColorBrush x:Key="GreenBrush" Color="#FF80D420" />
+        <SolidColorBrush x:Key="ErrorBrush" Color="#FFFF5A5A" />
         <SolidColorBrush x:Key="MutedBrush" Color="#FF9BA0A3" />
         <SolidColorBrush x:Key="BorderBrush" Color="#FF3B3E40" />
         <SolidColorBrush x:Key="ForegroundBrush" Color="#FFF0EEE9" />

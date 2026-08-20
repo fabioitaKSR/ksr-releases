@@ -24,7 +24,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
-    ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract)
+    ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract),
+    ("Platform authentication preserves server error code", PlatformAuthenticationPreservesErrorCode)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -414,6 +415,24 @@ static async Task PlatformHealthUsesV1Contract()
     True(health.Legacy, "Legacy compatibility flag was not parsed.");
 }
 
+static async Task PlatformAuthenticationPreservesErrorCode()
+{
+    using var http = new HttpClient(new FakeHttpHandler(
+        _ => "{\"error\":{\"code\":\"email_not_verified\",\"message\":\"Email verification required\"}}",
+        HttpStatusCode.Unauthorized));
+
+    try
+    {
+        await new KsrPlatformClient(http).LoginAsync("https://ksr.example", "Fabio", "safe-password");
+        throw new Exception("The authentication request should have failed.");
+    }
+    catch (KsrApiException exception)
+    {
+        Equal("email_not_verified", exception.Code!);
+        True(exception.StatusCode == 401, "The authentication HTTP status was not preserved.");
+    }
+}
+
 static ReleaseManifest CreateManifest(string hash) => new()
 {
     SchemaVersion = 1,
@@ -455,10 +474,12 @@ sealed class TempScope : IDisposable
     public void Dispose() { if (Directory.Exists(Root)) Directory.Delete(Root, true); }
 }
 
-sealed class FakeHttpHandler(Func<HttpRequestMessage, string> responseFactory) : HttpMessageHandler
+sealed class FakeHttpHandler(
+    Func<HttpRequestMessage, string> responseFactory,
+    HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-        Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        Task.FromResult(new HttpResponseMessage(statusCode)
         {
             Content = new StringContent(responseFactory(request), Encoding.UTF8, "application/json")
         });

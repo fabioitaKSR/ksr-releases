@@ -99,6 +99,10 @@
                 </Grid>
 
                 <Grid x:Name="LoginPanel" Grid.Column="2" Margin="24,0" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="22" />
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="14" />
@@ -131,6 +135,9 @@
                     </StackPanel>
                     <Button x:Name="SignInButton" Grid.Column="6" Content="SIGN IN" Style="{StaticResource PrimaryButton}" MinWidth="105"
                             VerticalAlignment="Center" Click="SignIn_Click" />
+                    <TextBlock x:Name="AuthFeedbackText" Grid.Row="1" Grid.ColumnSpan="7" Visibility="Collapsed"
+                               Foreground="{StaticResource ErrorBrush}" FontSize="12" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                 </Grid>
 
                 <Border Grid.Column="3" Background="#FF303538" Margin="0,16" />

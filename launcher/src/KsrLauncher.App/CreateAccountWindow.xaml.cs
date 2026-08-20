@@ -56,10 +56,14 @@ public partial class CreateAccountWindow : Window
             CreatedUsername = username;
             PasswordBox.Clear();
             ConfirmPasswordBox.Clear();
-            MessageBox.Show("Your KSR account was created. You can now sign in.", "KSR Account", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(
+                $"Your KSR account was created.\n\nA verification message has been sent to {email}. Check your inbox and spam folder, then verify your email before signing in.",
+                "Verify Your Email",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
             DialogResult = true;
         }
-        catch (KsrApiException exception) { ShowValidation(exception.Message); }
+        catch (KsrApiException exception) { ShowValidation(ApiErrorMessages.ForRegistration(exception)); }
         catch (HttpRequestException) { ShowValidation("The KSR server could not be reached."); }
         catch (Exception exception) { ShowValidation(exception.Message); }
         finally { SetBusy(false); }

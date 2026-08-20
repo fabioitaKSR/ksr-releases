@@ -140,17 +140,16 @@ public partial class MainWindow : Window
         var username = LoginUsernameTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(username) || LoginPasswordBox.Password.Length == 0)
         {
-            MessageBox.Show("Enter your KSR username and password.", "KSR Account", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowAuthFeedback("Enter your KSR username or email and password.");
             return;
         }
         if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl))
         {
-            MessageBox.Show(
-                "KSR server authentication is not connected yet. The account interface is ready and will be enabled when the server API is available.",
-                "KSR Account", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowAuthFeedback("The KSR server has not been configured.");
             return;
         }
 
+        HideAuthFeedback();
         SetLoginBusy(true);
         try
         {
@@ -176,17 +175,15 @@ public partial class MainWindow : Window
         }
         catch (KsrApiException exception)
         {
-            MessageBox.Show(exception.Message, "KSR Sign In", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowAuthFeedback(ApiErrorMessages.ForAuthentication(exception));
         }
         catch (HttpRequestException)
         {
-            MessageBox.Show(
-                "The KSR server could not be reached. Check the server URL and network connection.",
-                "KSR Sign In", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowAuthFeedback("The KSR server is currently unreachable. Check your connection and try again.");
         }
         catch (Exception exception)
         {
-            MessageBox.Show(exception.Message, "KSR Sign In", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowAuthFeedback(exception.Message);
         }
         finally
         {
@@ -202,6 +199,18 @@ public partial class MainWindow : Window
         SignInButton.Content = busy ? "SIGNING IN…" : "SIGN IN";
     }
 
+    private void ShowAuthFeedback(string message)
+    {
+        AuthFeedbackText.Text = message;
+        AuthFeedbackText.Visibility = Visibility.Visible;
+    }
+
+    private void HideAuthFeedback()
+    {
+        AuthFeedbackText.Text = string.Empty;
+        AuthFeedbackText.Visibility = Visibility.Collapsed;
+    }
+
     private void SignOut_Click(object sender, RoutedEventArgs e)
     {
         LauncherSession.AccessToken = null;
@@ -210,6 +219,7 @@ public partial class MainWindow : Window
         _campaigns.Clear();
         RefreshCampaignState();
         LoginPasswordBox.Clear();
+        HideAuthFeedback();
         UpdateSessionVisuals();
     }
 
@@ -220,6 +230,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.CreatedUsername))
         {
             LoginUsernameTextBox.Text = dialog.CreatedUsername;
+            ShowAuthFeedback("Account created. Verify your email before signing in.");
             LoginPasswordBox.Focus();
         }
     }
