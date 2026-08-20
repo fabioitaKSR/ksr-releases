@@ -23,7 +23,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform login parses V1 session", PlatformLoginParsesSession),
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
-    ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints)
+    ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
+    ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -384,8 +385,8 @@ static async Task PlatformPasswordRecoveryUsesV1Endpoints()
         }
         else if (request.RequestUri.AbsolutePath.EndsWith("/reset-password", StringComparison.Ordinal))
         {
-            Equal("reset-token", document.RootElement.GetProperty("token").GetString()!);
-            Equal("new-password", document.RootElement.GetProperty("newPassword").GetString()!);
+            Equal("reset-token", document.RootElement.GetProperty("resetToken").GetString()!);
+            Equal("new-password", document.RootElement.GetProperty("password").GetString()!);
             resetCalled = true;
         }
         else throw new Exception("Unexpected password recovery endpoint.");
@@ -397,6 +398,20 @@ static async Task PlatformPasswordRecoveryUsesV1Endpoints()
     await client.ResetPasswordAsync("https://ksr.example", "reset-token", "new-password");
     True(forgotCalled, "The forgot-password endpoint was not called.");
     True(resetCalled, "The reset-password endpoint was not called.");
+}
+
+static async Task PlatformHealthUsesV1Contract()
+{
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://play.kerbalspacerace.net/api/v1/health", request.RequestUri!.ToString());
+        return "{\"ok\":true,\"service\":\"ksr-platform\",\"version\":\"v1\",\"legacy\":true}";
+    }));
+
+    var health = await new KsrPlatformClient(http).GetHealthAsync(KsrPlatformClient.ProductionServerUrl);
+    Equal("ksr-platform", health.Service);
+    Equal("v1", health.Version!);
+    True(health.Legacy, "Legacy compatibility flag was not parsed.");
 }
 
 static ReleaseManifest CreateManifest(string hash) => new()

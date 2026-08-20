@@ -23,7 +23,10 @@ public partial class MainWindow : Window
         _kspRoot = Environment.GetEnvironmentVariable("KSR_KSP_ROOT");
         UpdateSessionVisuals();
         RefreshCampaignState();
+        Loaded += MainWindow_Loaded;
     }
+
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e) => await RefreshServerStatusAsync();
 
     private void PlayerTab_Click(object sender, RoutedEventArgs e)
     {
@@ -236,12 +239,13 @@ public partial class MainWindow : Window
         return false;
     }
 
-    private void Settings_Click(object sender, RoutedEventArgs e)
+    private async void Settings_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new ServerSettingsWindow(LauncherSession.ServerUrl) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         LauncherSession.ServerUrl = dialog.ServerUrl;
         UpdateSessionVisuals();
+        await RefreshServerStatusAsync();
     }
 
     private void UpdateSessionVisuals()
@@ -254,13 +258,38 @@ public partial class MainWindow : Window
         AccountNameText.Text = LauncherSession.Username;
 
         var serverConfigured = !string.IsNullOrWhiteSpace(LauncherSession.ServerUrl);
-        var statusBrush = (System.Windows.Media.Brush)FindResource(serverConfigured ? "GreenBrush" : "OrangeBrush");
+        var statusBrush = (System.Windows.Media.Brush)FindResource("OrangeBrush");
         ServerStatusDot.Foreground = statusBrush;
         ServerStatusText.Foreground = statusBrush;
-        ServerStatusText.Text = serverConfigured ? "SERVER CONFIGURED" : "SERVER SETUP PENDING";
+        ServerStatusText.Text = serverConfigured ? "CHECKING SERVER…" : "SERVER SETUP PENDING";
         LoginServerStatusDot.Foreground = statusBrush;
         LoginServerStatusText.Foreground = statusBrush;
-        LoginServerStatusText.Text = serverConfigured ? "CONFIGURED" : "SETUP PENDING";
+        LoginServerStatusText.Text = serverConfigured ? "CHECKING…" : "SETUP PENDING";
+    }
+
+    private async Task RefreshServerStatusAsync()
+    {
+        if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl)) return;
+        try
+        {
+            await _platformClient.GetHealthAsync(LauncherSession.ServerUrl);
+            SetServerStatus("SERVER ONLINE", "ONLINE", "GreenBrush");
+        }
+        catch
+        {
+            SetServerStatus("SERVER OFFLINE", "OFFLINE", "MutedBrush");
+        }
+    }
+
+    private void SetServerStatus(string headerText, string loginText, string brushKey)
+    {
+        var brush = (System.Windows.Media.Brush)FindResource(brushKey);
+        ServerStatusDot.Foreground = brush;
+        ServerStatusText.Foreground = brush;
+        ServerStatusText.Text = headerText;
+        LoginServerStatusDot.Foreground = brush;
+        LoginServerStatusText.Foreground = brush;
+        LoginServerStatusText.Text = loginText;
     }
 
     private bool EnsureKspRoot()
@@ -281,7 +310,8 @@ public partial class MainWindow : Window
 internal static class LauncherSession
 {
     public static string Username { get; set; } = "PLAYER";
-    public static string? ServerUrl { get; set; } = Environment.GetEnvironmentVariable("KSR_SERVER_URL");
+    public static string? ServerUrl { get; set; } =
+        Environment.GetEnvironmentVariable("KSR_SERVER_URL") ?? KsrPlatformClient.ProductionServerUrl;
     public static string? AccessToken { get; set; }
     public static string? RefreshToken { get; set; }
     public static DateTimeOffset? AccessTokenExpiresAtUtc { get; set; }

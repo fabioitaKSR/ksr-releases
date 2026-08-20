@@ -7,6 +7,8 @@ namespace KsrLauncher.Core;
 
 public sealed record KsrUser(long Id, string Username);
 
+public sealed record KsrHealth(string Service, string? Version, bool Legacy);
+
 public sealed record KsrLoginSession(
     string AccessToken,
     string RefreshToken,
@@ -24,6 +26,8 @@ public sealed record KsrCampaign(
 
 public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 {
+    public const string ProductionServerUrl = "https://play.kerbalspacerace.net";
+
     private readonly HttpClient _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
 
     public async Task RegisterAsync(
@@ -73,9 +77,25 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         if (newPassword.Length < 8) throw new ArgumentException("Password must contain at least 8 characters.");
         await PostForSuccessAsync(
             new Uri(baseUri, "/api/v1/auth/reset-password"),
-            new { token = resetToken.Trim(), newPassword },
+            new { resetToken = resetToken.Trim(), password = newPassword },
             "Password reset failed",
             cancellationToken);
+    }
+
+    public async Task<KsrHealth> GetHealthAsync(
+        string serverUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        using var response = await _httpClient.GetAsync(new Uri(baseUri, "/api/v1/health"), cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var root = Unwrap(document.RootElement);
+        if (!root.TryGetProperty("ok", out var ok) || ok.ValueKind != JsonValueKind.True)
+            throw new InvalidDataException("The KSR server health check did not report a ready service.");
+        return new KsrHealth(
+            RequiredString(root, "service"),
+            OptionalString(root, "version"),
+            root.TryGetProperty("legacy", out var legacy) && legacy.ValueKind == JsonValueKind.True);
     }
 
     public async Task<KsrLoginSession> LoginAsync(
@@ -145,8 +165,9 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         using var response = await _httpClient.PostAsJsonAsync(uri, payload, ManifestService.JsonOptions, cancellationToken);
         if (response.IsSuccessStatusCode) return;
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        var message = TryReadError(content) ?? $"{failureMessage} ({(int)response.StatusCode}).";
-        throw new KsrApiException((int)response.StatusCode, message);
+        var error = TryReadError(content);
+        var message = error.Message ?? $"{failureMessage} ({(int)response.StatusCode}).";
+        throw new KsrApiException((int)response.StatusCode, error.Code, message);
     }
 
     private static Uri ValidateServerUri(string serverUrl)
@@ -165,25 +186,31 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            var message = TryReadError(content) ?? $"KSR server request failed ({(int)response.StatusCode}).";
-            throw new KsrApiException((int)response.StatusCode, message);
+            var error = TryReadError(content);
+            var message = error.Message ?? $"KSR server request failed ({(int)response.StatusCode}).";
+            throw new KsrApiException((int)response.StatusCode, error.Code, message);
         }
         try { return JsonDocument.Parse(content); }
         catch (JsonException exception) { throw new InvalidDataException("The KSR server returned invalid JSON.", exception); }
     }
 
-    private static string? TryReadError(string content)
+    private static (string? Code, string? Message) TryReadError(string content)
     {
         try
         {
             using var document = JsonDocument.Parse(content);
             var root = document.RootElement;
-            if (!root.TryGetProperty("error", out var error)) return null;
-            if (error.ValueKind == JsonValueKind.String) return error.GetString();
-            if (error.ValueKind == JsonValueKind.Object && error.TryGetProperty("message", out var message)) return message.GetString();
+            if (!root.TryGetProperty("error", out var error)) return (null, null);
+            if (error.ValueKind == JsonValueKind.String) return (null, error.GetString());
+            if (error.ValueKind == JsonValueKind.Object)
+            {
+                var code = error.TryGetProperty("code", out var codeValue) ? codeValue.GetString() : null;
+                var message = error.TryGetProperty("message", out var messageValue) ? messageValue.GetString() : null;
+                return (code, message);
+            }
         }
         catch (JsonException) { }
-        return null;
+        return (null, null);
     }
 
     private static JsonElement Unwrap(JsonElement root) =>
@@ -217,7 +244,8 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         element.TryGetProperty(name, out var value) && value.TryGetInt32(out var number) ? number : null;
 }
 
-public sealed class KsrApiException(int statusCode, string message) : Exception(message)
+public sealed class KsrApiException(int statusCode, string? code, string message) : Exception(message)
 {
     public int StatusCode { get; } = statusCode;
+    public string? Code { get; } = code;
 }
