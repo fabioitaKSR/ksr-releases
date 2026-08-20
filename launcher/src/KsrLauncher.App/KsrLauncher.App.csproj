@@ -4,6 +4,10 @@
     <ProjectReference Include="..\KsrLauncher.Core\KsrLauncher.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Resource Include="Assets\ksr-space-background-v1.png" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>

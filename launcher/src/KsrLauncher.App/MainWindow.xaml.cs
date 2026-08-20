@@ -13,14 +13,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        AccountNameText.Text = LauncherSession.Username;
         _kspRoot = Environment.GetEnvironmentVariable("KSR_KSP_ROOT");
-        if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl))
-        {
-            ServerStatusDot.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
-            ServerStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
-            ServerStatusText.Text = "SERVER SETUP PENDING";
-        }
+        UpdateSessionVisuals();
     }
 
     private void PlayerTab_Click(object sender, RoutedEventArgs e)
@@ -92,6 +86,57 @@ public partial class MainWindow : Window
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void SignIn_Click(object sender, RoutedEventArgs e)
+    {
+        var username = LoginUsernameTextBox.Text.Trim();
+        if (string.IsNullOrWhiteSpace(username) || LoginPasswordBox.Password.Length == 0)
+        {
+            MessageBox.Show("Enter your KSR username and password.", "KSR Account", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl))
+        {
+            MessageBox.Show(
+                "KSR server authentication is not connected yet. The account interface is ready and will be enabled when the server API is available.",
+                "KSR Account", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        MessageBox.Show(
+            "The server URL is configured, but the authentication endpoint has not been connected to this build yet.",
+            "KSR Account", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void SignOut_Click(object sender, RoutedEventArgs e)
+    {
+        LauncherSession.AccessToken = null;
+        LoginPasswordBox.Clear();
+        UpdateSessionVisuals();
+    }
+
+    private void CreateAccount_Click(object sender, RoutedEventArgs e) =>
+        MessageBox.Show(
+            "Account creation will become available when the KSR server API is connected.",
+            "KSR Account", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    private void UpdateSessionVisuals()
+    {
+        var signedIn = LauncherSession.IsAuthenticated;
+        AccountPanel.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
+        LoginPanel.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
+        SignOutButton.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
+        CreateAccountButton.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
+        AccountNameText.Text = LauncherSession.Username;
+
+        var serverConfigured = !string.IsNullOrWhiteSpace(LauncherSession.ServerUrl);
+        var statusBrush = (System.Windows.Media.Brush)FindResource(serverConfigured ? "GreenBrush" : "OrangeBrush");
+        ServerStatusDot.Foreground = statusBrush;
+        ServerStatusText.Foreground = statusBrush;
+        ServerStatusText.Text = serverConfigured ? "SERVER CONFIGURED" : "SERVER SETUP PENDING";
+        LoginServerStatusDot.Foreground = statusBrush;
+        LoginServerStatusText.Foreground = statusBrush;
+        LoginServerStatusText.Text = serverConfigured ? "CONFIGURED" : "SETUP PENDING";
+    }
+
     private bool EnsureKspRoot()
     {
         if (!string.IsNullOrWhiteSpace(_kspRoot) && File.Exists(Path.Combine(_kspRoot, "KSP_x64.exe"))) return true;
@@ -114,4 +159,5 @@ internal static class LauncherSession
     public static string? AccessToken { get; set; }
     public static string? CampaignCode { get; set; } = "KSR-000042-20260819-0015";
     public static string? CampaignName { get; set; } = "Space Race 2026";
+    public static bool IsAuthenticated => !string.IsNullOrWhiteSpace(AccessToken);
 }
