@@ -12,9 +12,12 @@
         <SolidColorBrush x:Key="BorderBrush" Color="#FF3B3E40" />
 
         <Style TargetType="Window">
-            <Setter Property="FontFamily" Value="Segoe UI" />
+            <Setter Property="FontFamily" Value="Bahnschrift SemiCondensed, Segoe UI" />
             <Setter Property="Foreground" Value="#FFF0EEE9" />
             <Setter Property="Background" Value="{StaticResource BackgroundBrush}" />
+        </Style>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#FFF0EEE9" />
         </Style>
         <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource PanelBrush}" />
@@ -63,10 +66,31 @@
             <Setter Property="Background" Value="#441E0808" />
             <Setter Property="BorderBrush" Value="#FFFF3E3E" />
         </Style>
+        <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="#FF353A3E" />
+            <Setter Property="Foreground" Value="#FFC9C5BD" />
+        </Style>
+        <Style x:Key="TabButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#C90B0E10" />
+            <Setter Property="BorderBrush" Value="#FF363A3C" />
+            <Setter Property="BorderThickness" Value="1,1,1,2" />
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="Padding" Value="22,14" />
+        </Style>
         <Style x:Key="SectionTitle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource OrangeBrush}" />
             <Setter Property="FontSize" Value="21" />
             <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style x:Key="SmallLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style x:Key="TableHeader" TargetType="TextBlock" BasedOn="{StaticResource SmallLabel}">
+            <Setter Property="Margin" Value="14,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style TargetType="TextBox">
             <Setter Property="Foreground" Value="#FFF0EEE9" />
