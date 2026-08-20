@@ -23,6 +23,8 @@ The launcher reads the latest published GitHub Release, validates the manifest a
 
 Player-generated files and server data are preserved during updates.
 
+The first tested implementation of the update engine is available in [`launcher/`](launcher/README.md). It currently provides the reusable .NET core, a safe command-line interface, persistent backups and automated rollback tests.
+
 ## Release builds
 
 Package generation is handled by the safety-focused PowerShell script documented in [BUILDING.md](BUILDING.md). Generated archives are published as GitHub Release assets and are not committed to the repository.
