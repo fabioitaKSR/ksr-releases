@@ -15,7 +15,11 @@ var tests = new (string Name, Func<Task> Run)[]
     ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease),
     ("Update ordinario ignora componente assente", ExistingOnlySkipsMissing),
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
-    ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched)
+    ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched),
+    ("Support LOG package is safe and complete", SupportLogPackageIsSafe),
+    ("Support SAVE package is safe and complete", SupportSavePackageIsSafe),
+    ("Support report requires a useful description", SupportDescriptionIsRequired),
+    ("Support upload uses authenticated HTTPS endpoint", SupportUploadIsAuthenticated)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -213,6 +217,94 @@ static async Task ThirdPartyModIsUntouched()
     await new UpdateEngine().RunAsync(manifest, new LauncherLocations(ksp, launcherData), assets, true);
 
     Equal("third-party-content", await File.ReadAllTextAsync(Path.Combine(thirdPartyTarget, "important.cfg")));
+}
+
+static async Task SupportLogPackageIsSafe()
+{
+    using var scope = new TempScope();
+    var log = Path.Combine(scope.Root, "KSP.log");
+    const string original = "KSP diagnostic content";
+    await File.WriteAllTextAsync(log, original);
+    var created = new DateTimeOffset(2026, 8, 20, 19, 45, 0, TimeSpan.Zero);
+    var request = new SupportReportRequest(
+        SupportReportType.Log, log, "The game stopped during vessel recovery.", "Fabio Test!", "KSR-42",
+        "Space Race", null, "1.0.0", "1.12.5");
+
+    var package = await new SupportReportPackager().CreateAsync(request, Path.Combine(scope.Root, "queue"), created);
+
+    Equal("2026-08-20_194500Z_Fabio-Test_LOG.zip", package.FileName);
+    Equal(original, await File.ReadAllTextAsync(log));
+    using var archive = ZipFile.OpenRead(package.FilePath);
+    True(archive.GetEntry("KSP.log") is not null, "KSP.log is missing from the support package.");
+    True(archive.GetEntry("report.txt") is not null, "report.txt is missing from the support package.");
+    True(archive.GetEntry("manifest.json") is not null, "manifest.json is missing from the support package.");
+    using var reportReader = new StreamReader(archive.GetEntry("report.txt")!.Open());
+    var report = await reportReader.ReadToEndAsync();
+    True(report.Contains("The game stopped during vessel recovery.", StringComparison.Ordinal), "The player description is missing.");
+    False(report.Contains("password", StringComparison.OrdinalIgnoreCase), "Unexpected secret-related content in report.txt.");
+    using var manifestReader = new StreamReader(archive.GetEntry("manifest.json")!.Open());
+    using var manifest = JsonDocument.Parse(await manifestReader.ReadToEndAsync());
+    var logManifest = manifest.RootElement.GetProperty("files").EnumerateArray()
+        .Single(item => item.GetProperty("path").GetString() == "KSP.log");
+    Equal(await PackageService.ComputeSha256Async(log), logManifest.GetProperty("sha256").GetString()!);
+}
+
+static async Task SupportSavePackageIsSafe()
+{
+    using var scope = new TempScope();
+    var save = Path.Combine(scope.Root, "saves", "KSR-Campaign");
+    Directory.CreateDirectory(Path.Combine(save, "Ships", "VAB"));
+    await File.WriteAllTextAsync(Path.Combine(save, "persistent.sfs"), "original-save");
+    await File.WriteAllTextAsync(Path.Combine(save, "Ships", "VAB", "Rocket.craft"), "original-craft");
+    var request = new SupportReportRequest(
+        SupportReportType.Save, save, "The vessel disappeared after loading the save.", "Fabio", "KSR-42",
+        "Space Race", "KSR-Campaign", "1.0.0", "1.12.5");
+
+    var package = await new SupportReportPackager().CreateAsync(request, Path.Combine(scope.Root, "queue"));
+
+    Equal("original-save", await File.ReadAllTextAsync(Path.Combine(save, "persistent.sfs")));
+    Equal("original-craft", await File.ReadAllTextAsync(Path.Combine(save, "Ships", "VAB", "Rocket.craft")));
+    using var archive = ZipFile.OpenRead(package.FilePath);
+    True(archive.GetEntry("save/persistent.sfs") is not null, "persistent.sfs is missing from the support package.");
+    True(archive.GetEntry("save/Ships/VAB/Rocket.craft") is not null, "The craft file is missing from the support package.");
+}
+
+static async Task SupportDescriptionIsRequired()
+{
+    using var scope = new TempScope();
+    var log = Path.Combine(scope.Root, "KSP.log");
+    await File.WriteAllTextAsync(log, "log");
+    var request = new SupportReportRequest(
+        SupportReportType.Log, log, "too short", "Fabio", null, null, null, "1.0.0", "1.12.5");
+    await ThrowsAsync<ArgumentException>(() =>
+        new SupportReportPackager().CreateAsync(request, Path.Combine(scope.Root, "queue")));
+    False(Directory.Exists(Path.Combine(scope.Root, "queue", ".work")), "A rejected report left temporary data behind.");
+}
+
+static async Task SupportUploadIsAuthenticated()
+{
+    using var scope = new TempScope();
+    var packagePath = Path.Combine(scope.Root, "report.zip");
+    CreateZip(packagePath, new Dictionary<string, string> { ["report.txt"] = "test" });
+    var package = new SupportReportPackage(
+        packagePath, "report.zip", await PackageService.ComputeSha256Async(packagePath),
+        new FileInfo(packagePath).Length, DateTimeOffset.UtcNow, SupportReportType.Log, "KSR-42");
+    var requestChecked = false;
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://ksr.example/api/v1/support/reports", request.RequestUri!.ToString());
+        Equal("Bearer", request.Headers.Authorization!.Scheme);
+        Equal("secret-token", request.Headers.Authorization.Parameter!);
+        True(request.Content is MultipartFormDataContent, "The support request is not multipart/form-data.");
+        requestChecked = true;
+        return "{\"reportId\":\"KSR-RPT-000001\",\"status\":\"received\",\"receivedAtUtc\":\"2026-08-20T19:45:05Z\"}";
+    }));
+
+    var result = await new SupportReportUploader(http).UploadAsync("https://ksr.example", "secret-token", package);
+    True(requestChecked, "The support endpoint was not called.");
+    Equal("KSR-RPT-000001", result.ReportId);
+    await ThrowsAsync<ArgumentException>(() =>
+        new SupportReportUploader(http).UploadAsync("http://ksr.example", "secret-token", package));
 }
 
 static ReleaseManifest CreateManifest(string hash) => new()

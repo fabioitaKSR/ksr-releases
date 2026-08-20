@@ -1,25 +1,28 @@
-# KSR Launcher Core
+# KSR Launcher
 
-Prototipo verificabile del motore di aggiornamento per Kerbal Space Race. La CLI e prudente: `update` e `rollback` non modificano file senza l'opzione esplicita `--apply`.
+KSR's Windows launcher and testable update engine for Kerbal Space Race. The CLI is intentionally cautious: `update` and `rollback` never modify files unless the explicit `--apply` option is present.
 
-## Funzioni disponibili
+## Available features
 
-- validazione dello schema manifest 1 e della cartella KSP;
-- piano per tutti i componenti dichiarati nel manifest;
-- asset da cartella locale oppure URL HTTP/HTTPS;
-- verifica SHA-256 ed estrazione ZIP sicura;
-- aggiornamento per gruppi transazionali;
-- conservazione dei file indicati da `preserve`;
-- eccezioni `managedFilesInsidePreservedPaths`;
-- backup persistente, rollback e stato installato atomico.
-- individuazione automatica della release stabile o beta tramite GitHub Releases.
-- aggiornamento ordinario limitato ai componenti KSR gia presenti;
-- installazione/riparazione dei componenti assenti soltanto con consenso esplicito;
-- nessuna scansione, sostituzione o rimozione delle mod di terzi.
+- schema version 1 manifest and KSP directory validation;
+- update plan for every component declared in the official manifest;
+- local-folder and HTTP/HTTPS release assets;
+- SHA-256 verification and safe ZIP extraction;
+- transactional component groups;
+- persistent backups, rollback and atomic installed state;
+- `preserve` paths and `managedFilesInsidePreservedPaths` exceptions;
+- automatic stable or beta discovery through GitHub Releases;
+- ordinary updates restricted to KSR components that are already installed;
+- missing component installation or repair only after explicit consent;
+- no scanning, replacement or removal of third-party mods;
+- WPF Player Area and Admin Area shell;
+- explicit `SEND LOG` and `SEND SAVE` support reports with description and consent;
+- safe diagnostic ZIP creation with UTC/player filenames, `report.txt`, `manifest.json` and SHA-256;
+- authenticated HTTPS upload to the KSR server, with local queuing while server sign-in is unavailable.
 
-## Compilazione e test
+## Build and test
 
-Dal root del progetto:
+From the project root:
 
 ```powershell
 $env:DOTNET_CLI_HOME = "$PWD/.tools/dotnet-home"
@@ -27,17 +30,17 @@ $env:DOTNET_CLI_HOME = "$PWD/.tools/dotnet-home"
 & ./.tools/dotnet/dotnet.exe run --project ./github/ksr-releases-local/launcher/tests/KsrLauncher.Tests
 ```
 
-## Esempio CLI
+## CLI example
 
 ```powershell
-# Solo simulazione
+# Plan only
 & dotnet run --project launcher/src/KsrLauncher.Cli -- plan `
   --repo "fabioitaKSR/ksr-releases" `
   --channel stable `
   --ksp "F:\SteamLibrary\steamapps\common\Kerbal Space Race" `
   --launcher-data "C:\KSR"
 
-# Aggiornamento reale
+# Apply the update
 & dotnet run --project launcher/src/KsrLauncher.Cli -- update `
   --repo "fabioitaKSR/ksr-releases" `
   --channel stable `
@@ -46,6 +49,12 @@ $env:DOTNET_CLI_HOME = "$PWD/.tools/dotnet-home"
   --apply
 ```
 
-L'aggiornamento precedente ignora ogni componente KSR non installato. Per una prima installazione o una riparazione esplicitamente richiesta si aggiunge `--install-missing`. Questa opzione non estende mai il perimetro oltre i componenti elencati nel manifest ufficiale KSR.
+The ordinary update ignores KSR components that are not installed. Add `--install-missing` only for a first installation or an explicitly requested repair. This option never expands the launcher scope beyond components listed in the official KSR manifest.
 
-Il repository deve pubblicare `ksr-release.json` insieme agli ZIP nella stessa GitHub Release. Finche non esiste una release pubblicata, la modalita GitHub segnala correttamente che non sono disponibili aggiornamenti.
+The repository must publish `ksr-release.json` and its ZIP assets in the same GitHub Release. Until a release is published, GitHub mode correctly reports that no update is available.
+
+## Support reports
+
+The launcher never uploads diagnostics automatically. The player chooses `SEND LOG` or `SEND SAVE`, enters a description, reviews the included files, accepts the upload notice and presses `SEND REPORT`. Original files are never renamed, moved or modified.
+
+When a server session is available, the launcher sends the package to `POST /api/v1/support/reports` using the signed-in player's bearer token. Until server authentication is connected, completed packages are retained in `%LOCALAPPDATA%\KSRLauncher\SupportQueue` for a controlled later upload.
