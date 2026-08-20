@@ -114,8 +114,8 @@
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <TextBlock Text="PASSWORD" Style="{StaticResource SmallLabel}" />
-                            <CheckBox x:Name="RememberMeCheckBox" Grid.Column="1" Content="REMEMBER ME" FontSize="10" IsEnabled="False"
-                                      ToolTip="Secure persistent sessions will be enabled before production." />
+                            <Button Grid.Column="1" Content="FORGOT PASSWORD?" Style="{StaticResource GhostButton}" FontSize="10"
+                                    Padding="5,0" BorderThickness="0" Click="ForgotPassword_Click" />
                         </Grid>
                         <PasswordBox x:Name="LoginPasswordBox" MinWidth="115" Margin="0,5,0,0" />
                     </StackPanel>

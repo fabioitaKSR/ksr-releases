@@ -195,7 +195,6 @@ public partial class MainWindow : Window
     {
         LoginUsernameTextBox.IsEnabled = !busy;
         LoginPasswordBox.IsEnabled = !busy;
-        RememberMeCheckBox.IsEnabled = false;
         SignInButton.IsEnabled = !busy;
         SignInButton.Content = busy ? "SIGNING IN…" : "SIGN IN";
     }
@@ -211,10 +210,31 @@ public partial class MainWindow : Window
         UpdateSessionVisuals();
     }
 
-    private void CreateAccount_Click(object sender, RoutedEventArgs e) =>
+    private void CreateAccount_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureServerConfigured()) return;
+        var dialog = new CreateAccountWindow(_platformClient, LauncherSession.ServerUrl!) { Owner = this };
+        if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.CreatedUsername))
+        {
+            LoginUsernameTextBox.Text = dialog.CreatedUsername;
+            LoginPasswordBox.Focus();
+        }
+    }
+
+    private void ForgotPassword_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureServerConfigured()) return;
+        new PasswordRecoveryWindow(_platformClient, LauncherSession.ServerUrl!) { Owner = this }.ShowDialog();
+    }
+
+    private bool EnsureServerConfigured()
+    {
+        if (!string.IsNullOrWhiteSpace(LauncherSession.ServerUrl)) return true;
         MessageBox.Show(
-            "Account creation will become available when the KSR server API is connected.",
+            "Configure the KSR server URL in Settings before using account services.",
             "KSR Account", MessageBoxButton.OK, MessageBoxImage.Information);
+        return false;
+    }
 
     private void Settings_Click(object sender, RoutedEventArgs e)
     {

@@ -16,6 +16,8 @@ KSR's Windows launcher and testable update engine for Kerbal Space Race. The CLI
 - missing component installation or repair only after explicit consent;
 - no scanning, replacement or removal of third-party mods;
 - WPF Player Area and Admin Area shell;
+- KSR V1 registration, login, password recovery and dynamic campaign loading;
+- private-email account notice with no advertising use;
 - explicit `SEND LOG` and `SEND SAVE` support reports with description and consent;
 - safe diagnostic ZIP creation with UTC/player filenames, `report.txt`, `manifest.json` and SHA-256;
 - authenticated HTTPS upload to the KSR server, with local queuing while server sign-in is unavailable.

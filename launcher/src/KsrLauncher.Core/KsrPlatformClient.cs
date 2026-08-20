@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.Mail;
 using System.Text.Json;
 
 namespace KsrLauncher.Core;
@@ -24,6 +25,58 @@ public sealed record KsrCampaign(
 public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 {
     private readonly HttpClient _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+
+    public async Task RegisterAsync(
+        string serverUrl,
+        string username,
+        string email,
+        string password,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(username) || username.Trim().Length < 3)
+            throw new ArgumentException("Username must contain at least 3 characters.");
+        if (!MailAddress.TryCreate(email.Trim(), out _))
+            throw new ArgumentException("Enter a valid email address.");
+        if (password.Length < 8)
+            throw new ArgumentException("Password must contain at least 8 characters.");
+
+        await PostForSuccessAsync(
+            new Uri(baseUri, "/api/v1/auth/register"),
+            new { username = username.Trim(), email = email.Trim(), password },
+            "KSR account creation failed",
+            cancellationToken);
+    }
+
+    public async Task RequestPasswordResetAsync(
+        string serverUrl,
+        string email,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (!MailAddress.TryCreate(email.Trim(), out _)) throw new ArgumentException("Enter a valid email address.");
+        await PostForSuccessAsync(
+            new Uri(baseUri, "/api/v1/auth/forgot-password"),
+            new { email = email.Trim() },
+            "Password reset request failed",
+            cancellationToken);
+    }
+
+    public async Task ResetPasswordAsync(
+        string serverUrl,
+        string resetToken,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(resetToken)) throw new ArgumentException("Enter the password reset token.");
+        if (newPassword.Length < 8) throw new ArgumentException("Password must contain at least 8 characters.");
+        await PostForSuccessAsync(
+            new Uri(baseUri, "/api/v1/auth/reset-password"),
+            new { token = resetToken.Trim(), newPassword },
+            "Password reset failed",
+            cancellationToken);
+    }
 
     public async Task<KsrLoginSession> LoginAsync(
         string serverUrl,
@@ -81,6 +134,19 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         var request = new HttpRequestMessage(method, uri);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         return request;
+    }
+
+    private async Task PostForSuccessAsync(
+        Uri uri,
+        object payload,
+        string failureMessage,
+        CancellationToken cancellationToken)
+    {
+        using var response = await _httpClient.PostAsJsonAsync(uri, payload, ManifestService.JsonOptions, cancellationToken);
+        if (response.IsSuccessStatusCode) return;
+        var content = await response.Content.ReadAsStringAsync(cancellationToken);
+        var message = TryReadError(content) ?? $"{failureMessage} ({(int)response.StatusCode}).";
+        throw new KsrApiException((int)response.StatusCode, message);
     }
 
     private static Uri ValidateServerUri(string serverUrl)

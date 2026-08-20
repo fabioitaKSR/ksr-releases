@@ -21,7 +21,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Support report requires a useful description", SupportDescriptionIsRequired),
     ("Support upload uses authenticated HTTPS endpoint", SupportUploadIsAuthenticated),
     ("Platform login parses V1 session", PlatformLoginParsesSession),
-    ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession)
+    ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
+    ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
+    ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -348,6 +350,53 @@ static async Task PlatformCampaignsUseBearerSession()
     Equal("Lunar Race", campaigns[0].Name);
     Equal("admin", campaigns[0].Role);
     True(campaigns[0].MasterSaveSize == 12345, "Master Save metadata was not parsed.");
+}
+
+static async Task PlatformRegistrationSendsEmail()
+{
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://ksr.example/api/v1/auth/register", request.RequestUri!.ToString());
+        var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        using var document = JsonDocument.Parse(body);
+        Equal("Fabio", document.RootElement.GetProperty("username").GetString()!);
+        Equal("fabio@example.com", document.RootElement.GetProperty("email").GetString()!);
+        Equal("safe-password", document.RootElement.GetProperty("password").GetString()!);
+        return "{\"ok\":true}";
+    }));
+
+    await new KsrPlatformClient(http).RegisterAsync(
+        "https://ksr.example", "Fabio", "fabio@example.com", "safe-password");
+}
+
+static async Task PlatformPasswordRecoveryUsesV1Endpoints()
+{
+    var forgotCalled = false;
+    var resetCalled = false;
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        using var document = JsonDocument.Parse(body);
+        if (request.RequestUri!.AbsolutePath.EndsWith("/forgot-password", StringComparison.Ordinal))
+        {
+            Equal("fabio@example.com", document.RootElement.GetProperty("email").GetString()!);
+            forgotCalled = true;
+        }
+        else if (request.RequestUri.AbsolutePath.EndsWith("/reset-password", StringComparison.Ordinal))
+        {
+            Equal("reset-token", document.RootElement.GetProperty("token").GetString()!);
+            Equal("new-password", document.RootElement.GetProperty("newPassword").GetString()!);
+            resetCalled = true;
+        }
+        else throw new Exception("Unexpected password recovery endpoint.");
+        return "{\"ok\":true}";
+    }));
+    var client = new KsrPlatformClient(http);
+
+    await client.RequestPasswordResetAsync("https://ksr.example", "fabio@example.com");
+    await client.ResetPasswordAsync("https://ksr.example", "reset-token", "new-password");
+    True(forgotCalled, "The forgot-password endpoint was not called.");
+    True(resetCalled, "The reset-password endpoint was not called.");
 }
 
 static ReleaseManifest CreateManifest(string hash) => new()
