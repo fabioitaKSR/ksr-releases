@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
+using System.Collections.ObjectModel;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 using KsrLauncher.Core;
 
@@ -9,12 +11,15 @@ namespace KsrLauncher.App;
 public partial class MainWindow : Window
 {
     private string? _kspRoot;
+    private readonly ObservableCollection<CampaignListItem> _campaigns = [];
 
     public MainWindow()
     {
         InitializeComponent();
+        CampaignsList.ItemsSource = _campaigns;
         _kspRoot = Environment.GetEnvironmentVariable("KSR_KSP_ROOT");
         UpdateSessionVisuals();
+        RefreshCampaignState();
     }
 
     private void PlayerTab_Click(object sender, RoutedEventArgs e)
@@ -31,6 +36,44 @@ public partial class MainWindow : Window
         AdminArea.Visibility = Visibility.Visible;
         PlayerTabButton.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
         AdminTabButton.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+    }
+
+    private void CampaignsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        ApplyCampaignSelection(CampaignsList.SelectedItem as CampaignListItem);
+    }
+
+    private void ApplyCampaignSelection(CampaignListItem? campaign)
+    {
+        LauncherSession.CampaignCode = campaign?.CampaignCode;
+        LauncherSession.CampaignName = campaign?.Name;
+        ActiveCampaignText.Text = campaign?.Name?.ToUpperInvariant() ?? "NO CAMPAIGN SELECTED";
+        SelectedCampaignText.Text = campaign is null
+            ? "NO CAMPAIGN SELECTED"
+            : $"{campaign.Name}  ·  {campaign.Nation}  ·  {campaign.Role}";
+        SelectedCampaignText.Foreground = (System.Windows.Media.Brush)FindResource(campaign is null ? "MutedBrush" : "ForegroundBrush");
+        OpenCampaignButton.IsEnabled = campaign is not null;
+        DownloadMasterSaveButton.IsEnabled = campaign?.MasterSaveAvailable == true;
+        MasterSaveStatusText.Text = campaign is null
+            ? "Select a campaign to check its Master Save."
+            : campaign.MasterSaveAvailable
+                ? "The selected campaign Master Save is available and verified."
+                : "No Master Save is currently available for the selected campaign.";
+    }
+
+    internal void ReplaceCampaigns(IEnumerable<CampaignListItem> campaigns)
+    {
+        CampaignsList.SelectedItem = null;
+        _campaigns.Clear();
+        foreach (var campaign in campaigns) _campaigns.Add(campaign);
+        RefreshCampaignState();
+    }
+
+    private void RefreshCampaignState()
+    {
+        EmptyCampaignsPanel.Visibility = _campaigns.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        CampaignsList.Visibility = _campaigns.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        if (_campaigns.Count == 0) ApplyCampaignSelection(null);
     }
 
     private void SendLog_Click(object sender, RoutedEventArgs e)
@@ -109,6 +152,8 @@ public partial class MainWindow : Window
     private void SignOut_Click(object sender, RoutedEventArgs e)
     {
         LauncherSession.AccessToken = null;
+        _campaigns.Clear();
+        RefreshCampaignState();
         LoginPasswordBox.Clear();
         UpdateSessionVisuals();
     }
@@ -157,7 +202,19 @@ internal static class LauncherSession
     public static string Username { get; set; } = "PLAYER";
     public static string? ServerUrl { get; set; }
     public static string? AccessToken { get; set; }
-    public static string? CampaignCode { get; set; } = "KSR-000042-20260819-0015";
-    public static string? CampaignName { get; set; } = "Space Race 2026";
+    public static string? CampaignCode { get; set; }
+    public static string? CampaignName { get; set; }
     public static bool IsAuthenticated => !string.IsNullOrWhiteSpace(AccessToken);
+}
+
+internal sealed record CampaignListItem(
+    string CampaignCode,
+    string Name,
+    string Role,
+    string Nation,
+    string Status,
+    bool MasterSaveAvailable)
+{
+    public string RoleColor => string.Equals(Role, "ADMIN", StringComparison.OrdinalIgnoreCase) ? "#FFF57C00" : "#FF4AB8F1";
+    public string StatusColor => string.Equals(Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) ? "#FF80D420" : "#FF9BA0A3";
 }

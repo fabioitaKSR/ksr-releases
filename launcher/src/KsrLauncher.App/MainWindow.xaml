@@ -92,7 +92,7 @@
                     <Border Grid.Column="3" Width="1" Height="35" Background="#FF303538" />
                     <StackPanel Grid.Column="4" VerticalAlignment="Center">
                         <TextBlock Text="ACTIVE CAMPAIGN" Style="{StaticResource SmallLabel}" />
-                        <TextBlock Text="SPACE RACE 2026" FontSize="16" FontWeight="SemiBold" Margin="0,7,0,0" />
+                        <TextBlock x:Name="ActiveCampaignText" Text="NO CAMPAIGN SELECTED" FontSize="16" FontWeight="SemiBold" Margin="0,7,0,0" />
                     </StackPanel>
                 </Grid>
 
@@ -162,8 +162,8 @@
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="18" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
+                        <RowDefinition Height="18" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <Grid>
@@ -175,44 +175,63 @@
                         <Button Grid.Column="1" Content="+  JOIN CAMPAIGN" Style="{StaticResource GhostButton}" />
                     </Grid>
 
-                    <Border Grid.Row="2" Background="#E30A0E11" BorderBrush="#FF34383B" BorderThickness="1" CornerRadius="5">
+                    <Border Grid.Row="2" Background="#E30A0E11" BorderBrush="#FF34383B" BorderThickness="1" CornerRadius="5" MinHeight="230">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="42" />
-                                <RowDefinition Height="66" />
-                                <RowDefinition Height="66" />
+                                <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="2.3*" />
-                                <ColumnDefinition Width="1.45*" />
-                                <ColumnDefinition Width="0.85*" />
-                                <ColumnDefinition Width="0.85*" />
-                                <ColumnDefinition Width="0.85*" />
-                            </Grid.ColumnDefinitions>
-                            <Border Grid.ColumnSpan="5" Background="#FF171C20" CornerRadius="5,5,0,0" />
-                            <TextBlock Text="CAMPAIGN ID" Style="{StaticResource TableHeader}" />
-                            <TextBlock Grid.Column="1" Text="CAMPAIGN" Style="{StaticResource TableHeader}" />
-                            <TextBlock Grid.Column="2" Text="ROLE" Style="{StaticResource TableHeader}" />
-                            <TextBlock Grid.Column="3" Text="NATION" Style="{StaticResource TableHeader}" />
-                            <TextBlock Grid.Column="4" Text="STATUS" Style="{StaticResource TableHeader}" />
+                            <Grid Background="#FF171C20">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="2.3*" /><ColumnDefinition Width="1.45*" /><ColumnDefinition Width="0.85*" /><ColumnDefinition Width="0.85*" /><ColumnDefinition Width="0.85*" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="CAMPAIGN ID" Style="{StaticResource TableHeader}" />
+                                <TextBlock Grid.Column="1" Text="CAMPAIGN" Style="{StaticResource TableHeader}" />
+                                <TextBlock Grid.Column="2" Text="ROLE" Style="{StaticResource TableHeader}" />
+                                <TextBlock Grid.Column="3" Text="NATION" Style="{StaticResource TableHeader}" />
+                                <TextBlock Grid.Column="4" Text="STATUS" Style="{StaticResource TableHeader}" />
+                            </Grid>
 
-                            <Border Grid.Row="1" Grid.ColumnSpan="5" Background="#151F8A12" BorderBrush="#FF2A2F32" BorderThickness="0,0,0,1" />
-                            <TextBlock Grid.Row="1" Text="KSR-000042-20260819-0015" Margin="14" VerticalAlignment="Center" FontSize="15" />
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Space Race 2026" Margin="14" VerticalAlignment="Center" />
-                            <TextBlock Grid.Row="1" Grid.Column="2" Text="ADMIN" Margin="14" Foreground="{StaticResource OrangeBrush}" FontWeight="Bold" VerticalAlignment="Center" />
-                            <TextBlock Grid.Row="1" Grid.Column="3" Text="USSR" Margin="14" VerticalAlignment="Center" />
-                            <StackPanel Grid.Row="1" Grid.Column="4" Orientation="Horizontal" Margin="14" VerticalAlignment="Center">
-                                <TextBlock Text="●" Foreground="{StaticResource GreenBrush}" Margin="0,0,6,0" />
-                                <TextBlock Text="ACTIVE" Foreground="{StaticResource GreenBrush}" FontWeight="Bold" />
-                            </StackPanel>
+                            <ListBox x:Name="CampaignsList" Grid.Row="1" Background="Transparent" BorderThickness="0"
+                                     SelectionChanged="CampaignsList_SelectionChanged" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                        <Setter Property="Padding" Value="0" />
+                                        <Setter Property="Foreground" Value="#FFF0EEE9" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ListBoxItem">
+                                                    <Border x:Name="Row" Background="Transparent" BorderBrush="#FF2A2F32" BorderThickness="0,0,0,1">
+                                                        <ContentPresenter />
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Row" Property="Background" Value="#162C86A0" /></Trigger>
+                                                        <Trigger Property="IsSelected" Value="True"><Setter TargetName="Row" Property="Background" Value="#201F8A12" /></Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Height="66">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="2.3*" /><ColumnDefinition Width="1.45*" /><ColumnDefinition Width="0.85*" /><ColumnDefinition Width="0.85*" /><ColumnDefinition Width="0.85*" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding CampaignCode}" Margin="14" VerticalAlignment="Center" FontSize="15" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" Margin="14" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Role}" Margin="14" Foreground="{Binding RoleColor}" FontWeight="Bold" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="3" Text="{Binding Nation}" Margin="14" VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="14" VerticalAlignment="Center">
+                                                <TextBlock Text="●" Foreground="{Binding StatusColor}" Margin="0,0,6,0" />
+                                                <TextBlock Text="{Binding Status}" Foreground="{Binding StatusColor}" FontWeight="Bold" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
 
-                            <TextBlock Grid.Row="2" Text="KSR-000077-20260820-192600" Margin="14" VerticalAlignment="Center" FontSize="15" />
-                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Race to Duna" Margin="14" VerticalAlignment="Center" />
-                            <TextBlock Grid.Row="2" Grid.Column="2" Text="PLAYER" Margin="14" Foreground="#FF4AB8F1" FontWeight="Bold" VerticalAlignment="Center" />
-                            <TextBlock Grid.Row="2" Grid.Column="3" Text="USA" Margin="14" VerticalAlignment="Center" />
-                            <StackPanel Grid.Row="2" Grid.Column="4" Orientation="Horizontal" Margin="14" VerticalAlignment="Center">
-                                <TextBlock Text="●" Foreground="{StaticResource GreenBrush}" Margin="0,0,6,0" />
-                                <TextBlock Text="ACTIVE" Foreground="{StaticResource GreenBrush}" FontWeight="Bold" />
+                            <StackPanel x:Name="EmptyCampaignsPanel" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="NO CAMPAIGNS YET" Foreground="{StaticResource MutedBrush}" FontSize="20" FontWeight="Bold" HorizontalAlignment="Center" />
+                                <TextBlock Text="Join a campaign or wait for one to be assigned to your account." Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0" />
                             </StackPanel>
                         </Grid>
                     </Border>
@@ -222,9 +241,9 @@
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel>
                                 <TextBlock Text="SELECTED CAMPAIGN" Style="{StaticResource SmallLabel}" />
-                                <TextBlock Text="Space Race 2026  ·  USSR  ·  Administrator" FontSize="17" Margin="0,6,0,0" />
+                                <TextBlock x:Name="SelectedCampaignText" Text="NO CAMPAIGN SELECTED" Foreground="{StaticResource MutedBrush}" FontSize="17" Margin="0,6,0,0" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="OPEN CAMPAIGN" Style="{StaticResource PrimaryButton}" MinWidth="190" />
+                            <Button x:Name="OpenCampaignButton" Grid.Column="1" Content="OPEN CAMPAIGN" Style="{StaticResource PrimaryButton}" MinWidth="190" IsEnabled="False" />
                         </Grid>
                     </Border>
                 </Grid>
@@ -256,8 +275,8 @@
                 <Border Grid.Row="2" Style="{StaticResource Card}" Padding="18">
                     <StackPanel>
                         <TextBlock Text="MASTER SAVE" Style="{StaticResource SectionTitle}" />
-                        <TextBlock Text="The selected campaign save is ready." Foreground="{StaticResource MutedBrush}" Margin="0,7,0,13" />
-                        <Button Content="DOWNLOAD VERIFIED SAVE" Style="{StaticResource PrimaryButton}" />
+                        <TextBlock x:Name="MasterSaveStatusText" Text="Select a campaign to check its Master Save." Foreground="{StaticResource MutedBrush}" Margin="0,7,0,13" />
+                        <Button x:Name="DownloadMasterSaveButton" Content="DOWNLOAD VERIFIED SAVE" Style="{StaticResource PrimaryButton}" IsEnabled="False" />
                     </StackPanel>
                 </Border>
 
@@ -279,72 +298,13 @@
 
         <!-- Admin area -->
         <Grid x:Name="AdminArea" Grid.Row="3" Margin="18,16,18,10" Visibility="Collapsed">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="1.95*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
-            <Grid Grid.Column="0">
-                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="14" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                <Border Style="{StaticResource Card}" Padding="18">
-                    <Grid>
-                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="SPACE RACE 2026" FontSize="25" FontWeight="Bold" />
-                            <TextBlock Text="KSR-000042-20260819-0015" Foreground="{StaticResource OrangeBrush}" FontSize="18" Margin="0,4,0,0" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="●" Foreground="{StaticResource GreenBrush}" FontSize="18" Margin="0,0,8,0" />
-                            <TextBlock Text="CAMPAIGN ACTIVE" Foreground="{StaticResource GreenBrush}" FontWeight="Bold" />
-                            <Button Content="COPY ID" Style="{StaticResource GhostButton}" Margin="20,0,0,0" />
-                        </StackPanel>
-                    </Grid>
-                </Border>
-                <Border Grid.Row="2" Style="{StaticResource Card}">
-                    <StackPanel>
-                        <TextBlock Text="PARTICIPANTS &amp; NATIONS" Style="{StaticResource SectionTitle}" Margin="0,0,0,18" />
-                        <Border Background="#FF171C20" CornerRadius="4" Padding="14,11">
-                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="1.7*" /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
-                                <TextBlock Text="PLAYER" Style="{StaticResource SmallLabel}" /><TextBlock Grid.Column="1" Text="NATION" Style="{StaticResource SmallLabel}" /><TextBlock Grid.Column="2" Text="ROLE" Style="{StaticResource SmallLabel}" /><TextBlock Grid.Column="3" Text="STATUS" Style="{StaticResource SmallLabel}" />
-                            </Grid>
-                        </Border>
-                        <Grid Margin="14,16"><Grid.ColumnDefinitions><ColumnDefinition Width="1.7*" /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
-                            <TextBlock Text="Fabio (You)" FontSize="16" /><TextBlock Grid.Column="1" Text="USSR" /><TextBlock Grid.Column="2" Text="ADMIN" Foreground="{StaticResource OrangeBrush}" FontWeight="Bold" /><TextBlock Grid.Column="3" Text="●  READY" Foreground="{StaticResource GreenBrush}" />
-                        </Grid>
-                        <Border Height="1" Background="#FF303538" />
-                        <Grid Margin="14,16"><Grid.ColumnDefinitions><ColumnDefinition Width="1.7*" /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
-                            <TextBlock Text="Marco" FontSize="16" /><TextBlock Grid.Column="1" Text="USA" /><TextBlock Grid.Column="2" Text="PLAYER" /><TextBlock Grid.Column="3" Text="●  READY" Foreground="{StaticResource GreenBrush}" />
-                        </Grid>
-                        <Border Height="1" Background="#FF303538" />
-                        <Grid Margin="14,16"><Grid.ColumnDefinitions><ColumnDefinition Width="1.7*" /><ColumnDefinition /><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
-                            <TextBlock Text="Luca" FontSize="16" /><TextBlock Grid.Column="1" Text="JAPAN" /><TextBlock Grid.Column="2" Text="PLAYER" /><TextBlock Grid.Column="3" Text="●  READY" Foreground="{StaticResource GreenBrush}" />
-                        </Grid>
-                    </StackPanel>
-                </Border>
-            </Grid>
-
-            <Grid Grid.Column="2">
-                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="14" /><RowDefinition Height="Auto" /><RowDefinition Height="14" /><RowDefinition Height="*" /></Grid.RowDefinitions>
-                <Border Style="{StaticResource Card}" Padding="18">
-                    <StackPanel>
-                        <TextBlock Text="CAMPAIGN INFORMATION" Style="{StaticResource SectionTitle}" />
-                        <TextBlock Text="Mode                         Sandbox" Margin="0,14,0,5" />
-                        <TextBlock Text="Difficulty                    Normal" Margin="0,5" />
-                        <TextBlock Text="Master Save                Verified" Margin="0,5" />
-                        <TextBlock Text="Participants                3 / 8" Margin="0,5" />
-                    </StackPanel>
-                </Border>
-                <Border Grid.Row="2" Style="{StaticResource Card}" Padding="18">
-                    <StackPanel>
-                        <TextBlock Text="MASTER SAVE" Style="{StaticResource SectionTitle}" />
-                        <TextBlock Text="AVAILABLE · SHA-256 VERIFIED" Foreground="{StaticResource GreenBrush}" FontWeight="Bold" Margin="0,14,0,12" />
-                        <Button Content="DOWNLOAD COPY" Style="{StaticResource PrimaryButton}" />
-                    </StackPanel>
-                </Border>
-                <Border Grid.Row="4" Style="{StaticResource Card}" Padding="18">
-                    <StackPanel VerticalAlignment="Bottom">
-                        <TextBlock Text="DANGER ZONE" Foreground="#FFFF5757" FontSize="18" FontWeight="Bold" />
-                        <TextBlock Text="Closing a campaign is irreversible." Foreground="{StaticResource MutedBrush}" Margin="0,7,0,14" />
-                        <Button Content="CLOSE CAMPAIGN" Style="{StaticResource DangerButton}" />
-                    </StackPanel>
-                </Border>
-            </Grid>
+            <Border Style="{StaticResource Card}">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="NO CAMPAIGN SELECTED" Foreground="{StaticResource OrangeBrush}" FontSize="28" FontWeight="Bold" HorizontalAlignment="Center" />
+                    <TextBlock Text="Select an administered campaign in Player Area to load its participants, nations and controls."
+                               Foreground="{StaticResource MutedBrush}" FontSize="16" Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
         </Grid>
 
         <!-- Persistent footer -->

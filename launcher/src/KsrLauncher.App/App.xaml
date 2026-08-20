@@ -10,6 +10,7 @@
         <SolidColorBrush x:Key="GreenBrush" Color="#FF80D420" />
         <SolidColorBrush x:Key="MutedBrush" Color="#FF9BA0A3" />
         <SolidColorBrush x:Key="BorderBrush" Color="#FF3B3E40" />
+        <SolidColorBrush x:Key="ForegroundBrush" Color="#FFF0EEE9" />
 
         <Style TargetType="Window">
             <Setter Property="FontFamily" Value="Bahnschrift SemiCondensed, Segoe UI" />
