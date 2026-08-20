@@ -287,6 +287,10 @@
                         <TextBlock Text="MASTER SAVE" Style="{StaticResource SectionTitle}" />
                         <TextBlock x:Name="MasterSaveStatusText" Text="Select a campaign to check its Master Save." Foreground="{StaticResource MutedBrush}" Margin="0,7,0,13" />
                         <Button x:Name="DownloadMasterSaveButton" Content="DOWNLOAD VERIFIED SAVE" Style="{StaticResource PrimaryButton}" IsEnabled="False" />
+                        <TextBlock x:Name="CampaignComplianceStatusText" Text="Campaign compliance has not been checked."
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,13,0,9" />
+                        <Button x:Name="CheckInstallationButton" Content="CHECK INSTALLATION" IsEnabled="False"
+                                Click="CheckInstallation_Click" />
                     </StackPanel>
                 </Border>
 
@@ -372,7 +376,7 @@
                 <Button Content="LEADERBOARD" Style="{StaticResource GhostButton}" MinWidth="160" VerticalAlignment="Center" />
                 <TextBlock Grid.Column="1" Text="KERBAL SPACE RACE  ·  FLY TOGETHER, WIN TOGETHER"
                            Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                <Button Grid.Column="2" Content="LAUNCH KSP" Style="{StaticResource PrimaryButton}" MinWidth="260"
+                <Button x:Name="LaunchKspButton" Grid.Column="2" Content="LAUNCH KSP" Style="{StaticResource PrimaryButton}" MinWidth="260"
                         VerticalAlignment="Center" Click="LaunchKsp_Click" />
             </Grid>
         </Border>

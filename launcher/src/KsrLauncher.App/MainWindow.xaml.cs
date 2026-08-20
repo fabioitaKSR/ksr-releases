@@ -15,6 +15,8 @@ public partial class MainWindow : Window
     private string? _referenceSavePath;
     private readonly ObservableCollection<CampaignListItem> _campaigns = [];
     private readonly KsrPlatformClient _platformClient = new();
+    private readonly Dictionary<string, CampaignBaselinePackage> _localBaselines = new(StringComparer.OrdinalIgnoreCase);
+    private CampaignComplianceResult? _lastCompliance;
 
     public MainWindow()
     {
@@ -55,19 +57,24 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(_kspRoot)) picker.InitialDirectory = Path.Combine(_kspRoot, "saves");
         if (picker.ShowDialog(this) != true) return;
 
-        if (!TryResolveCareerSave(picker.FolderName, out var resolvedKspRoot, out var error))
+        KspCareerSave selection;
+        try
+        {
+            selection = KspCareerSaveLocator.Resolve(picker.FolderName);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             _referenceSavePath = null;
             ReferenceSavePathTextBox.Text = "No valid Career save selected";
             ResolvedKspPathText.Text = "Not resolved";
-            CampaignCreationStatusText.Text = error;
+            CampaignCreationStatusText.Text = exception.Message;
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             UpdateCreateRaceState();
             return;
         }
 
-        _referenceSavePath = Path.GetFullPath(picker.FolderName);
-        _kspRoot = resolvedKspRoot;
+        _referenceSavePath = selection.SavePath;
+        _kspRoot = selection.KspRoot;
         ReferenceSavePathTextBox.Text = _referenceSavePath;
         ReferenceSavePathTextBox.Foreground = (System.Windows.Media.Brush)FindResource("ForegroundBrush");
         ResolvedKspPathText.Text = _kspRoot;
@@ -87,48 +94,44 @@ public partial class MainWindow : Window
             !string.IsNullOrWhiteSpace(CampaignNameTextBox.Text);
     }
 
-    private void CreateRace_Click(object sender, RoutedEventArgs e)
+    private async void CreateRace_Click(object sender, RoutedEventArgs e)
     {
-        MessageBox.Show(
-            "The Career save is ready. Campaign upload will be enabled when the server snapshot contract is available.",
-            "Create KSR Race",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
-    }
-
-    private static bool TryResolveCareerSave(string savePath, out string kspRoot, out string error)
-    {
-        kspRoot = string.Empty;
-        error = string.Empty;
-        var fullSavePath = Path.GetFullPath(savePath);
-        var saveDirectory = new DirectoryInfo(fullSavePath);
-        var savesDirectory = saveDirectory.Parent;
-        var candidateRoot = savesDirectory?.Parent;
-        if (savesDirectory is null || candidateRoot is null ||
-            !string.Equals(savesDirectory.Name, "saves", StringComparison.OrdinalIgnoreCase))
+        if (_referenceSavePath is null) return;
+        CreateRaceButton.IsEnabled = false;
+        CampaignNameTextBox.IsEnabled = false;
+        CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+        var progress = new Progress<BaselineProgress>(value =>
+            CampaignCreationStatusText.Text = value.Total > 0
+                ? $"{value.Stage}: {value.Completed}/{value.Total}  {value.CurrentPath}"
+                : value.Stage);
+        try
         {
-            error = "Select a save folder located directly inside a KSP 'saves' directory.";
-            return false;
+            var drafts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "KSRLauncher", "CampaignDrafts");
+            var package = await new CampaignBaselineBuilder().CreateAsync(
+                CampaignNameTextBox.Text, _referenceSavePath, drafts, progress);
+            var draftCode = $"DRAFT-{package.Manifest.CreatedAtUtc:yyyyMMdd-HHmmss}";
+            _localBaselines[draftCode] = package;
+            var item = new CampaignListItem(draftCode, package.Manifest.CampaignName, "ADMIN", "NOT SELECTED", "DRAFT", true);
+            _campaigns.Add(item);
+            RefreshCampaignState();
+            CampaignsList.SelectedItem = item;
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+            CampaignCreationStatusText.Text = $"Baseline ready: {package.Manifest.GameDataFiles.Count} GameData files and {package.Manifest.Settings.Count} settings captured.";
+            MessageBox.Show(
+                $"The local campaign baseline is ready.\n\nMaster Save: {package.MasterSavePath}\nBaseline: {package.ManifestPath}\n\nIt will be uploaded when the server snapshot endpoint is connected.",
+                "KSR Race Baseline", MessageBoxButton.OK, MessageBoxImage.Information);
         }
-        if (!File.Exists(Path.Combine(fullSavePath, "persistent.sfs")))
+        catch (Exception exception)
         {
-            error = "The selected folder does not contain persistent.sfs.";
-            return false;
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            CampaignCreationStatusText.Text = exception.Message;
         }
-        if (!File.Exists(Path.Combine(candidateRoot.FullName, "KSP_x64.exe")) ||
-            !Directory.Exists(Path.Combine(candidateRoot.FullName, "GameData")))
+        finally
         {
-            error = "The selected save does not belong to a valid KSP installation.";
-            return false;
+            CampaignNameTextBox.IsEnabled = true;
+            UpdateCreateRaceState();
         }
-        if (!File.ReadLines(Path.Combine(fullSavePath, "persistent.sfs")).Take(250)
-            .Any(line => string.Equals(line.Trim(), "mode = CAREER", StringComparison.OrdinalIgnoreCase)))
-        {
-            error = "The selected save is not a Career game.";
-            return false;
-        }
-        kspRoot = candidateRoot.FullName;
-        return true;
     }
 
     private void CampaignsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -152,6 +155,14 @@ public partial class MainWindow : Window
             : campaign.MasterSaveAvailable
                 ? "The selected campaign Master Save is available and verified."
                 : "No Master Save is currently available for the selected campaign.";
+        var hasBaseline = campaign is not null && _localBaselines.ContainsKey(campaign.CampaignCode);
+        CheckInstallationButton.IsEnabled = hasBaseline;
+        CampaignComplianceStatusText.Text = hasBaseline
+            ? "Baseline available. Run the installation check before launching the campaign."
+            : "The campaign baseline has not been downloaded yet.";
+        CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
+        _lastCompliance = null;
+        LaunchKspButton.IsEnabled = !hasBaseline;
     }
 
     internal void ReplaceCampaigns(IEnumerable<CampaignListItem> campaigns)
@@ -210,9 +221,90 @@ public partial class MainWindow : Window
 
     private void LaunchKsp_Click(object sender, RoutedEventArgs e)
     {
+        if (CampaignsList.SelectedItem is CampaignListItem campaign &&
+            _localBaselines.ContainsKey(campaign.CampaignCode) && _lastCompliance?.ReadyToLaunch != true)
+        {
+            MessageBox.Show("Check this campaign installation before launching KSP.",
+                "KSR Campaign", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         if (!EnsureKspRoot()) return;
         var executable = Path.Combine(_kspRoot!, "KSP_x64.exe");
         Process.Start(new ProcessStartInfo(executable) { WorkingDirectory = _kspRoot!, UseShellExecute = true });
+    }
+
+    private async void CheckInstallation_Click(object sender, RoutedEventArgs e)
+    {
+        if (CampaignsList.SelectedItem is not CampaignListItem campaign ||
+            !_localBaselines.TryGetValue(campaign.CampaignCode, out var package)) return;
+        if (!EnsureKspRoot()) return;
+        var picker = new OpenFolderDialog
+        {
+            Title = "Select the installed campaign save to verify",
+            InitialDirectory = Path.Combine(_kspRoot!, "saves"),
+            Multiselect = false
+        };
+        if (picker.ShowDialog(this) != true) return;
+
+        CheckInstallationButton.IsEnabled = false;
+        CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+        var progress = new Progress<BaselineProgress>(value =>
+            CampaignComplianceStatusText.Text = $"{value.Stage}: {value.Completed}/{value.Total}");
+        try
+        {
+            _lastCompliance = await new CampaignBaselineComparer().CompareAsync(
+                package.Manifest, picker.FolderName, progress);
+            _kspRoot = KspCareerSaveLocator.Resolve(picker.FolderName).KspRoot;
+            if (_lastCompliance.ReadyToLaunch)
+            {
+                CampaignComplianceStatusText.Text = "READY TO LAUNCH — save settings and GameData match the campaign baseline.";
+                CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+                LaunchKspButton.IsEnabled = true;
+            }
+            else
+            {
+                var modDifferences = _lastCompliance.Differences.Count(item => item.Area == BaselineDifferenceArea.GameData);
+                var settingDifferences = _lastCompliance.Differences.Count - modDifferences;
+                CampaignComplianceStatusText.Text = $"CAMPAIGN NOT READY — {modDifferences} mod/file differences, {settingDifferences} setting differences.";
+                CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+                LaunchKspButton.IsEnabled = false;
+                ShowComplianceDifferences(_lastCompliance);
+                if (modDifferences == 0 && settingDifferences > 0 && MessageBox.Show(
+                        "Campaign difficulty or mod settings differ. Align them with the official baseline?\n\nA backup will be created first. Your progress, vessels and contracts will not be replaced.",
+                        "Align Campaign Settings", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
+                {
+                    var aligned = await new CampaignSettingsAligner().AlignAsync(package, picker.FolderName, _lastCompliance);
+                    _lastCompliance = await new CampaignBaselineComparer().CompareAsync(
+                        package.Manifest, picker.FolderName, progress);
+                    if (_lastCompliance.ReadyToLaunch)
+                    {
+                        CampaignComplianceStatusText.Text = $"READY TO LAUNCH — {aligned.FilesUpdated} setting file(s) aligned. Backup: {aligned.BackupDirectory}";
+                        CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+                        LaunchKspButton.IsEnabled = true;
+                    }
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            CampaignComplianceStatusText.Text = exception.Message;
+            CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            LaunchKspButton.IsEnabled = false;
+        }
+        finally
+        {
+            CheckInstallationButton.IsEnabled = true;
+        }
+    }
+
+    private static void ShowComplianceDifferences(CampaignComplianceResult result)
+    {
+        var lines = result.Differences.Take(18).Select(item => item.Kind == BaselineDifferenceKind.ValueMismatch
+            ? $"{item.DisplayName}: player '{item.Actual}' / campaign '{item.Expected}'"
+            : $"{item.Kind.ToString().ToUpperInvariant()}: {item.Path}");
+        var more = result.Differences.Count > 18 ? $"\n…and {result.Differences.Count - 18} more differences." : string.Empty;
+        MessageBox.Show(string.Join("\n", lines) + more, "Campaign Installation Differences",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;

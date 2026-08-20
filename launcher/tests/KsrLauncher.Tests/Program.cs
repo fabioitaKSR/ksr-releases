@@ -25,7 +25,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
     ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract),
-    ("Platform authentication preserves server error code", PlatformAuthenticationPreservesErrorCode)
+    ("Platform authentication preserves server error code", PlatformAuthenticationPreservesErrorCode),
+    ("Campaign baseline packages Career save safely", CampaignBaselinePackagesCareerSaveSafely),
+    ("Campaign baseline detects mod and setting differences", CampaignBaselineDetectsDifferences),
+    ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -431,6 +434,75 @@ static async Task PlatformAuthenticationPreservesErrorCode()
         Equal("email_not_verified", exception.Code!);
         True(exception.StatusCode == 401, "The authentication HTTP status was not preserved.");
     }
+}
+
+static async Task CampaignBaselinePackagesCareerSaveSafely()
+{
+    using var scope = new TempScope();
+    var (ksp, save) = CreateCampaignKsp(scope.Root);
+    var package = await new CampaignBaselineBuilder().CreateAsync("Lunar Race", save, Path.Combine(scope.Root, "drafts"));
+
+    True(File.Exists(package.ManifestPath), "The baseline manifest was not created.");
+    True(File.Exists(package.MasterSavePath), "The Master Save was not created.");
+    True(package.Manifest.GameDataFiles.Any(item => item.Path == "TestMod/Plugins/TestMod.dll"), "GameData was not captured.");
+    True(package.Manifest.Settings.Any(item => item.Source == "KCT_Settings.cfg" && item.Key.EndsWith("OverallMultiplier")), "KCT settings were not parsed.");
+    using var archive = ZipFile.OpenRead(package.MasterSavePath);
+    True(archive.GetEntry("persistent.sfs") is not null, "persistent.sfs is missing from the Master Save.");
+    True(archive.GetEntry("KCT_Settings.cfg") is not null, "KCT_Settings.cfg is missing from the Master Save.");
+    True(archive.GetEntry("KCT_Backup.sfs") is null, "KCT backup must not be included in the Master Save.");
+}
+
+static async Task CampaignBaselineDetectsDifferences()
+{
+    using var scope = new TempScope();
+    var (ksp, save) = CreateCampaignKsp(scope.Root);
+    var package = await new CampaignBaselineBuilder().CreateAsync("Lunar Race", save, Path.Combine(scope.Root, "drafts"));
+    var comparer = new CampaignBaselineComparer();
+    var matching = await comparer.CompareAsync(package.Manifest, save);
+    True(matching.ReadyToLaunch, "An unchanged installation should match its baseline.");
+
+    await File.WriteAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "Plugins", "TestMod.dll"), "modified");
+    await File.WriteAllTextAsync(Path.Combine(save, "KCT_Settings.cfg"), "KCT_Preset\n{\n KCT_Preset_Time\n {\n  OverallMultiplier = 20\n }\n}");
+    var changed = await comparer.CompareAsync(package.Manifest, save);
+    False(changed.ReadyToLaunch, "A modified installation must not be launch-ready.");
+    True(changed.Differences.Any(item => item.Area == BaselineDifferenceArea.GameData), "The modified mod file was not detected.");
+    True(changed.Differences.Any(item => item.Area == BaselineDifferenceArea.ModConfiguration), "The modified KCT setting was not detected.");
+}
+
+static async Task CampaignSettingsAlignmentPreservesProgress()
+{
+    using var scope = new TempScope();
+    var (ksp, save) = CreateCampaignKsp(scope.Root);
+    var package = await new CampaignBaselineBuilder().CreateAsync("Lunar Race", save, Path.Combine(scope.Root, "drafts"));
+    var persistent = Path.Combine(save, "persistent.sfs");
+    await File.WriteAllTextAsync(persistent, "GAME\n{\n mode = CAREER\n progressMarker = KEEP_ME\n PARAMETERS\n {\n  DIFFICULTY\n  {\n   ReentryHeatScale = 0.5\n  }\n }\n}");
+    await File.WriteAllTextAsync(Path.Combine(save, "KCT_Settings.cfg"), "KCT_Preset\n{\n KCT_Preset_Time\n {\n  OverallMultiplier = 20\n }\n}");
+    var comparer = new CampaignBaselineComparer();
+    var mismatch = await comparer.CompareAsync(package.Manifest, save);
+    True(mismatch.ModsMatch && !mismatch.SettingsMatch, "The fixture should contain settings-only differences.");
+
+    var aligned = await new CampaignSettingsAligner().AlignAsync(package, save, mismatch);
+    True(Directory.Exists(aligned.BackupDirectory), "The settings backup was not created.");
+    True(File.Exists(Path.Combine(aligned.BackupDirectory, "persistent.sfs")), "persistent.sfs was not backed up.");
+    var text = await File.ReadAllTextAsync(persistent);
+    True(text.Contains("progressMarker = KEEP_ME", StringComparison.Ordinal), "Save progress outside PARAMETERS was replaced.");
+    True(text.Contains("ReentryHeatScale = 1.2", StringComparison.Ordinal), "Campaign difficulty was not aligned.");
+    var result = await comparer.CompareAsync(package.Manifest, save);
+    True(result.ReadyToLaunch, "The aligned save should match the campaign baseline.");
+}
+
+static (string Ksp, string Save) CreateCampaignKsp(string root)
+{
+    var ksp = CreateKsp(root);
+    var plugin = Path.Combine(ksp, "GameData", "TestMod", "Plugins");
+    Directory.CreateDirectory(plugin);
+    File.WriteAllText(Path.Combine(plugin, "TestMod.dll"), "official");
+    var save = Path.Combine(ksp, "saves", "Admin Career");
+    Directory.CreateDirectory(save);
+    File.WriteAllText(Path.Combine(save, "persistent.sfs"), "GAME\n{\n mode = CAREER\n PARAMETERS\n {\n  DIFFICULTY\n  {\n   ReentryHeatScale = 1.2\n  }\n }\n}");
+    File.WriteAllText(Path.Combine(save, "KCT_Settings.cfg"), "KCT_Preset\n{\n KCT_Preset_Time\n {\n  OverallMultiplier = 38.4\n }\n}");
+    File.WriteAllText(Path.Combine(save, "KCT_Backup.sfs"), "temporary");
+    return (ksp, save);
 }
 
 static ReleaseManifest CreateManifest(string hash) => new()
