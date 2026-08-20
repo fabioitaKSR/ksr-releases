@@ -12,7 +12,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Aggiornamento, preserve e rollback", UpdatePreserveRollback),
     ("SHA errato non modifica installazione", WrongHashDoesNotModify),
     ("Errore nel gruppo ripristina componenti precedenti", GroupFailureRollsBack),
-    ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease)
+    ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease),
+    ("Update ordinario ignora componente assente", ExistingOnlySkipsMissing),
+    ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
+    ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -118,7 +121,12 @@ static async Task GroupFailureRollsBack()
         RequiredFiles = ["value.txt"]
     });
 
-    await ThrowsAsync<IOException>(() => new UpdateEngine().RunAsync(manifest, new LauncherLocations(ksp, launcherData), assets, true));
+    await ThrowsAsync<IOException>(() => new UpdateEngine().RunAsync(
+        manifest,
+        new LauncherLocations(ksp, launcherData),
+        assets,
+        true,
+        UpdatePolicy.InstallOrRepair));
     Equal("old", await File.ReadAllTextAsync(Path.Combine(firstTarget, "old.txt")));
     False(File.Exists(Path.Combine(firstTarget, "new.txt")), "Il primo componente non e stato ripristinato.");
 }
@@ -141,6 +149,70 @@ static async Task GitHubSelectsStableRelease()
     Equal("v1.0.0", release.Tag);
     Equal("1.0.0", release.Manifest.Version);
     Equal("https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0", release.AssetsBaseUrl);
+}
+
+static async Task ExistingOnlySkipsMissing()
+{
+    using var scope = new TempScope();
+    var ksp = CreateKsp(scope.Root);
+    var launcherData = Path.Combine(scope.Root, "LauncherData");
+    var manifest = CreateManifest(new string('a', 64));
+
+    var result = await new UpdateEngine().RunAsync(
+        manifest,
+        new LauncherLocations(ksp, launcherData),
+        Path.Combine(scope.Root, "assets-that-do-not-exist"),
+        true);
+
+    False(result.Applied, "Un componente assente non deve avviare l'aggiornamento ordinario.");
+    False(result.Plan.Components[0].NeedsUpdate, "Il componente assente doveva essere ignorato.");
+    False(result.Plan.Components[0].IsPresent, "Il componente e stato rilevato erroneamente come presente.");
+    False(Directory.Exists(Path.Combine(ksp, "GameData", "TestMod")), "L'update ordinario ha installato una mod assente.");
+    False(Directory.Exists(launcherData), "Un update senza componenti non deve creare dati del launcher.");
+}
+
+static async Task ExplicitInstallAddsMissing()
+{
+    using var scope = new TempScope();
+    var ksp = CreateKsp(scope.Root);
+    var launcherData = Path.Combine(scope.Root, "LauncherData");
+    var assets = Path.Combine(scope.Root, "assets");
+    Directory.CreateDirectory(assets);
+    var zip = Path.Combine(assets, "component.zip");
+    CreateZip(zip, new Dictionary<string, string> { ["GameData/TestMod/new.txt"] = "installed" });
+    var manifest = CreateManifest(await PackageService.ComputeSha256Async(zip));
+
+    var result = await new UpdateEngine().RunAsync(
+        manifest,
+        new LauncherLocations(ksp, launcherData),
+        assets,
+        true,
+        UpdatePolicy.InstallOrRepair);
+
+    True(result.Applied, "L'installazione esplicita non e stata applicata.");
+    Equal("installed", await File.ReadAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "new.txt")));
+}
+
+static async Task ThirdPartyModIsUntouched()
+{
+    using var scope = new TempScope();
+    var ksp = CreateKsp(scope.Root);
+    var launcherData = Path.Combine(scope.Root, "LauncherData");
+    var assets = Path.Combine(scope.Root, "assets");
+    Directory.CreateDirectory(assets);
+    var ownedTarget = Path.Combine(ksp, "GameData", "TestMod");
+    var thirdPartyTarget = Path.Combine(ksp, "GameData", "ThirdPartyMod");
+    Directory.CreateDirectory(ownedTarget);
+    Directory.CreateDirectory(thirdPartyTarget);
+    await File.WriteAllTextAsync(Path.Combine(ownedTarget, "old.txt"), "old");
+    await File.WriteAllTextAsync(Path.Combine(thirdPartyTarget, "important.cfg"), "third-party-content");
+    var zip = Path.Combine(assets, "component.zip");
+    CreateZip(zip, new Dictionary<string, string> { ["GameData/TestMod/new.txt"] = "new" });
+    var manifest = CreateManifest(await PackageService.ComputeSha256Async(zip));
+
+    await new UpdateEngine().RunAsync(manifest, new LauncherLocations(ksp, launcherData), assets, true);
+
+    Equal("third-party-content", await File.ReadAllTextAsync(Path.Combine(thirdPartyTarget, "important.cfg")));
 }
 
 static ReleaseManifest CreateManifest(string hash) => new()

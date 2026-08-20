@@ -13,6 +13,9 @@ Prototipo verificabile del motore di aggiornamento per Kerbal Space Race. La CLI
 - eccezioni `managedFilesInsidePreservedPaths`;
 - backup persistente, rollback e stato installato atomico.
 - individuazione automatica della release stabile o beta tramite GitHub Releases.
+- aggiornamento ordinario limitato ai componenti KSR gia presenti;
+- installazione/riparazione dei componenti assenti soltanto con consenso esplicito;
+- nessuna scansione, sostituzione o rimozione delle mod di terzi.
 
 ## Compilazione e test
 
@@ -42,5 +45,7 @@ $env:DOTNET_CLI_HOME = "$PWD/.tools/dotnet-home"
   --launcher-data "C:\KSR" `
   --apply
 ```
+
+L'aggiornamento precedente ignora ogni componente KSR non installato. Per una prima installazione o una riparazione esplicitamente richiesta si aggiunge `--install-missing`. Questa opzione non estende mai il perimetro oltre i componenti elencati nel manifest ufficiale KSR.
 
 Il repository deve pubblicare `ksr-release.json` insieme agli ZIP nella stessa GitHub Release. Finche non esiste una release pubblicata, la modalita GitHub segnala correttamente che non sono disponibili aggiornamenti.

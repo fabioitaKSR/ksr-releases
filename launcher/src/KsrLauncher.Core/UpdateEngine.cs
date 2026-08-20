@@ -11,16 +11,17 @@ public sealed class UpdateEngine(PackageService? packageService = null)
         LauncherLocations locations,
         string assetsBase,
         bool apply,
+        UpdatePolicy policy = UpdatePolicy.ExistingOnly,
         CancellationToken cancellationToken = default)
     {
         if (manifest.Components.Any(component => !string.Equals(component.TargetKind, "launcherData", StringComparison.OrdinalIgnoreCase)))
             UpdatePlanner.ValidateKspRoot(locations.KspRoot);
-        Directory.CreateDirectory(locations.LauncherDataRoot);
 
         var state = await StateStore.LoadAsync(locations.LauncherDataRoot, cancellationToken);
-        var plan = UpdatePlanner.Create(manifest, state, locations);
+        var plan = UpdatePlanner.Create(manifest, state, locations, policy);
         if (!apply || !plan.HasUpdates) return new UpdateResult(plan, false, null);
         if (string.IsNullOrWhiteSpace(assetsBase)) throw new ArgumentException("assetsBase e obbligatorio per applicare un aggiornamento.");
+        Directory.CreateDirectory(locations.LauncherDataRoot);
 
         var launcherRoot = Path.Combine(locations.LauncherDataRoot, ".ksr-launcher");
         var transactionId = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8];

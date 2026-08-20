@@ -2,7 +2,11 @@ namespace KsrLauncher.Core;
 
 public static class UpdatePlanner
 {
-    public static UpdatePlan Create(ReleaseManifest manifest, InstalledState state, LauncherLocations locations)
+    public static UpdatePlan Create(
+        ReleaseManifest manifest,
+        InstalledState state,
+        LauncherLocations locations,
+        UpdatePolicy policy = UpdatePolicy.ExistingOnly)
     {
         var components = manifest.Components.Select(component =>
         {
@@ -10,11 +14,19 @@ public static class UpdatePlanner
             var root = GetTargetRoot(component, locations);
             var target = SafePaths.Under(root, component.Target);
             var exists = Directory.Exists(target) || File.Exists(target);
-            var needsUpdate = installed is null || !exists ||
-                !string.Equals(installed.Version, manifest.Version, StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(installed.Sha256, component.Sha256, StringComparison.OrdinalIgnoreCase);
-            var reason = installed is null ? "non installato" : !exists ? "cartella mancante" : needsUpdate ? "versione o pacchetto differente" : "aggiornato";
-            return new ComponentPlan(component, installed?.Version, needsUpdate, reason, target);
+            var differs = installed is null ||
+                          !string.Equals(installed.Version, manifest.Version, StringComparison.OrdinalIgnoreCase) ||
+                          !string.Equals(installed.Sha256, component.Sha256, StringComparison.OrdinalIgnoreCase);
+            var needsUpdate = exists ? differs : policy == UpdatePolicy.InstallOrRepair;
+            var reason = (exists, needsUpdate, installed, policy) switch
+            {
+                (false, false, _, UpdatePolicy.ExistingOnly) => "non installato: ignorato",
+                (false, true, _, UpdatePolicy.InstallOrRepair) => "mancante: installazione/riparazione richiesta",
+                (true, true, null, _) => "presente ma versione non registrata",
+                (true, true, _, _) => "versione o pacchetto differente",
+                _ => "aggiornato"
+            };
+            return new ComponentPlan(component, installed?.Version, exists, needsUpdate, reason, target);
         }).ToList();
         return new UpdatePlan(manifest, components);
     }

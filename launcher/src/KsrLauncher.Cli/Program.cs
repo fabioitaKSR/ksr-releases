@@ -21,8 +21,9 @@ internal static class LauncherCli
                 case "update":
                     var source = await ResolveSourceAsync(options);
                     var apply = command == "update" && options.ContainsKey("apply");
+                    var policy = options.ContainsKey("install-missing") ? UpdatePolicy.InstallOrRepair : UpdatePolicy.ExistingOnly;
                     var assetsBase = options.GetValueOrDefault("assets-base", source.AssetsBase);
-                    var result = await new UpdateEngine().RunAsync(source.Manifest, Locations(options), assetsBase, apply);
+                    var result = await new UpdateEngine().RunAsync(source.Manifest, Locations(options), assetsBase, apply, policy);
                     PrintPlan(result.Plan);
                     if (apply && result.Applied) Console.WriteLine($"Aggiornamento completato. Backup: {result.BackupDirectory}");
                     else if (apply) Console.WriteLine("Nessun aggiornamento necessario.");
@@ -58,7 +59,10 @@ internal static class LauncherCli
     {
         Console.WriteLine($"Release {plan.Manifest.Version} ({plan.Manifest.Channel})");
         foreach (var item in plan.Components)
-            Console.WriteLine($"[{(item.NeedsUpdate ? "UPDATE" : "OK")}] {item.Component.Id,-24} {item.Reason} -> {item.TargetPath}");
+        {
+            var status = item.NeedsUpdate ? "UPDATE" : item.IsPresent ? "OK" : "SKIP";
+            Console.WriteLine($"[{status}] {item.Component.Id,-24} {item.Reason} -> {item.TargetPath}");
+        }
     }
 
     private static Dictionary<string, string> ParseOptions(string[] args)
@@ -68,7 +72,7 @@ internal static class LauncherCli
         {
             if (!args[index].StartsWith("--", StringComparison.Ordinal)) throw new ArgumentException($"Opzione non valida: {args[index]}");
             var key = args[index][2..];
-            if (key is "apply") result[key] = "true";
+            if (key is "apply" or "install-missing") result[key] = "true";
             else { if (++index >= args.Length) throw new ArgumentException($"Valore mancante per --{key}"); result[key] = args[index]; }
         }
         return result;
@@ -82,9 +86,11 @@ internal static class LauncherCli
 
         validate-manifest --manifest <ksr-release.json>
         plan   (--repo <owner/repo> [--channel stable|beta] | --manifest <file>) --ksp <cartella KSP> --launcher-data <cartella>
-        update (--repo <owner/repo> [--channel stable|beta] | --manifest <file> --assets-base <URL o cartella>) --ksp <cartella KSP> --launcher-data <cartella> [--apply]
+        update (--repo <owner/repo> [--channel stable|beta] | --manifest <file> --assets-base <URL o cartella>) --ksp <cartella KSP> --launcher-data <cartella> [--apply] [--install-missing]
         rollback --backup <cartella backup> --ksp <cartella KSP> --launcher-data <cartella> [--apply]
 
+        L'update ordinario ignora i componenti KSR non installati.
+        --install-missing abilita esplicitamente installazione/riparazione dei componenti assenti.
         Senza --apply, update e rollback sono sempre simulazioni.
         """);
 

@@ -53,9 +53,16 @@ public sealed class InstalledComponent
 
 public sealed record LauncherLocations(string KspRoot, string LauncherDataRoot);
 
+public enum UpdatePolicy
+{
+    ExistingOnly,
+    InstallOrRepair
+}
+
 public sealed record ComponentPlan(
     ComponentManifest Component,
     string? InstalledVersion,
+    bool IsPresent,
     bool NeedsUpdate,
     string Reason,
     string TargetPath);
