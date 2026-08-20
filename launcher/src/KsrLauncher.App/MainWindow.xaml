@@ -114,7 +114,8 @@
                         <Grid>
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <TextBlock Text="PASSWORD" Style="{StaticResource SmallLabel}" />
-                            <CheckBox x:Name="RememberMeCheckBox" Grid.Column="1" Content="REMEMBER ME" FontSize="10" />
+                            <CheckBox x:Name="RememberMeCheckBox" Grid.Column="1" Content="REMEMBER ME" FontSize="10" IsEnabled="False"
+                                      ToolTip="Secure persistent sessions will be enabled before production." />
                         </Grid>
                         <PasswordBox x:Name="LoginPasswordBox" MinWidth="115" Margin="0,5,0,0" />
                     </StackPanel>
@@ -126,13 +127,13 @@
                                        FontWeight="Bold" Margin="7,1,0,0" />
                         </StackPanel>
                     </StackPanel>
-                    <Button Grid.Column="6" Content="SIGN IN" Style="{StaticResource PrimaryButton}" MinWidth="105"
+                    <Button x:Name="SignInButton" Grid.Column="6" Content="SIGN IN" Style="{StaticResource PrimaryButton}" MinWidth="105"
                             VerticalAlignment="Center" Click="SignIn_Click" />
                 </Grid>
 
                 <Border Grid.Column="3" Background="#FF303538" Margin="0,16" />
                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="22,0,0,0">
-                    <Button Content="SETTINGS" Style="{StaticResource GhostButton}" Margin="0,0,10,0" />
+                    <Button Content="SETTINGS" Style="{StaticResource GhostButton}" Margin="0,0,10,0" Click="Settings_Click" />
                     <Button x:Name="CreateAccountButton" Content="CREATE ACCOUNT" Style="{StaticResource GhostButton}"
                             Visibility="Collapsed" Click="CreateAccount_Click" />
                     <Button x:Name="SignOutButton" Content="SIGN OUT" Style="{StaticResource GhostButton}" Click="SignOut_Click" />

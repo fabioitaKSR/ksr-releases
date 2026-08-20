@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Collections.ObjectModel;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
@@ -12,11 +13,13 @@ public partial class MainWindow : Window
 {
     private string? _kspRoot;
     private readonly ObservableCollection<CampaignListItem> _campaigns = [];
+    private readonly KsrPlatformClient _platformClient = new();
 
     public MainWindow()
     {
         InitializeComponent();
         CampaignsList.ItemsSource = _campaigns;
+        LauncherSession.ServerUrl = LauncherSettingsStore.LoadServerUrl() ?? LauncherSession.ServerUrl;
         _kspRoot = Environment.GetEnvironmentVariable("KSR_KSP_ROOT");
         UpdateSessionVisuals();
         RefreshCampaignState();
@@ -129,7 +132,7 @@ public partial class MainWindow : Window
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void SignIn_Click(object sender, RoutedEventArgs e)
+    private async void SignIn_Click(object sender, RoutedEventArgs e)
     {
         var username = LoginUsernameTextBox.Text.Trim();
         if (string.IsNullOrWhiteSpace(username) || LoginPasswordBox.Password.Length == 0)
@@ -144,14 +147,64 @@ public partial class MainWindow : Window
                 "KSR Account", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        MessageBox.Show(
-            "The server URL is configured, but the authentication endpoint has not been connected to this build yet.",
-            "KSR Account", MessageBoxButton.OK, MessageBoxImage.Information);
+
+        SetLoginBusy(true);
+        try
+        {
+            var session = await _platformClient.LoginAsync(
+                LauncherSession.ServerUrl,
+                username,
+                LoginPasswordBox.Password);
+            LauncherSession.Username = session.User.Username;
+            LauncherSession.AccessToken = session.AccessToken;
+            LauncherSession.RefreshToken = session.RefreshToken;
+            LauncherSession.AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(session.ExpiresIn);
+            LoginPasswordBox.Clear();
+
+            var campaigns = await _platformClient.GetCampaignsAsync(LauncherSession.ServerUrl, session.AccessToken);
+            ReplaceCampaigns(campaigns.Select(campaign => new CampaignListItem(
+                campaign.CampaignCode,
+                campaign.Name,
+                campaign.Role.ToUpperInvariant(),
+                campaign.NationId ?? "NOT SELECTED",
+                campaign.Status.ToUpperInvariant(),
+                !string.IsNullOrWhiteSpace(campaign.MasterSaveSha256))));
+            UpdateSessionVisuals();
+        }
+        catch (KsrApiException exception)
+        {
+            MessageBox.Show(exception.Message, "KSR Sign In", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (HttpRequestException)
+        {
+            MessageBox.Show(
+                "The KSR server could not be reached. Check the server URL and network connection.",
+                "KSR Sign In", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(exception.Message, "KSR Sign In", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            SetLoginBusy(false);
+        }
+    }
+
+    private void SetLoginBusy(bool busy)
+    {
+        LoginUsernameTextBox.IsEnabled = !busy;
+        LoginPasswordBox.IsEnabled = !busy;
+        RememberMeCheckBox.IsEnabled = false;
+        SignInButton.IsEnabled = !busy;
+        SignInButton.Content = busy ? "SIGNING IN…" : "SIGN IN";
     }
 
     private void SignOut_Click(object sender, RoutedEventArgs e)
     {
         LauncherSession.AccessToken = null;
+        LauncherSession.RefreshToken = null;
+        LauncherSession.AccessTokenExpiresAtUtc = null;
         _campaigns.Clear();
         RefreshCampaignState();
         LoginPasswordBox.Clear();
@@ -162,6 +215,14 @@ public partial class MainWindow : Window
         MessageBox.Show(
             "Account creation will become available when the KSR server API is connected.",
             "KSR Account", MessageBoxButton.OK, MessageBoxImage.Information);
+
+    private void Settings_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ServerSettingsWindow(LauncherSession.ServerUrl) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        LauncherSession.ServerUrl = dialog.ServerUrl;
+        UpdateSessionVisuals();
+    }
 
     private void UpdateSessionVisuals()
     {
@@ -200,8 +261,10 @@ public partial class MainWindow : Window
 internal static class LauncherSession
 {
     public static string Username { get; set; } = "PLAYER";
-    public static string? ServerUrl { get; set; }
+    public static string? ServerUrl { get; set; } = Environment.GetEnvironmentVariable("KSR_SERVER_URL");
     public static string? AccessToken { get; set; }
+    public static string? RefreshToken { get; set; }
+    public static DateTimeOffset? AccessTokenExpiresAtUtc { get; set; }
     public static string? CampaignCode { get; set; }
     public static string? CampaignName { get; set; }
     public static bool IsAuthenticated => !string.IsNullOrWhiteSpace(AccessToken);

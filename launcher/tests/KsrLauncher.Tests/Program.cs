@@ -19,7 +19,9 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Support LOG package is safe and complete", SupportLogPackageIsSafe),
     ("Support SAVE package is safe and complete", SupportSavePackageIsSafe),
     ("Support report requires a useful description", SupportDescriptionIsRequired),
-    ("Support upload uses authenticated HTTPS endpoint", SupportUploadIsAuthenticated)
+    ("Support upload uses authenticated HTTPS endpoint", SupportUploadIsAuthenticated),
+    ("Platform login parses V1 session", PlatformLoginParsesSession),
+    ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -305,6 +307,47 @@ static async Task SupportUploadIsAuthenticated()
     Equal("KSR-RPT-000001", result.ReportId);
     await ThrowsAsync<ArgumentException>(() =>
         new SupportReportUploader(http).UploadAsync("http://ksr.example", "secret-token", package));
+}
+
+static async Task PlatformLoginParsesSession()
+{
+    var requestChecked = false;
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://ksr.example/api/v1/auth/login", request.RequestUri!.ToString());
+        Equal("POST", request.Method.Method);
+        var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        using var document = JsonDocument.Parse(body);
+        Equal("Fabio", document.RootElement.GetProperty("username").GetString()!);
+        Equal("secret", document.RootElement.GetProperty("password").GetString()!);
+        requestChecked = true;
+        return "{\"accessToken\":\"access-1\",\"refreshToken\":\"refresh-1\",\"expiresIn\":1800,\"user\":{\"id\":7,\"username\":\"Fabio\"}}";
+    }));
+
+    var session = await new KsrPlatformClient(http).LoginAsync("https://ksr.example", "Fabio", "secret");
+    True(requestChecked, "The login endpoint was not called.");
+    Equal("access-1", session.AccessToken);
+    Equal("refresh-1", session.RefreshToken);
+    Equal("Fabio", session.User.Username);
+    True(session.User.Id == 7, "The user ID was not parsed.");
+}
+
+static async Task PlatformCampaignsUseBearerSession()
+{
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://ksr.example/api/v1/campaigns", request.RequestUri!.ToString());
+        Equal("Bearer", request.Headers.Authorization!.Scheme);
+        Equal("access-1", request.Headers.Authorization.Parameter!);
+        return "{\"ok\":true,\"campaigns\":[{\"campaignCode\":\"KSR-20260820-ABC\",\"name\":\"Lunar Race\",\"status\":\"active\",\"role\":\"admin\",\"nationId\":null,\"masterSaveSha256\":\"abc123\",\"masterSaveSize\":12345}]}";
+    }));
+
+    var campaigns = await new KsrPlatformClient(http).GetCampaignsAsync("https://ksr.example", "access-1");
+    True(campaigns.Count == 1, "The campaign list was not parsed.");
+    Equal("KSR-20260820-ABC", campaigns[0].CampaignCode);
+    Equal("Lunar Race", campaigns[0].Name);
+    Equal("admin", campaigns[0].Role);
+    True(campaigns[0].MasterSaveSize == 12345, "Master Save metadata was not parsed.");
 }
 
 static ReleaseManifest CreateManifest(string hash) => new()
