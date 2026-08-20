@@ -25,6 +25,8 @@
 
         <Image Grid.RowSpan="5" Source="Assets/ksr-space-background-v1.png" Stretch="UniformToFill"
                Opacity="0.24" IsHitTestVisible="False" />
+        <Image Grid.Row="3" Source="Assets/ksr-astronaut-v1.png" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Height="640" Margin="0,0,35,-18" Opacity="0.38" IsHitTestVisible="False" />
 
         <Border Grid.Row="0" Background="#FF101417" BorderBrush="#FF303538" BorderThickness="0,0,0,1">
             <Grid Margin="12,0,0,0">

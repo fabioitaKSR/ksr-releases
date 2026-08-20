@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <Resource Include="Assets\ksr-space-background-v1.png" />
+    <Resource Include="Assets\ksr-astronaut-v1.png" />
   </ItemGroup>
 
   <PropertyGroup>
