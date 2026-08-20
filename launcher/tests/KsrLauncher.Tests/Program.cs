@@ -1,4 +1,7 @@
 using System.IO.Compression;
+using System.Net;
+using System.Text;
+using System.Text.Json;
 using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
@@ -8,7 +11,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("ZIP blocca path traversal", ZipRejectsTraversal),
     ("Aggiornamento, preserve e rollback", UpdatePreserveRollback),
     ("SHA errato non modifica installazione", WrongHashDoesNotModify),
-    ("Errore nel gruppo ripristina componenti precedenti", GroupFailureRollsBack)
+    ("Errore nel gruppo ripristina componenti precedenti", GroupFailureRollsBack),
+    ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -119,6 +123,26 @@ static async Task GroupFailureRollsBack()
     False(File.Exists(Path.Combine(firstTarget, "new.txt")), "Il primo componente non e stato ripristinato.");
 }
 
+static async Task GitHubSelectsStableRelease()
+{
+    var manifest = CreateManifest(new string('a', 64));
+    var manifestJson = JsonSerializer.Serialize(manifest, ManifestService.JsonOptions);
+    var releasesJson = """
+        [
+          {"tag_name":"v1.1.0-beta","draft":false,"prerelease":true,"assets":[]},
+          {"tag_name":"v1.0.0","draft":false,"prerelease":false,"assets":[
+            {"name":"ksr-release.json","browser_download_url":"https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0/ksr-release.json"}
+          ]}
+        ]
+        """;
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+        request.RequestUri!.Host == "api.github.com" ? releasesJson : manifestJson));
+    var release = await new GitHubReleaseClient(http).ResolveAsync("fabioitaKSR/ksr-releases", "stable");
+    Equal("v1.0.0", release.Tag);
+    Equal("1.0.0", release.Manifest.Version);
+    Equal("https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0", release.AssetsBaseUrl);
+}
+
 static ReleaseManifest CreateManifest(string hash) => new()
 {
     SchemaVersion = 1,
@@ -158,4 +182,13 @@ sealed class TempScope : IDisposable
     public string Root { get; } = Path.Combine(Path.GetTempPath(), "ksr-launcher-tests", Guid.NewGuid().ToString("N"));
     public TempScope() => Directory.CreateDirectory(Root);
     public void Dispose() { if (Directory.Exists(Root)) Directory.Delete(Root, true); }
+}
+
+sealed class FakeHttpHandler(Func<HttpRequestMessage, string> responseFactory) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(responseFactory(request), Encoding.UTF8, "application/json")
+        });
 }

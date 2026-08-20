@@ -15,6 +15,11 @@ public static partial class ManifestService
     public static async Task<ReleaseManifest> LoadAsync(string path, CancellationToken cancellationToken = default)
     {
         await using var stream = File.OpenRead(path);
+        return await LoadAsync(stream, cancellationToken);
+    }
+
+    public static async Task<ReleaseManifest> LoadAsync(Stream stream, CancellationToken cancellationToken = default)
+    {
         var manifest = await JsonSerializer.DeserializeAsync<ReleaseManifest>(stream, JsonOptions, cancellationToken)
             ?? throw new InvalidDataException("Manifest vuoto o non valido.");
         Validate(manifest);

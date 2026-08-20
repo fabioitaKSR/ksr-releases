@@ -19,9 +19,10 @@ internal static class LauncherCli
                     return 0;
                 case "plan":
                 case "update":
-                    var manifest = await ManifestService.LoadAsync(Required(options, "manifest"));
+                    var source = await ResolveSourceAsync(options);
                     var apply = command == "update" && options.ContainsKey("apply");
-                    var result = await new UpdateEngine().RunAsync(manifest, Locations(options), options.GetValueOrDefault("assets-base", ""), apply);
+                    var assetsBase = options.GetValueOrDefault("assets-base", source.AssetsBase);
+                    var result = await new UpdateEngine().RunAsync(source.Manifest, Locations(options), assetsBase, apply);
                     PrintPlan(result.Plan);
                     if (apply && result.Applied) Console.WriteLine($"Aggiornamento completato. Backup: {result.BackupDirectory}");
                     else if (apply) Console.WriteLine("Nessun aggiornamento necessario.");
@@ -41,6 +42,17 @@ internal static class LauncherCli
 
     private static LauncherLocations Locations(Dictionary<string, string> options) =>
         new(Path.GetFullPath(Required(options, "ksp")), Path.GetFullPath(Required(options, "launcher-data")));
+
+    private static async Task<ManifestSource> ResolveSourceAsync(Dictionary<string, string> options)
+    {
+        if (options.TryGetValue("repo", out var repository))
+        {
+            var release = await new GitHubReleaseClient().ResolveAsync(repository, options.GetValueOrDefault("channel", "stable").ToLowerInvariant());
+            Console.WriteLine($"GitHub Release selezionata: {release.Tag}");
+            return new ManifestSource(release.Manifest, release.AssetsBaseUrl);
+        }
+        return new ManifestSource(await ManifestService.LoadAsync(Required(options, "manifest")), "");
+    }
 
     private static void PrintPlan(UpdatePlan plan)
     {
@@ -69,10 +81,12 @@ internal static class LauncherCli
         KSR Launcher Core - prototipo CLI
 
         validate-manifest --manifest <ksr-release.json>
-        plan   --manifest <file> --ksp <cartella KSP> --launcher-data <cartella>
-        update --manifest <file> --assets-base <URL o cartella> --ksp <cartella KSP> --launcher-data <cartella> [--apply]
+        plan   (--repo <owner/repo> [--channel stable|beta] | --manifest <file>) --ksp <cartella KSP> --launcher-data <cartella>
+        update (--repo <owner/repo> [--channel stable|beta] | --manifest <file> --assets-base <URL o cartella>) --ksp <cartella KSP> --launcher-data <cartella> [--apply]
         rollback --backup <cartella backup> --ksp <cartella KSP> --launcher-data <cartella> [--apply]
 
         Senza --apply, update e rollback sono sempre simulazioni.
         """);
+
+    private sealed record ManifestSource(ReleaseManifest Manifest, string AssetsBase);
 }

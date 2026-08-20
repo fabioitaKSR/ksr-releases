@@ -12,6 +12,7 @@ Prototipo verificabile del motore di aggiornamento per Kerbal Space Race. La CLI
 - conservazione dei file indicati da `preserve`;
 - eccezioni `managedFilesInsidePreservedPaths`;
 - backup persistente, rollback e stato installato atomico.
+- individuazione automatica della release stabile o beta tramite GitHub Releases.
 
 ## Compilazione e test
 
@@ -28,17 +29,18 @@ $env:DOTNET_CLI_HOME = "$PWD/.tools/dotnet-home"
 ```powershell
 # Solo simulazione
 & dotnet run --project launcher/src/KsrLauncher.Cli -- plan `
-  --manifest release-manifest.json `
+  --repo "fabioitaKSR/ksr-releases" `
+  --channel stable `
   --ksp "F:\SteamLibrary\steamapps\common\Kerbal Space Race" `
   --launcher-data "C:\KSR"
 
 # Aggiornamento reale
 & dotnet run --project launcher/src/KsrLauncher.Cli -- update `
-  --manifest release-manifest.json `
-  --assets-base "https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0" `
+  --repo "fabioitaKSR/ksr-releases" `
+  --channel stable `
   --ksp "F:\SteamLibrary\steamapps\common\Kerbal Space Race" `
   --launcher-data "C:\KSR" `
   --apply
 ```
 
-Il prossimo livello aggiungera un client GitHub Releases che individua automaticamente la release stabile e scarica `ksr-release.json`.
+Il repository deve pubblicare `ksr-release.json` insieme agli ZIP nella stessa GitHub Release. Finche non esiste una release pubblicata, la modalita GitHub segnala correttamente che non sono disponibili aggiornamenti.
