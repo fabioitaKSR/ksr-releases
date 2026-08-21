@@ -424,13 +424,45 @@
                                 <TextBlock Text="The selected installation becomes the compatibility reference for this campaign."
                                            Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,0" />
                             </StackPanel>
-                            <StackPanel Grid.Row="2">
-                                <TextBlock Text="✓ Complete starting Master Save" Margin="0,0,0,9" />
-                                <TextBlock Text="✓ Career or Science difficulty and save-scoped mod settings" Margin="0,0,0,9" />
-                                <TextBlock Text="✓ GameData mod inventory and file hashes" Margin="0,0,0,9" />
-                                <TextBlock Text="✓ Approved gameplay configuration" Margin="0,0,0,9" />
-                                <TextBlock Text="Private data, credentials, caches and logs are excluded." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
-                            </StackPanel>
+                            <Grid Grid.Row="2">
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="18" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="✓ Complete starting Master Save" Margin="0,0,0,9" />
+                                    <TextBlock Text="✓ Career or Science difficulty and save-scoped mod settings" Margin="0,0,0,9" />
+                                    <TextBlock Text="✓ GameData mod inventory and file hashes" Margin="0,0,0,9" />
+                                    <TextBlock Text="✓ Approved gameplay configuration" Margin="0,0,0,9" />
+                                    <TextBlock Text="Private data, credentials, caches and logs are excluded." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                                </StackPanel>
+
+                                <Border Grid.Row="2" MinHeight="145" Background="#F2050B06" BorderBrush="#FF3B7F35"
+                                        BorderThickness="1" CornerRadius="4" Padding="14">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="12" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="KSR BASELINE SCANNER" FontFamily="Consolas" FontSize="12"
+                                                   Foreground="#FF57C94E" FontWeight="Bold" />
+                                        <TextBlock x:Name="BaselineActivityStageText" Grid.Row="1" Text="&gt; WAITING FOR SAVE SELECTION"
+                                                   FontFamily="Consolas" FontSize="16" Foreground="{StaticResource TerminalGreenBrush}" FontWeight="Bold"
+                                                   Margin="0,8,0,0">
+                                            <TextBlock.Effect>
+                                                <DropShadowEffect Color="#FF65FF45" BlurRadius="7" ShadowDepth="0" Opacity="0.65" />
+                                            </TextBlock.Effect>
+                                        </TextBlock>
+                                        <ProgressBar x:Name="BaselineActivityProgressBar" Grid.Row="3" Height="8"
+                                                     Minimum="0" Maximum="1" Value="0" Foreground="{StaticResource TerminalGreenBrush}"
+                                                     Background="#FF0A160B" BorderBrush="#FF285426" BorderThickness="1" />
+                                        <TextBlock x:Name="BaselineActivityDetailText" Grid.Row="4"
+                                                   Text="Select a valid Career or Science save to initialize the scanner."
+                                                   FontFamily="Consolas" FontSize="12" Foreground="{StaticResource TerminalDimGreenBrush}"
+                                                   TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Margin="0,10,0,0" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
                             <StackPanel Grid.Row="4">
                                 <TextBlock x:Name="CampaignCreationStatusText" Text="Select a Career or Science save to continue."
                                            Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,10" />

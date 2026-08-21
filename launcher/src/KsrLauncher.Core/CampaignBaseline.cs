@@ -206,11 +206,13 @@ public sealed class CampaignBaselineBuilder
         IProgress<BaselineProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var files = Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-            .Select(path => (Full: path, Relative: SafePaths.ManifestPath(Path.GetRelativePath(root, path))))
-            .Where(item => include(item.Relative))
-            .OrderBy(item => item.Relative, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        progress?.Report(new BaselineProgress("Discovering GameData files", 0, 0, null));
+        var files = await Task.Run(() =>
+            Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                .Select(path => (Full: path, Relative: SafePaths.ManifestPath(Path.GetRelativePath(root, path))))
+                .Where(item => include(item.Relative))
+                .OrderBy(item => item.Relative, StringComparer.OrdinalIgnoreCase)
+                .ToList(), cancellationToken);
         var result = new List<BaselineFile>(files.Count);
         for (var index = 0; index < files.Count; index++)
         {
@@ -221,6 +223,7 @@ public sealed class CampaignBaselineBuilder
             result.Add(new BaselineFile(item.Relative, new FileInfo(item.Full).Length,
                 await PackageService.ComputeSha256Async(item.Full, cancellationToken)));
         }
+        progress?.Report(new BaselineProgress("GameData reading complete", files.Count, files.Count, null));
         return result;
     }
 
@@ -230,11 +233,13 @@ public sealed class CampaignBaselineBuilder
         IProgress<BaselineProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var files = Directory.EnumerateFiles(saveRoot, "*", SearchOption.AllDirectories)
-            .Select(path => (Full: path, Relative: SafePaths.ManifestPath(Path.GetRelativePath(saveRoot, path))))
-            .Where(item => IsIncludedSaveFile(item.Relative))
-            .OrderBy(item => item.Relative, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        progress?.Report(new BaselineProgress("Discovering Master Save files", 0, 0, null));
+        var files = await Task.Run(() =>
+            Directory.EnumerateFiles(saveRoot, "*", SearchOption.AllDirectories)
+                .Select(path => (Full: path, Relative: SafePaths.ManifestPath(Path.GetRelativePath(saveRoot, path))))
+                .Where(item => IsIncludedSaveFile(item.Relative))
+                .OrderBy(item => item.Relative, StringComparer.OrdinalIgnoreCase)
+                .ToList(), cancellationToken);
         var descriptions = new List<BaselineFile>(files.Count);
         await using var destinationStream = File.Create(destination);
         using var archive = new ZipArchive(destinationStream, ZipArchiveMode.Create, false);

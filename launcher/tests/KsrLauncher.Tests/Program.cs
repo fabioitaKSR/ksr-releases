@@ -28,6 +28,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract),
     ("Platform authentication preserves server error code", PlatformAuthenticationPreservesErrorCode),
     ("Campaign baseline packages Career save safely", CampaignBaselinePackagesCareerSaveSafely),
+    ("Campaign baseline reports GameData scanner activity", CampaignBaselineReportsScannerActivity),
     ("Campaign creation accepts Career and Science but rejects Sandbox", CampaignCreationAcceptsCareerAndScienceOnly),
     ("Campaign baseline detects mod and setting differences", CampaignBaselineDetectsDifferences),
     ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress),
@@ -477,6 +478,21 @@ static async Task CampaignBaselinePackagesCareerSaveSafely()
     True(archive.GetEntry("KCT_Backup.sfs") is null, "KCT backup must not be included in the Master Save.");
 }
 
+static async Task CampaignBaselineReportsScannerActivity()
+{
+    using var scope = new TempScope();
+    var (_, save) = CreateCampaignKsp(scope.Root);
+    var updates = new List<BaselineProgress>();
+    await new CampaignBaselineBuilder().CreateAsync(
+        "Lunar Race", save, Path.Combine(scope.Root, "drafts"), progress: new InlineProgress<BaselineProgress>(updates.Add));
+
+    True(updates.Any(item => item.Stage == "Discovering GameData files"), "GameData discovery was not reported.");
+    True(updates.Any(item => item.Stage == "Scanning GameData" && item.CurrentPath is not null),
+        "GameData file reading was not reported.");
+    True(updates.Any(item => item.Stage == "GameData reading complete" && item.Completed == item.Total),
+        "GameData completion was not reported.");
+}
+
 static Task CampaignCreationAcceptsCareerAndScienceOnly()
 {
     using var scope = new TempScope();
@@ -628,6 +644,11 @@ sealed class TempScope : IDisposable
     public string Root { get; } = Path.Combine(Path.GetTempPath(), "ksr-launcher-tests", Guid.NewGuid().ToString("N"));
     public TempScope() => Directory.CreateDirectory(Root);
     public void Dispose() { if (Directory.Exists(Root)) Directory.Delete(Root, true); }
+}
+
+sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+{
+    public void Report(T value) => report(value);
 }
 
 sealed class FakeHttpHandler(

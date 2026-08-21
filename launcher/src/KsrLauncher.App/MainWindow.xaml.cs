@@ -99,6 +99,7 @@ public partial class MainWindow : Window
             ResolvedKspPathText.Text = "Not resolved";
             CampaignCreationStatusText.Text = exception.Message;
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            SetBaselineActivity("> SAVE REJECTED", exception.Message, "ErrorBrush");
             RefreshIgnoredFolderControls();
             UpdateCreateRaceState();
             return;
@@ -114,6 +115,7 @@ public partial class MainWindow : Window
         ResolvedKspPathText.Foreground = (System.Windows.Media.Brush)FindResource("ForegroundBrush");
         CampaignCreationStatusText.Text = "Career or Science save validated. Enter a campaign name to continue.";
         CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+        SetBaselineActivity("> SYSTEM READY", "Save validated. Press CREATE RACE to read GameData and build the campaign baseline.");
         RefreshIgnoredFolderControls();
         UpdateCreateRaceState();
     }
@@ -217,10 +219,9 @@ public partial class MainWindow : Window
         CreateRaceButton.IsEnabled = false;
         CampaignNameTextBox.IsEnabled = false;
         CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
-        var progress = new Progress<BaselineProgress>(value =>
-            CampaignCreationStatusText.Text = value.Total > 0
-                ? $"{value.Stage}: {value.Completed}/{value.Total}  {value.CurrentPath}"
-                : value.Stage);
+        CampaignCreationStatusText.Text = "Baseline scan in progress. Follow the scanner activity above.";
+        SetBaselineActivity("> INITIALIZING BASELINE SCAN", "Preparing the campaign workspace...", isIndeterminate: true);
+        var progress = new Progress<BaselineProgress>(UpdateBaselineActivity);
         try
         {
             var drafts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -239,6 +240,10 @@ public partial class MainWindow : Window
             CampaignsList.SelectedItem = item;
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
             CampaignCreationStatusText.Text = $"Baseline ready: {package.Manifest.GameDataFiles.Count} files captured; {package.Manifest.IgnoredGameDataFolders.Count} GameData folder(s) ignored.";
+            SetBaselineActivity(
+                "> READING COMPLETE",
+                $"{package.Manifest.GameDataFiles.Count} GameData files catalogued. {package.Manifest.IgnoredGameDataFolders.Count} optional mod folder(s) ignored.",
+                "TerminalGreenBrush", package.Manifest.GameDataFiles.Count, Math.Max(1, package.Manifest.GameDataFiles.Count));
             MessageBox.Show(
                 $"The local campaign baseline is ready.\n\nMaster Save: {package.MasterSavePath}\nBaseline: {package.ManifestPath}\n\nIt will be uploaded when the server snapshot endpoint is connected.",
                 "KSR Race Baseline", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -247,12 +252,60 @@ public partial class MainWindow : Window
         {
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             CampaignCreationStatusText.Text = exception.Message;
+            SetBaselineActivity("> SCAN FAILED", exception.Message, "ErrorBrush");
         }
         finally
         {
             CampaignNameTextBox.IsEnabled = true;
             UpdateCreateRaceState();
         }
+    }
+
+    private void UpdateBaselineActivity(BaselineProgress progress)
+    {
+        var headline = progress.Stage switch
+        {
+            "Discovering Master Save files" => "> LOCATING MASTER SAVE FILES...",
+            "Packaging Master Save" => "> PACKAGING MASTER SAVE",
+            "Discovering GameData files" => "> SEARCHING GAMEDATA...",
+            "Scanning GameData" => "> READING GAMEDATA",
+            "GameData reading complete" => "> GAMEDATA READING COMPLETE",
+            "Baseline ready" => "> FINALIZING BASELINE",
+            _ => $"> {progress.Stage.ToUpperInvariant()}"
+        };
+        var detail = progress.Total > 0
+            ? progress.CurrentPath is null
+                ? $"{progress.Completed} of {progress.Total} files processed."
+                : $"FILE {Math.Min(progress.Completed + 1, progress.Total)} OF {progress.Total}\n{progress.CurrentPath}"
+            : "Building the file list. This may take a moment on large mod installations.";
+        SetBaselineActivity(
+            headline,
+            detail,
+            "TerminalGreenBrush",
+            Math.Min(progress.Completed, progress.Total),
+            Math.Max(1, progress.Total),
+            progress.Total <= 0);
+    }
+
+    private void SetBaselineActivity(
+        string headline,
+        string detail,
+        string brushResource = "TerminalGreenBrush",
+        double value = 0,
+        double maximum = 1,
+        bool isIndeterminate = false)
+    {
+        var brush = (System.Windows.Media.Brush)FindResource(brushResource);
+        BaselineActivityStageText.Text = headline;
+        BaselineActivityStageText.Foreground = brush;
+        BaselineActivityDetailText.Text = detail;
+        BaselineActivityDetailText.Foreground = brushResource == "ErrorBrush"
+            ? brush
+            : (System.Windows.Media.Brush)FindResource("TerminalDimGreenBrush");
+        BaselineActivityProgressBar.Foreground = brush;
+        BaselineActivityProgressBar.IsIndeterminate = isIndeterminate;
+        BaselineActivityProgressBar.Maximum = Math.Max(1, maximum);
+        BaselineActivityProgressBar.Value = Math.Clamp(value, 0, BaselineActivityProgressBar.Maximum);
     }
 
     private void CampaignsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
