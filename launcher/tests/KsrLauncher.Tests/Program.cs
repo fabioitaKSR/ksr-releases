@@ -25,6 +25,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
     ("Platform campaign creation uploads baseline idempotently", PlatformCampaignCreationIsMultipartAndIdempotent),
     ("Platform joins campaign through authenticated endpoint", PlatformJoinCampaignIsAuthenticated),
+    ("Platform downloads and verifies campaign artifacts", PlatformDownloadsVerifiedCampaignArtifacts),
     ("Platform closes campaign through authenticated endpoint", PlatformCloseCampaignIsAuthenticated),
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
@@ -425,6 +426,60 @@ static async Task PlatformJoinCampaignIsAuthenticated()
     Equal("player", campaign.Role);
 }
 
+static async Task PlatformDownloadsVerifiedCampaignArtifacts()
+{
+    using var scope = new TempScope();
+    var sourceMaster = Path.Combine(scope.Root, "source-master.zip");
+    CreateZip(sourceMaster, new Dictionary<string, string> { ["persistent.sfs"] = "GAME\n{\n mode = CAREER\n}" });
+    var masterBytes = await File.ReadAllBytesAsync(sourceMaster);
+    var masterSha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(masterBytes)).ToLowerInvariant();
+    var manifest = new CampaignBaselineManifest
+    {
+        CampaignName = "Lunar Race",
+        SourceSaveName = "LunarRace",
+        KspVersion = "1.12.5",
+        CreatedAtUtc = DateTimeOffset.UtcNow,
+        MasterSaveSha256 = masterSha,
+        MasterSaveSize = masterBytes.Length,
+        SaveFiles = [new BaselineFile("persistent.sfs", 1, "save")],
+        GameDataFiles = [new BaselineFile("TestMod/mod.dll", 1, "mod")]
+    };
+    var baselineBytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ManifestService.JsonOptions);
+    var baselineSha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(baselineBytes)).ToLowerInvariant();
+    var calls = 0;
+    using var http = new HttpClient(new ResponseHttpHandler(request =>
+    {
+        Equal("Bearer", request.Headers.Authorization!.Scheme);
+        Equal("access-1", request.Headers.Authorization.Parameter!);
+        calls++;
+        if (request.RequestUri!.AbsolutePath.EndsWith("/master-save", StringComparison.Ordinal))
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(masterBytes) };
+            response.Headers.TryAddWithoutValidation("X-KSR-Master-Save-SHA256", masterSha);
+            response.Content.Headers.ContentLength = masterBytes.Length;
+            return response;
+        }
+        if (request.RequestUri.AbsolutePath.EndsWith("/baseline", StringComparison.Ordinal))
+        {
+            var response = new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(baselineBytes) };
+            response.Headers.TryAddWithoutValidation("X-KSR-Baseline-SHA256", baselineSha);
+            return response;
+        }
+        throw new Exception("Unexpected campaign artifact endpoint.");
+    }));
+    var campaign = new KsrCampaign(
+        "KSR-20260822-ABC123", "Lunar Race", "active", "player", null,
+        masterSha, masterBytes.Length, 1, baselineSha);
+    var destination = Path.Combine(scope.Root, "download");
+    var package = await new KsrPlatformClient(http).DownloadCampaignArtifactsAsync(
+        "https://ksr.example", "access-1", campaign, destination);
+
+    True(calls == 2, "Both campaign artifacts were not downloaded.");
+    Equal(masterSha, await PackageService.ComputeSha256Async(package.MasterSavePath));
+    Equal(baselineSha, await PackageService.ComputeSha256Async(package.ManifestPath));
+    Equal("Lunar Race", package.Manifest.CampaignName);
+}
+
 static async Task PlatformCampaignCreationIsMultipartAndIdempotent()
 {
     using var scope = new TempScope();
@@ -774,4 +829,10 @@ sealed class FakeHttpHandler(
         {
             Content = new StringContent(responseFactory(request), Encoding.UTF8, "application/json")
         });
+}
+
+sealed class ResponseHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+        Task.FromResult(responseFactory(request));
 }

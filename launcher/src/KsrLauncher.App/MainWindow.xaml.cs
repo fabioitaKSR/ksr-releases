@@ -25,6 +25,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
+        LauncherVersionText.Text = version is null
+            ? "LAUNCHER"
+            : $"LAUNCHER  ·  v{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
         CampaignsList.ItemsSource = _campaigns;
         IgnoredGameDataFoldersList.ItemsSource = _ignoredGameDataFolders;
         LauncherSession.ServerUrl = LauncherSettingsStore.LoadServerUrl() ?? LauncherSession.ServerUrl;
@@ -339,7 +343,10 @@ public partial class MainWindow : Window
                 progress);
             var draftCode = $"DRAFT-{package.Manifest.CreatedAtUtc:yyyyMMdd-HHmmss}";
             _localBaselines[draftCode] = package;
-            var item = new CampaignListItem(draftCode, package.Manifest.CampaignName, "ADMIN", "NOT SELECTED", "DRAFT", true);
+            var item = new CampaignListItem(
+                draftCode, package.Manifest.CampaignName, "ADMIN", "NOT SELECTED", "DRAFT", true,
+                package.Manifest.MasterSaveSha256, package.Manifest.MasterSaveSize,
+                package.Manifest.SchemaVersion, await PackageService.ComputeSha256Async(package.ManifestPath));
             _campaigns.Add(item);
             RefreshCampaignState();
             CampaignsList.SelectedItem = item;
@@ -397,7 +404,11 @@ public partial class MainWindow : Window
                 created.Role.ToUpperInvariant(),
                 created.NationId ?? "NOT SELECTED",
                 created.Status.ToUpperInvariant(),
-                !string.IsNullOrWhiteSpace(created.MasterSaveSha256));
+                !string.IsNullOrWhiteSpace(created.MasterSaveSha256),
+                created.MasterSaveSha256,
+                created.MasterSaveSize,
+                created.BaselineSchemaVersion,
+                created.BaselineSha256);
             ReplaceCampaignItem(uploading, active);
             _localBaselines.Remove(draft.CampaignCode);
             _localBaselines[active.CampaignCode] = package;
@@ -704,6 +715,86 @@ public partial class MainWindow : Window
         };
         if (picker.ShowDialog(this) != true) return;
 
+        await RunInstallationCheckAsync(campaign, package, picker.FolderName);
+    }
+
+    private async void DownloadMasterSave_Click(object sender, RoutedEventArgs e)
+    {
+        if (CampaignsList.SelectedItem is not CampaignListItem campaign || !campaign.MasterSaveAvailable) return;
+        if (!LauncherSession.IsAuthenticated || string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) ||
+            string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
+        {
+            MessageBox.Show("Sign in before downloading a campaign.", "KSR Campaign",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (!EnsureKspRoot()) return;
+
+        DownloadMasterSaveButton.IsEnabled = false;
+        DownloadMasterSaveButton.Content = "DOWNLOADING…";
+        CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+        var progress = new Progress<string>(message => CampaignComplianceStatusText.Text = message);
+        string? temporarySave = null;
+        try
+        {
+            var campaignDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "KSRLauncher", "Campaigns", campaign.CampaignCode);
+            var serverCampaign = new KsrCampaign(
+                campaign.CampaignCode, campaign.Name, campaign.Status, campaign.Role,
+                campaign.Nation == "NOT SELECTED" ? null : campaign.Nation,
+                campaign.MasterSaveSha256, campaign.MasterSaveSize,
+                campaign.BaselineSchemaVersion, campaign.BaselineSha256);
+            var package = await _platformClient.DownloadCampaignArtifactsAsync(
+                LauncherSession.ServerUrl, LauncherSession.AccessToken, serverCampaign, campaignDirectory, progress);
+
+            var savesRoot = Path.Combine(_kspRoot!, "saves");
+            Directory.CreateDirectory(savesRoot);
+            var installedSave = Path.Combine(savesRoot, $"{campaign.CampaignCode} Start");
+            if (!Directory.Exists(installedSave))
+            {
+                temporarySave = Path.Combine(savesRoot, $".ksr-install-{Guid.NewGuid():N}");
+                PackageService.ExtractSafely(package.MasterSavePath, temporarySave);
+                if (!File.Exists(Path.Combine(temporarySave, "persistent.sfs")))
+                    throw new InvalidDataException("The verified Master Save does not contain persistent.sfs.");
+                Directory.Move(temporarySave, installedSave);
+                temporarySave = null;
+            }
+            else if (!File.Exists(Path.Combine(installedSave, "persistent.sfs")))
+            {
+                throw new InvalidDataException($"The existing folder '{installedSave}' is not a valid KSP save.");
+            }
+
+            _localBaselines[campaign.CampaignCode] = package;
+            ApplyCampaignSelection(campaign);
+            CampaignComplianceStatusText.Text = $"Verified campaign save installed in: {installedSave}";
+            await RunInstallationCheckAsync(campaign, package, installedSave);
+        }
+        catch (KsrApiException exception)
+        {
+            CampaignComplianceStatusText.Text = exception.Message;
+            CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            LaunchKspButton.IsEnabled = false;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            CampaignComplianceStatusText.Text = exception.Message;
+            CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            LaunchKspButton.IsEnabled = false;
+        }
+        finally
+        {
+            if (temporarySave is not null && Directory.Exists(temporarySave)) Directory.Delete(temporarySave, true);
+            DownloadMasterSaveButton.Content = "DOWNLOAD VERIFIED SAVE";
+            DownloadMasterSaveButton.IsEnabled = CampaignsList.SelectedItem is CampaignListItem selected && selected.MasterSaveAvailable;
+        }
+    }
+
+    private async Task RunInstallationCheckAsync(
+        CampaignListItem campaign,
+        CampaignBaselinePackage package,
+        string savePath)
+    {
         CheckInstallationButton.IsEnabled = false;
         CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
         var progress = new Progress<BaselineProgress>(value =>
@@ -711,8 +802,8 @@ public partial class MainWindow : Window
         try
         {
             _lastCompliance = await new CampaignBaselineComparer().CompareAsync(
-                package.Manifest, picker.FolderName, progress);
-            _kspRoot = KspCareerSaveLocator.Resolve(picker.FolderName).KspRoot;
+                package.Manifest, savePath, progress);
+            _kspRoot = KspCareerSaveLocator.Resolve(savePath).KspRoot;
             if (_lastCompliance.ReadyToLaunch)
             {
                 CampaignComplianceStatusText.Text = "READY TO LAUNCH — save settings and GameData match the campaign baseline.";
@@ -731,9 +822,9 @@ public partial class MainWindow : Window
                         "Campaign difficulty or mod settings differ. Align them with the official baseline?\n\nA backup will be created first. Your progress, vessels and contracts will not be replaced.",
                         "Align Campaign Settings", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
                 {
-                    var aligned = await new CampaignSettingsAligner().AlignAsync(package, picker.FolderName, _lastCompliance);
+                    var aligned = await new CampaignSettingsAligner().AlignAsync(package, savePath, _lastCompliance);
                     _lastCompliance = await new CampaignBaselineComparer().CompareAsync(
-                        package.Manifest, picker.FolderName, progress);
+                        package.Manifest, savePath, progress);
                     if (_lastCompliance.ReadyToLaunch)
                     {
                         CampaignComplianceStatusText.Text = $"READY TO LAUNCH — {aligned.FilesUpdated} setting file(s) aligned. Backup: {aligned.BackupDirectory}";
@@ -902,7 +993,11 @@ public partial class MainWindow : Window
         campaign.Role.ToUpperInvariant(),
         campaign.NationId ?? "NOT SELECTED",
         campaign.Status.ToUpperInvariant(),
-        !string.IsNullOrWhiteSpace(campaign.MasterSaveSha256));
+        !string.IsNullOrWhiteSpace(campaign.MasterSaveSha256),
+        campaign.MasterSaveSha256,
+        campaign.MasterSaveSize,
+        campaign.BaselineSchemaVersion,
+        campaign.BaselineSha256);
 
     private void SetLoginBusy(bool busy, string busyText = "SIGNING IN…")
     {
@@ -1061,7 +1156,11 @@ internal sealed record CampaignListItem(
     string Role,
     string Nation,
     string Status,
-    bool MasterSaveAvailable)
+    bool MasterSaveAvailable,
+    string? MasterSaveSha256 = null,
+    long? MasterSaveSize = null,
+    int? BaselineSchemaVersion = null,
+    string? BaselineSha256 = null)
 {
     public string RoleColor => string.Equals(Role, "ADMIN", StringComparison.OrdinalIgnoreCase) ? "#FFF57C00" : "#FF4AB8F1";
     public string StatusColor => string.Equals(Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) ? "#FF80D420" : "#FF9BA0A3";

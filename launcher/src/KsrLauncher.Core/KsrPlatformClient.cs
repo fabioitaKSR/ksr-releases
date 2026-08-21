@@ -244,6 +244,97 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         return ReadCampaign(campaign);
     }
 
+    public async Task<CampaignBaselinePackage> DownloadCampaignArtifactsAsync(
+        string serverUrl,
+        string accessToken,
+        KsrCampaign campaign,
+        string destinationDirectory,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(campaign);
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(campaign.CampaignCode) ||
+            !campaign.CampaignCode.StartsWith("KSR-", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("A valid KSR Campaign ID is required.");
+
+        Directory.CreateDirectory(destinationDirectory);
+        var masterSavePath = Path.Combine(destinationDirectory, "master-save.zip");
+        var manifestPath = Path.Combine(destinationDirectory, "baseline.json");
+        var masterPart = masterSavePath + ".part";
+        var manifestPart = manifestPath + ".part";
+        try
+        {
+            progress?.Report("Downloading the verified Master Save…");
+            await DownloadVerifiedArtifactAsync(
+                new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(campaign.CampaignCode)}/master-save"),
+                accessToken, masterPart, "X-KSR-Master-Save-SHA256", campaign.MasterSaveSha256,
+                campaign.MasterSaveSize, cancellationToken);
+
+            progress?.Report("Downloading the GameData baseline…");
+            await DownloadVerifiedArtifactAsync(
+                new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(campaign.CampaignCode)}/baseline"),
+                accessToken, manifestPart, "X-KSR-Baseline-SHA256", campaign.BaselineSha256,
+                null, cancellationToken);
+
+            var manifest = await CampaignBaselineBuilder.LoadAsync(manifestPart, cancellationToken);
+            if (!string.Equals(manifest.MasterSaveSha256, campaign.MasterSaveSha256, StringComparison.OrdinalIgnoreCase) ||
+                manifest.MasterSaveSize != campaign.MasterSaveSize)
+                throw new InvalidDataException("The downloaded baseline does not match the campaign Master Save metadata.");
+            if (campaign.BaselineSchemaVersion is not null && manifest.SchemaVersion != campaign.BaselineSchemaVersion)
+                throw new InvalidDataException("The downloaded baseline schema does not match the campaign metadata.");
+            File.Move(masterPart, masterSavePath, true);
+            File.Move(manifestPart, manifestPath, true);
+            progress?.Report("Master Save and GameData baseline verified.");
+            return new CampaignBaselinePackage(destinationDirectory, manifestPath, masterSavePath, manifest);
+        }
+        catch
+        {
+            if (File.Exists(masterPart)) File.Delete(masterPart);
+            if (File.Exists(manifestPart)) File.Delete(manifestPart);
+            throw;
+        }
+    }
+
+    private async Task DownloadVerifiedArtifactAsync(
+        Uri uri,
+        string accessToken,
+        string destination,
+        string hashHeader,
+        string? expectedSha256,
+        long? expectedSize,
+        CancellationToken cancellationToken)
+    {
+        using var request = AuthorizedRequest(HttpMethod.Get, uri, accessToken);
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            using var error = await ReadResponseAsync(response, cancellationToken);
+            throw new InvalidDataException("The KSR server rejected the campaign artifact download.");
+        }
+        var responseSha256 = response.Headers.TryGetValues(hashHeader, out var values)
+            ? values.FirstOrDefault()?.Trim('"')
+            : null;
+        if (string.IsNullOrWhiteSpace(responseSha256))
+            throw new InvalidDataException($"The server response is missing {hashHeader}.");
+        if (!string.IsNullOrWhiteSpace(expectedSha256) &&
+            !string.Equals(responseSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The server artifact hash does not match the campaign metadata.");
+        if (expectedSize is not null && response.Content.Headers.ContentLength is long contentLength &&
+            contentLength != expectedSize)
+            throw new InvalidDataException("The server artifact size does not match the campaign metadata.");
+
+        await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
+        await using (var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 81920,
+                         FileOptions.Asynchronous | FileOptions.SequentialScan))
+            await source.CopyToAsync(output, cancellationToken);
+        if (expectedSize is not null && new FileInfo(destination).Length != expectedSize)
+            throw new InvalidDataException("The downloaded artifact is incomplete.");
+        var actualSha256 = await PackageService.ComputeSha256Async(destination, cancellationToken);
+        if (!string.Equals(actualSha256, responseSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The downloaded artifact failed SHA-256 verification.");
+    }
+
     public static string BuildCampaignIdempotencyKey(string campaignName, string masterSaveSha256, string baselineSha256)
     {
         var material = $"ksr-campaign-v1\n{campaignName.Trim()}\n{masterSaveSha256.ToLowerInvariant()}\n{baselineSha256.ToLowerInvariant()}";

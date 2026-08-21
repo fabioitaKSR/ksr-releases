@@ -61,7 +61,8 @@
                     <TextBlock Text="KSR" Foreground="{StaticResource OrangeBrush}" FontSize="42" FontWeight="Black" />
                     <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="KERBAL SPACE RACE" FontSize="11" FontWeight="Bold" />
-                        <TextBlock Text="LAUNCHER  ·  V1.0.0" Style="{StaticResource SmallLabel}" FontSize="10" Margin="0,3,0,0" />
+                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER  ·  v0.1.1"
+                                   Style="{StaticResource SmallLabel}" FontSize="10" Margin="0,3,0,0" />
                     </StackPanel>
                 </StackPanel>
                 <Border Grid.Column="1" Background="#FF303538" Margin="0,16" />
@@ -306,7 +307,8 @@
                     <StackPanel>
                         <TextBlock Text="MASTER SAVE" Style="{StaticResource SectionTitle}" />
                         <TextBlock x:Name="MasterSaveStatusText" Text="Select a campaign to check its Master Save." Foreground="{StaticResource MutedBrush}" Margin="0,7,0,13" />
-                        <Button x:Name="DownloadMasterSaveButton" Content="DOWNLOAD VERIFIED SAVE" Style="{StaticResource PrimaryButton}" IsEnabled="False" />
+                        <Button x:Name="DownloadMasterSaveButton" Content="DOWNLOAD VERIFIED SAVE" Style="{StaticResource PrimaryButton}"
+                                IsEnabled="False" Click="DownloadMasterSave_Click" />
                         <TextBlock x:Name="CampaignComplianceStatusText" Text="Campaign compliance has not been checked."
                                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,13,0,9" />
                         <Button x:Name="CheckInstallationButton" Content="CHECK INSTALLATION" IsEnabled="False"
