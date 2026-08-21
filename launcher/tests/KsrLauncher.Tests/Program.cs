@@ -37,6 +37,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Campaign baseline reports GameData scanner activity", CampaignBaselineReportsScannerActivity),
     ("Campaign creation accepts Career and Science but rejects Sandbox", CampaignCreationAcceptsCareerAndScienceOnly),
     ("Campaign baseline detects mod and setting differences", CampaignBaselineDetectsDifferences),
+    ("Campaign baseline ignores generated GameData thumbnails", CampaignBaselineIgnoresGeneratedThumbnails),
     ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress),
     ("Campaign whitelist ignores exact GameData folder", CampaignWhitelistIgnoresExactFolder),
     ("Campaign whitelist rejects protected KSP and KSR folders", CampaignWhitelistRejectsProtectedFolders)
@@ -737,6 +738,23 @@ static async Task CampaignBaselineDetectsDifferences()
     False(changed.ReadyToLaunch, "A modified installation must not be launch-ready.");
     True(changed.Differences.Any(item => item.Area == BaselineDifferenceArea.GameData), "The modified mod file was not detected.");
     True(changed.Differences.Any(item => item.Area == BaselineDifferenceArea.ModConfiguration), "The modified KCT setting was not detected.");
+}
+
+static async Task CampaignBaselineIgnoresGeneratedThumbnails()
+{
+    using var scope = new TempScope();
+    var (ksp, save) = CreateCampaignKsp(scope.Root);
+    var thumbs = Path.Combine(ksp, "GameData", "Squad", "Parts", "@thumbs");
+    Directory.CreateDirectory(thumbs);
+    await File.WriteAllTextAsync(Path.Combine(thumbs, "part_icon.png"), "generated-before");
+    var package = await new CampaignBaselineBuilder().CreateAsync("Lunar Race", save, Path.Combine(scope.Root, "drafts"));
+    False(package.Manifest.GameDataFiles.Any(item => item.Path.Contains("/@thumbs/", StringComparison.OrdinalIgnoreCase)),
+        "Generated @thumbs files entered a new campaign baseline.");
+
+    package.Manifest.GameDataFiles.Add(new BaselineFile("Squad/Parts/@thumbs/legacy_icon.png", 10, "old-baseline-hash"));
+    await File.WriteAllTextAsync(Path.Combine(thumbs, "part_icon.png"), "generated-after");
+    var result = await new CampaignBaselineComparer().CompareAsync(package.Manifest, save);
+    True(result.ReadyToLaunch, "Generated @thumbs differences from an existing baseline must not block launch.");
 }
 
 static async Task CampaignSettingsAlignmentPreservesProgress()

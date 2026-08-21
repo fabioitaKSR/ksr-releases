@@ -156,7 +156,8 @@ public sealed class CampaignBaselineBuilder
             fileName.EndsWith(".bak", StringComparison.OrdinalIgnoreCase)) return false;
         return !path.Split('/').Any(segment => segment.Equals("cache", StringComparison.OrdinalIgnoreCase) ||
                                                segment.Equals("logs", StringComparison.OrdinalIgnoreCase) ||
-                                               segment.Equals("PluginData", StringComparison.OrdinalIgnoreCase));
+                                               segment.Equals("PluginData", StringComparison.OrdinalIgnoreCase) ||
+                                               segment.Equals("@thumbs", StringComparison.OrdinalIgnoreCase));
     }
 
     public static List<string> NormalizeIgnoredFolders(IEnumerable<string>? folders)
@@ -302,7 +303,8 @@ public sealed class CampaignBaselineComparer
             path => CampaignBaselineBuilder.IsIncludedGameDataFile(path) &&
                     !CampaignBaselineBuilder.IsIgnoredGameDataPath(path, ignoredFolders),
             "Checking GameData", progress, cancellationToken);
-        var differences = CompareFiles(baseline.GameDataFiles, actualFiles, BaselineDifferenceArea.GameData);
+        var expectedFiles = baseline.GameDataFiles.Where(item => CampaignBaselineBuilder.IsIncludedGameDataFile(item.Path));
+        var differences = CompareFiles(expectedFiles, actualFiles, BaselineDifferenceArea.GameData);
         var actualKspVersion = CampaignBaselineBuilder.ReadKspVersion(selection.KspRoot);
         if (!string.Equals(baseline.KspVersion, actualKspVersion, StringComparison.OrdinalIgnoreCase))
             differences.Add(new(BaselineDifferenceArea.GameData, BaselineDifferenceKind.ValueMismatch,

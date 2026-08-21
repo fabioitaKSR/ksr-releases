@@ -807,6 +807,7 @@ public partial class MainWindow : Window
 
             _localBaselines[campaign.CampaignCode] = package;
             ApplyCampaignSelection(campaign);
+            DownloadMasterSaveButton.Content = "VERIFYING INSTALLATION…";
             CampaignComplianceStatusText.Text = $"Verified campaign save installed in: {installedSave}";
             await RunInstallationCheckAsync(campaign, package, installedSave);
         }
