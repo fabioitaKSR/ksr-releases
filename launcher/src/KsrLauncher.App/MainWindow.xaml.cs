@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     private CampaignComplianceResult? _lastCompliance;
     private RememberedSession? _rememberedSession;
     private bool _campaignCloseInProgress;
+    private bool _campaignUploadInProgress;
 
     public MainWindow()
     {
@@ -212,14 +213,21 @@ public partial class MainWindow : Window
         if (!IsInitialized) return;
         var blockingCampaign = GetBlockingAdminCampaign();
         var campaignCreationAvailable = LauncherSession.IsAuthenticated && blockingCampaign is null;
+        var retryableDraft = blockingCampaign is not null &&
+            blockingCampaign.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase) &&
+            _localBaselines.ContainsKey(blockingCampaign.CampaignCode);
         CampaignNameTextBox.IsEnabled = campaignCreationAvailable;
         BrowseReferenceSaveButton.IsEnabled = campaignCreationAvailable;
         CreateRaceButton.Visibility = blockingCampaign is null ? Visibility.Visible : Visibility.Collapsed;
-        CloseCampaignButton.Visibility = blockingCampaign is null ? Visibility.Collapsed : Visibility.Visible;
+        RetryCampaignUploadButton.Visibility = retryableDraft ? Visibility.Visible : Visibility.Collapsed;
+        RetryCampaignUploadButton.IsEnabled = retryableDraft && LauncherSession.IsAuthenticated && !_campaignUploadInProgress;
+        RetryCampaignUploadButton.Content = _campaignUploadInProgress ? "UPLOADING CAMPAIGN…" : "RETRY CAMPAIGN UPLOAD";
+        CloseCampaignButton.Visibility = blockingCampaign is null || _campaignUploadInProgress ? Visibility.Collapsed : Visibility.Visible;
         CloseCampaignButton.Content = blockingCampaign?.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase) == true
             ? "DISCARD LOCAL DRAFT"
             : _campaignCloseInProgress ? "CLOSING CAMPAIGN…" : "CLOSE CAMPAIGN";
-        CloseCampaignButton.IsEnabled = blockingCampaign is not null && LauncherSession.IsAuthenticated && !_campaignCloseInProgress;
+        CloseCampaignButton.IsEnabled = blockingCampaign is not null && LauncherSession.IsAuthenticated &&
+            !_campaignCloseInProgress && !_campaignUploadInProgress;
         CreateRaceButton.IsEnabled = campaignCreationAvailable &&
             !string.IsNullOrWhiteSpace(_referenceSavePath) &&
             !string.IsNullOrWhiteSpace(CampaignNameTextBox.Text);
@@ -227,7 +235,9 @@ public partial class MainWindow : Window
         if (blockingCampaign is not null)
         {
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
-            CampaignCreationStatusText.Text = _campaignCloseInProgress
+            CampaignCreationStatusText.Text = _campaignUploadInProgress
+                ? $"Uploading {blockingCampaign.Name} to the KSR server..."
+                : _campaignCloseInProgress
                 ? $"Closing {blockingCampaign.Name} ({blockingCampaign.CampaignCode})..."
                 : $"You already administer {blockingCampaign.Name} ({blockingCampaign.CampaignCode}). Close that campaign before creating another one.";
         }
@@ -339,9 +349,7 @@ public partial class MainWindow : Window
                 "> READING COMPLETE",
                 $"{package.Manifest.GameDataFiles.Count} GameData files catalogued. {package.Manifest.IgnoredGameDataFolders.Count} optional mod folder(s) ignored.",
                 "TerminalGreenBrush", package.Manifest.GameDataFiles.Count, Math.Max(1, package.Manifest.GameDataFiles.Count));
-            MessageBox.Show(
-                $"The local campaign baseline is ready and has been stored inside the selected KSP save.\n\nMaster Save: {package.MasterSavePath}\nBaseline: {package.ManifestPath}\n\nIt will be uploaded when the server snapshot endpoint is connected.",
-                "KSR Race Baseline", MessageBoxButton.OK, MessageBoxImage.Information);
+            await UploadCampaignDraftAsync(item, package);
         }
         catch (Exception exception)
         {
@@ -354,6 +362,92 @@ public partial class MainWindow : Window
             CampaignNameTextBox.IsEnabled = true;
             UpdateCreateRaceState();
         }
+    }
+
+    private async void RetryCampaignUpload_Click(object sender, RoutedEventArgs e)
+    {
+        var draft = GetBlockingAdminCampaign();
+        if (draft is null || !draft.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase) ||
+            !_localBaselines.TryGetValue(draft.CampaignCode, out var package)) return;
+        await UploadCampaignDraftAsync(draft, package);
+    }
+
+    private async Task UploadCampaignDraftAsync(CampaignListItem draft, CampaignBaselinePackage package)
+    {
+        if (_campaignUploadInProgress) return;
+        if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) || string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
+        {
+            SetCampaignUploadFailure(draft, "Sign in before uploading this campaign.");
+            return;
+        }
+
+        _campaignUploadInProgress = true;
+        var uploading = draft with { Status = "UPLOADING" };
+        ReplaceCampaignItem(draft, uploading);
+        CampaignsList.SelectedItem = uploading;
+        SetBaselineActivity("> UPLOADING CAMPAIGN", "Sending Master Save and baseline to the KSR server...", isIndeterminate: true);
+        UpdateCreateRaceState();
+        try
+        {
+            var created = await _platformClient.CreateCampaignAsync(
+                LauncherSession.ServerUrl, LauncherSession.AccessToken, package);
+            var active = new CampaignListItem(
+                created.CampaignCode,
+                created.Name,
+                created.Role.ToUpperInvariant(),
+                created.NationId ?? "NOT SELECTED",
+                created.Status.ToUpperInvariant(),
+                !string.IsNullOrWhiteSpace(created.MasterSaveSha256));
+            ReplaceCampaignItem(uploading, active);
+            _localBaselines.Remove(draft.CampaignCode);
+            _localBaselines[active.CampaignCode] = package;
+            CampaignsList.SelectedItem = active;
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+            CampaignCreationStatusText.Text = $"Campaign created: {active.CampaignCode}. The Master Save and baseline are active on the server.";
+            SetBaselineActivity("> CAMPAIGN ACTIVE", $"SERVER CAMPAIGN ID: {active.CampaignCode}", "TerminalGreenBrush", 1, 1);
+            MessageBox.Show(
+                $"The campaign is active.\n\nCampaign ID: {active.CampaignCode}\nName: {active.Name}\n\nPlayers can use this Campaign ID to join.",
+                "KSR Campaign Created", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (KsrApiException exception)
+        {
+            SetCampaignUploadFailure(uploading, exception.Message);
+        }
+        catch (HttpRequestException)
+        {
+            SetCampaignUploadFailure(uploading,
+                "The KSR server is unreachable. The local draft is safe; retry the upload when the server is available.");
+        }
+        catch (TaskCanceledException)
+        {
+            SetCampaignUploadFailure(uploading,
+                "The campaign upload timed out. The local draft is safe and can be retried without creating a duplicate campaign.");
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            SetCampaignUploadFailure(uploading, exception.Message);
+        }
+        finally
+        {
+            _campaignUploadInProgress = false;
+            UpdateCreateRaceState();
+        }
+    }
+
+    private void SetCampaignUploadFailure(CampaignListItem current, string message)
+    {
+        var draft = current with { Status = "DRAFT" };
+        ReplaceCampaignItem(current, draft);
+        CampaignsList.SelectedItem = draft;
+        CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+        CampaignCreationStatusText.Text = message;
+        SetBaselineActivity("> UPLOAD FAILED — DRAFT SAVED", message, "ErrorBrush");
+    }
+
+    private void ReplaceCampaignItem(CampaignListItem current, CampaignListItem replacement)
+    {
+        var index = _campaigns.IndexOf(current);
+        if (index >= 0) _campaigns[index] = replacement;
     }
 
     private void UpdateBaselineActivity(BaselineProgress progress)

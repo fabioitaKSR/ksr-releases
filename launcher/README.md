@@ -73,8 +73,8 @@ When a server session is available, the launcher sends the package to `POST /api
 
 ## Log & Launch baseline drafts
 
-The administrator prepares a Career save in KSP and selects its folder from the launcher Admin Area. The launcher resolves the owning KSP installation, validates the save, creates `master-save.zip` and writes `baseline.json` under `%LOCALAPPDATA%\KSRLauncher\CampaignDrafts`.
+The administrator prepares a Career or Science save in KSP and selects its folder from the launcher Admin Area. The launcher resolves the owning KSP installation, validates the save, creates `master-save.zip` and writes `baseline.json` inside the selected save under `KSR_CampaignData`.
 
 The player-side installation check compares the selected campaign save and GameData with that baseline. KSP campaign launch remains disabled while gameplay mod files differ. If only save-scoped difficulty or mod settings differ, the launcher offers to align them after creating a timestamped backup under the player's save folder.
 
-Server upload and download of `baseline.json` must be connected only after the server publishes the corresponding V1 API contract. The launcher does not silently create a server campaign that lacks its installation baseline.
+Campaign creation uploads `name`, `masterSave` and `baseline` to `POST /api/v1/campaigns` as authenticated multipart data. A deterministic `Idempotency-Key` makes a retry safe if the connection is interrupted after server creation. Failed uploads remain local drafts and expose a dedicated retry command; successful responses replace the draft code with the authoritative Campaign ID returned by the server.

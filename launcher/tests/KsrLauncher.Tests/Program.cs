@@ -23,6 +23,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform login parses V1 session", PlatformLoginParsesSession),
     ("Platform refresh rotates remembered session", PlatformRefreshRotatesSession),
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
+    ("Platform campaign creation uploads baseline idempotently", PlatformCampaignCreationIsMultipartAndIdempotent),
     ("Platform closes campaign through authenticated endpoint", PlatformCloseCampaignIsAuthenticated),
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
@@ -401,6 +402,57 @@ static async Task PlatformCloseCampaignIsAuthenticated()
     await new KsrPlatformClient(http).CloseCampaignAsync(
         "https://ksr.example", "access-1", "KSR-20260821-ABC");
     True(requestChecked, "The campaign close endpoint was not called.");
+}
+
+static async Task PlatformCampaignCreationIsMultipartAndIdempotent()
+{
+    using var scope = new TempScope();
+    var directory = Path.Combine(scope.Root, "campaign");
+    Directory.CreateDirectory(directory);
+    var masterSave = Path.Combine(directory, "master-save.zip");
+    CreateZip(masterSave, new Dictionary<string, string> { ["persistent.sfs"] = "GAME { Mode = CAREER }" });
+    var masterSha = await PackageService.ComputeSha256Async(masterSave);
+    var manifest = new CampaignBaselineManifest
+    {
+        CampaignName = "Lunar Race",
+        SourceSaveName = "LunarRace",
+        CreatedAtUtc = DateTimeOffset.UtcNow,
+        MasterSaveSha256 = masterSha,
+        MasterSaveSize = new FileInfo(masterSave).Length
+    };
+    var baseline = Path.Combine(directory, "baseline.json");
+    await File.WriteAllTextAsync(baseline, JsonSerializer.Serialize(manifest, ManifestService.JsonOptions));
+    var baselineSha = await PackageService.ComputeSha256Async(baseline);
+    var package = new CampaignBaselinePackage(directory, baseline, masterSave, manifest);
+    string? firstIdempotencyKey = null;
+    var calls = 0;
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://ksr.example/api/v1/campaigns", request.RequestUri!.ToString());
+        Equal("POST", request.Method.Method);
+        Equal("Bearer", request.Headers.Authorization!.Scheme);
+        Equal("access-1", request.Headers.Authorization.Parameter!);
+        var multipart = request.Content as MultipartFormDataContent ??
+            throw new Exception("Campaign creation is not multipart/form-data.");
+        var key = request.Headers.GetValues("Idempotency-Key").Single();
+        if (firstIdempotencyKey is null) firstIdempotencyKey = key;
+        else Equal(firstIdempotencyKey, key);
+        var parts = multipart.ToList();
+        True(parts.Any(part => part.Headers.ContentDisposition?.Name?.Trim('"') == "name"), "Campaign name part is missing.");
+        True(parts.Any(part => part.Headers.ContentDisposition?.Name?.Trim('"') == "masterSave" && part.Headers.ContentType?.MediaType == "application/zip"), "Master Save part is missing.");
+        True(parts.Any(part => part.Headers.ContentDisposition?.Name?.Trim('"') == "baseline" && part.Headers.ContentType?.MediaType == "application/json"), "Baseline part is missing.");
+        calls++;
+        return "{\"ok\":true,\"campaign\":{\"campaignCode\":\"KSR-20260821-ABC123\",\"name\":\"Lunar Race\",\"status\":\"active\",\"role\":\"admin\",\"nationId\":null,\"masterSaveSha256\":\"" + masterSha + "\",\"masterSaveSize\":" + manifest.MasterSaveSize + ",\"baselineSchemaVersion\":1,\"baselineSha256\":\"" + baselineSha + "\"}}";
+    }));
+    var client = new KsrPlatformClient(http);
+
+    var first = await client.CreateCampaignAsync("https://ksr.example", "access-1", package);
+    var retry = await client.CreateCampaignAsync("https://ksr.example", "access-1", package);
+
+    Equal("KSR-20260821-ABC123", first.CampaignCode);
+    Equal(first.CampaignCode, retry.CampaignCode);
+    True(first.BaselineSchemaVersion == 1, "Baseline schema metadata was not parsed.");
+    True(calls == 2, "The retry request was not sent.");
 }
 
 static async Task PlatformRegistrationSendsEmail()

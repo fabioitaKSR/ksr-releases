@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Net.Mail;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace KsrLauncher.Core;
@@ -22,13 +24,15 @@ public sealed record KsrCampaign(
     string Role,
     string? NationId,
     string? MasterSaveSha256,
-    long? MasterSaveSize);
+    long? MasterSaveSize,
+    int? BaselineSchemaVersion = null,
+    string? BaselineSha256 = null);
 
 public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 {
     public const string ProductionServerUrl = "https://play.kerbalspacerace.net";
 
-    private readonly HttpClient _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
 
     public async Task RegisterAsync(
         string serverUrl,
@@ -163,6 +167,65 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         return campaigns.EnumerateArray().Select(ReadCampaign).ToList();
     }
 
+    public async Task<KsrCampaign> CreateCampaignAsync(
+        string serverUrl,
+        string accessToken,
+        CampaignBaselinePackage package,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(package);
+        var baseUri = ValidateServerUri(serverUrl);
+        if (!File.Exists(package.MasterSavePath))
+            throw new FileNotFoundException("The campaign Master Save package was not found.", package.MasterSavePath);
+        if (!File.Exists(package.ManifestPath))
+            throw new FileNotFoundException("The campaign baseline was not found.", package.ManifestPath);
+        if (string.IsNullOrWhiteSpace(package.Manifest.CampaignName))
+            throw new InvalidDataException("The campaign baseline does not contain a campaign name.");
+
+        var masterSaveSha256 = await PackageService.ComputeSha256Async(package.MasterSavePath, cancellationToken);
+        if (!string.Equals(masterSaveSha256, package.Manifest.MasterSaveSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The Master Save changed after the campaign baseline was created. Build the baseline again.");
+        var baselineSha256 = await PackageService.ComputeSha256Async(package.ManifestPath, cancellationToken);
+        var idempotencyKey = BuildCampaignIdempotencyKey(package.Manifest.CampaignName, masterSaveSha256, baselineSha256);
+
+        await using var masterSaveStream = new FileStream(
+            package.MasterSavePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await using var baselineStream = new FileStream(
+            package.ManifestPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        using var form = new MultipartFormDataContent();
+        form.Add(new StringContent(package.Manifest.CampaignName, Encoding.UTF8), "name");
+        var masterSaveContent = new StreamContent(masterSaveStream);
+        masterSaveContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
+        form.Add(masterSaveContent, "masterSave", "master-save.zip");
+        var baselineContent = new StreamContent(baselineStream);
+        baselineContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        form.Add(baselineContent, "baseline", "baseline.json");
+
+        using var request = AuthorizedRequest(HttpMethod.Post, new Uri(baseUri, "/api/v1/campaigns"), accessToken);
+        request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
+        request.Content = form;
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var root = Unwrap(document.RootElement);
+        var campaignElementToRead = root.TryGetProperty("campaign", out var campaignElement) && campaignElement.ValueKind == JsonValueKind.Object
+            ? campaignElement
+            : root;
+        var campaign = ReadCampaign(campaignElementToRead);
+        if (!string.Equals(campaign.MasterSaveSha256, masterSaveSha256, StringComparison.OrdinalIgnoreCase) ||
+            campaign.MasterSaveSize != package.Manifest.MasterSaveSize)
+            throw new InvalidDataException("The KSR server returned Master Save metadata that does not match the uploaded package.");
+        if (campaign.BaselineSchemaVersion != package.Manifest.SchemaVersion ||
+            !string.Equals(campaign.BaselineSha256, baselineSha256, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The KSR server returned baseline metadata that does not match the uploaded package.");
+        return campaign;
+    }
+
+    public static string BuildCampaignIdempotencyKey(string campaignName, string masterSaveSha256, string baselineSha256)
+    {
+        var material = $"ksr-campaign-v1\n{campaignName.Trim()}\n{masterSaveSha256.ToLowerInvariant()}\n{baselineSha256.ToLowerInvariant()}";
+        return "ksr-v1-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material))).ToLowerInvariant();
+    }
+
     public async Task CloseCampaignAsync(
         string serverUrl,
         string accessToken,
@@ -189,7 +252,9 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         OptionalString(item, "role") ?? "player",
         OptionalString(item, "nationId"),
         OptionalString(item, "masterSaveSha256"),
-        OptionalInt64(item, "masterSaveSize"));
+        OptionalInt64(item, "masterSaveSize"),
+        OptionalInt32(item, "baselineSchemaVersion"),
+        OptionalString(item, "baselineSha256"));
 
     private static HttpRequestMessage AuthorizedRequest(HttpMethod method, Uri uri, string accessToken)
     {

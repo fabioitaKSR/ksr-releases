@@ -468,6 +468,8 @@
                                            Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,10" />
                                 <Button x:Name="CreateRaceButton" Content="CREATE RACE" Style="{StaticResource PrimaryButton}"
                                         IsEnabled="False" Click="CreateRace_Click" />
+                                <Button x:Name="RetryCampaignUploadButton" Content="RETRY CAMPAIGN UPLOAD" Style="{StaticResource PrimaryButton}"
+                                        Visibility="Collapsed" IsEnabled="False" Click="RetryCampaignUpload_Click" />
                                 <Button x:Name="CloseCampaignButton" Content="CLOSE CAMPAIGN" Style="{StaticResource DangerButton}"
                                         Visibility="Collapsed" IsEnabled="False" Click="CloseCampaign_Click" />
                             </StackPanel>
