@@ -502,6 +502,29 @@ public partial class MainWindow : Window
         ApplyCampaignSelection(CampaignsList.SelectedItem as CampaignListItem);
     }
 
+    private async void CopyCampaignId_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.DataContext is not CampaignListItem campaign ||
+            string.IsNullOrWhiteSpace(campaign.CampaignCode)) return;
+        try
+        {
+            Clipboard.SetText(campaign.CampaignCode);
+            button.Content = "COPIED";
+            button.IsEnabled = false;
+            await Task.Delay(1200);
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show($"The Campaign ID could not be copied.\n\n{exception.Message}",
+                "Copy Campaign ID", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            button.Content = "COPY ID";
+            button.IsEnabled = true;
+        }
+    }
+
     private void ApplyCampaignSelection(CampaignListItem? campaign)
     {
         LauncherSession.CampaignCode = campaign?.CampaignCode;

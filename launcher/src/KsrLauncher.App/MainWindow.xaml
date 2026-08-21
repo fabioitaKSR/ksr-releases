@@ -230,7 +230,18 @@
                                     <DataTemplate>
                                         <Grid Height="66">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="2.3*" /><ColumnDefinition Width="1.45*" /><ColumnDefinition Width="0.85*" /><ColumnDefinition Width="0.85*" /><ColumnDefinition Width="0.85*" /></Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding CampaignCode}" Margin="14" VerticalAlignment="Center" FontSize="15" />
+                                            <Grid Margin="14,8" VerticalAlignment="Center">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding CampaignCode}" VerticalAlignment="Center" FontSize="15"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <Button Grid.Column="1" Content="COPY ID" Style="{StaticResource GhostButton}"
+                                                        Padding="10,5" MinWidth="72" Margin="10,0,0,0"
+                                                        ToolTip="Copy this Campaign ID to the clipboard"
+                                                        Click="CopyCampaignId_Click" />
+                                            </Grid>
                                             <TextBlock Grid.Column="1" Text="{Binding Name}" Margin="14" VerticalAlignment="Center" />
                                             <TextBlock Grid.Column="2" Text="{Binding Role}" Margin="14" Foreground="{Binding RoleColor}" FontWeight="Bold" VerticalAlignment="Center" />
                                             <TextBlock Grid.Column="3" Text="{Binding Nation}" Margin="14" VerticalAlignment="Center" />
@@ -484,8 +495,14 @@
             <Grid Margin="18,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <Button Content="LEADERBOARD" Style="{StaticResource GhostButton}" MinWidth="160" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="1" Text="KERBAL SPACE RACE  ·  FLY TOGETHER, WIN TOGETHER"
-                           Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="YOUR MODS. YOUR RULES. YOUR SPACE RACE."
+                               Foreground="{StaticResource MutedBrush}" FontSize="13"
+                               HorizontalAlignment="Center" TextAlignment="Center" />
+                    <TextBlock Text="by KerbalSpaceRace" Foreground="{StaticResource MutedBrush}"
+                               FontSize="9" Opacity="0.78" Margin="0,2,0,0"
+                               HorizontalAlignment="Center" TextAlignment="Center" />
+                </StackPanel>
                 <Button x:Name="LaunchKspButton" Grid.Column="2" Content="LAUNCH KSP" Style="{StaticResource PrimaryButton}" MinWidth="260"
                         VerticalAlignment="Center" Click="LaunchKsp_Click" />
             </Grid>
