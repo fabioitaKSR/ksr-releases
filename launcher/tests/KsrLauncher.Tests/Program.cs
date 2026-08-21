@@ -37,7 +37,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Campaign baseline reports GameData scanner activity", CampaignBaselineReportsScannerActivity),
     ("Campaign creation accepts Career and Science but rejects Sandbox", CampaignCreationAcceptsCareerAndScienceOnly),
     ("Campaign baseline detects mod and setting differences", CampaignBaselineDetectsDifferences),
-    ("Campaign baseline ignores generated GameData thumbnails", CampaignBaselineIgnoresGeneratedThumbnails),
+    ("Campaign baseline ignores stock KSP folders and file content", CampaignBaselineIgnoresStockFoldersAndFileContent),
     ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress),
     ("Campaign whitelist ignores exact GameData folder", CampaignWhitelistIgnoresExactFolder),
     ("Campaign whitelist rejects protected KSP and KSR folders", CampaignWhitelistRejectsProtectedFolders)
@@ -674,7 +674,9 @@ static async Task CampaignBaselinePackagesCareerSaveSafely()
     True(File.Exists(package.MasterSavePath), "The Master Save was not created.");
     True(package.MasterSavePath.StartsWith(campaignData + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase),
         "The Master Save was not stored inside the selected KSP save.");
-    True(package.Manifest.GameDataFiles.Any(item => item.Path == "TestMod/Plugins/TestMod.dll"), "GameData was not captured.");
+    True(package.Manifest.GameDataFiles.Count == 0, "New baselines must not contain file-by-file GameData hashes.");
+    True(package.Manifest.GameDataMods.Any(item => item.Folder == "TestMod" && item.Version == "TestMod.version=1.0.0"),
+        "The installed mod folder and declared version were not captured.");
     True(package.Manifest.Settings.Any(item => item.Source == "KCT_Settings.cfg" && item.Key.EndsWith("OverallMultiplier")), "KCT settings were not parsed.");
     using var archive = ZipFile.OpenRead(package.MasterSavePath);
     True(archive.GetEntry("persistent.sfs") is not null, "persistent.sfs is missing from the Master Save.");
@@ -692,11 +694,11 @@ static async Task CampaignBaselineReportsScannerActivity()
     await new CampaignBaselineBuilder().CreateAsync(
         "Lunar Race", save, Path.Combine(scope.Root, "drafts"), progress: new InlineProgress<BaselineProgress>(updates.Add));
 
-    True(updates.Any(item => item.Stage == "Discovering GameData files"), "GameData discovery was not reported.");
-    True(updates.Any(item => item.Stage == "Scanning GameData" && item.CurrentPath is not null),
-        "GameData file reading was not reported.");
-    True(updates.Any(item => item.Stage == "GameData reading complete" && item.Completed == item.Total),
-        "GameData completion was not reported.");
+    True(updates.Any(item => item.Stage == "Discovering GameData mods"), "GameData mod discovery was not reported.");
+    True(updates.Any(item => item.Stage == "Reading GameData mod versions" && item.CurrentPath == "TestMod"),
+        "GameData mod version reading was not reported.");
+    True(updates.Any(item => item.Stage == "GameData inventory complete" && item.Completed == item.Total),
+        "GameData mod inventory completion was not reported.");
 }
 
 static Task CampaignCreationAcceptsCareerAndScienceOnly()
@@ -732,29 +734,36 @@ static async Task CampaignBaselineDetectsDifferences()
     var matching = await comparer.CompareAsync(package.Manifest, save);
     True(matching.ReadyToLaunch, "An unchanged installation should match its baseline.");
 
-    await File.WriteAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "Plugins", "TestMod.dll"), "modified");
+    await File.WriteAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "TestMod.version"),
+        "{\"NAME\":\"TestMod\",\"VERSION\":{\"MAJOR\":2,\"MINOR\":0,\"PATCH\":0}}");
     await File.WriteAllTextAsync(Path.Combine(save, "KCT_Settings.cfg"), "KCT_Preset\n{\n KCT_Preset_Time\n {\n  OverallMultiplier = 20\n }\n}");
     var changed = await comparer.CompareAsync(package.Manifest, save);
     False(changed.ReadyToLaunch, "A modified installation must not be launch-ready.");
-    True(changed.Differences.Any(item => item.Area == BaselineDifferenceArea.GameData), "The modified mod file was not detected.");
+    True(changed.Differences.Any(item => item.Area == BaselineDifferenceArea.GameData &&
+        item.Kind == BaselineDifferenceKind.ValueMismatch && item.Path == "TestMod"),
+        "The changed mod version was not detected.");
     True(changed.Differences.Any(item => item.Area == BaselineDifferenceArea.ModConfiguration), "The modified KCT setting was not detected.");
 }
 
-static async Task CampaignBaselineIgnoresGeneratedThumbnails()
+static async Task CampaignBaselineIgnoresStockFoldersAndFileContent()
 {
     using var scope = new TempScope();
     var (ksp, save) = CreateCampaignKsp(scope.Root);
-    var thumbs = Path.Combine(ksp, "GameData", "Squad", "Parts", "@thumbs");
-    Directory.CreateDirectory(thumbs);
-    await File.WriteAllTextAsync(Path.Combine(thumbs, "part_icon.png"), "generated-before");
+    var squad = Path.Combine(ksp, "GameData", "Squad", "Parts");
+    var expansion = Path.Combine(ksp, "GameData", "SquadExpansion", "Serenity");
+    Directory.CreateDirectory(squad);
+    Directory.CreateDirectory(expansion);
+    await File.WriteAllTextAsync(Path.Combine(squad, "stock-part.cfg"), "stock-before");
+    await File.WriteAllTextAsync(Path.Combine(expansion, "expansion-part.cfg"), "expansion-before");
     var package = await new CampaignBaselineBuilder().CreateAsync("Lunar Race", save, Path.Combine(scope.Root, "drafts"));
-    False(package.Manifest.GameDataFiles.Any(item => item.Path.Contains("/@thumbs/", StringComparison.OrdinalIgnoreCase)),
-        "Generated @thumbs files entered a new campaign baseline.");
+    False(package.Manifest.GameDataMods.Any(item => item.Folder is "Squad" or "SquadExpansion"),
+        "Stock KSP folders entered the mod inventory.");
 
-    package.Manifest.GameDataFiles.Add(new BaselineFile("Squad/Parts/@thumbs/legacy_icon.png", 10, "old-baseline-hash"));
-    await File.WriteAllTextAsync(Path.Combine(thumbs, "part_icon.png"), "generated-after");
+    await File.WriteAllTextAsync(Path.Combine(squad, "stock-part.cfg"), "stock-after");
+    await File.WriteAllTextAsync(Path.Combine(expansion, "expansion-part.cfg"), "expansion-after");
+    await File.WriteAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "Plugins", "TestMod.dll"), "different-content");
     var result = await new CampaignBaselineComparer().CompareAsync(package.Manifest, save);
-    True(result.ReadyToLaunch, "Generated @thumbs differences from an existing baseline must not block launch.");
+    True(result.ReadyToLaunch, "Stock files and individual mod-file content must not block launch when mod versions match.");
 }
 
 static async Task CampaignSettingsAlignmentPreservesProgress()
@@ -789,8 +798,8 @@ static async Task CampaignWhitelistIgnoresExactFolder()
     var package = await new CampaignBaselineBuilder().CreateAsync(
         "Lunar Race", save, Path.Combine(scope.Root, "drafts"), ["PlayerVisuals"]);
     True(package.Manifest.IgnoredGameDataFolders.SequenceEqual(["PlayerVisuals"]), "The ignored folder was not stored.");
-    False(package.Manifest.GameDataFiles.Any(item => item.Path.StartsWith("PlayerVisuals/", StringComparison.OrdinalIgnoreCase)),
-        "Ignored folder files must not enter the baseline.");
+    False(package.Manifest.GameDataMods.Any(item => item.Folder.Equals("PlayerVisuals", StringComparison.OrdinalIgnoreCase)),
+        "An ignored mod folder must not enter the baseline.");
 
     await File.WriteAllTextAsync(Path.Combine(visualFolder, "visual.dll"), "different-player-version");
     await File.WriteAllTextAsync(Path.Combine(visualFolder, "extra.cfg"), "anything");
@@ -820,6 +829,8 @@ static (string Ksp, string Save) CreateCampaignKsp(string root)
     var plugin = Path.Combine(ksp, "GameData", "TestMod", "Plugins");
     Directory.CreateDirectory(plugin);
     File.WriteAllText(Path.Combine(plugin, "TestMod.dll"), "official");
+    File.WriteAllText(Path.Combine(ksp, "GameData", "TestMod", "TestMod.version"),
+        "{\"NAME\":\"TestMod\",\"VERSION\":{\"MAJOR\":1,\"MINOR\":0,\"PATCH\":0}}");
     var save = Path.Combine(ksp, "saves", "Admin Career");
     Directory.CreateDirectory(save);
     File.WriteAllText(Path.Combine(save, "persistent.sfs"), "GAME\n{\n mode = CAREER\n PARAMETERS\n {\n  DIFFICULTY\n  {\n   ReentryHeatScale = 1.2\n  }\n }\n}");

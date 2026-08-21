@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -43,10 +44,12 @@ public sealed class CampaignBaselineManifest
     public List<string> IgnoredGameDataFolders { get; set; } = [];
     public List<BaselineFile> SaveFiles { get; set; } = [];
     public List<BaselineFile> GameDataFiles { get; set; } = [];
+    public List<BaselineMod> GameDataMods { get; set; } = [];
     public List<BaselineSetting> Settings { get; set; } = [];
 }
 
 public sealed record BaselineFile(string Path, long Size, string Sha256);
+public sealed record BaselineMod(string Folder, string? Version);
 public sealed record BaselineSetting(string Source, string Key, string Value, string DisplayName);
 public sealed record CampaignBaselinePackage(string Directory, string ManifestPath, string MasterSavePath, CampaignBaselineManifest Manifest);
 public sealed record BaselineProgress(string Stage, int Completed, int Total, string? CurrentPath);
@@ -106,10 +109,8 @@ public sealed class CampaignBaselineBuilder
         {
             var masterSavePath = Path.Combine(directory, "master-save.zip");
             var saveFiles = await CreateMasterSaveAsync(selection.SavePath, masterSavePath, progress, cancellationToken);
-            var gameDataFiles = await FingerprintTreeAsync(
-                Path.Combine(selection.KspRoot, "GameData"),
-                path => IsIncludedGameDataFile(path) && !IsIgnoredGameDataPath(path, ignoredFolders),
-                "Scanning GameData", progress, cancellationToken);
+            var gameDataMods = await InventoryGameDataAsync(
+                selection.KspRoot, ignoredFolders, progress, cancellationToken);
             var settings = ReadSettings(selection.SavePath);
             var manifest = new CampaignBaselineManifest
             {
@@ -121,7 +122,8 @@ public sealed class CampaignBaselineBuilder
                 MasterSaveSize = new FileInfo(masterSavePath).Length,
                 IgnoredGameDataFolders = ignoredFolders,
                 SaveFiles = saveFiles,
-                GameDataFiles = gameDataFiles,
+                GameDataFiles = [],
+                GameDataMods = gameDataMods,
                 Settings = settings
             };
             var manifestPath = Path.Combine(directory, "baseline.json");
@@ -142,22 +144,122 @@ public sealed class CampaignBaselineBuilder
         await using var stream = File.OpenRead(manifestPath);
         var manifest = await JsonSerializer.DeserializeAsync<CampaignBaselineManifest>(stream, ManifestService.JsonOptions, cancellationToken)
             ?? throw new InvalidDataException("The campaign baseline is empty.");
-        if (manifest.SchemaVersion != 1 || manifest.GameDataFiles.Count == 0 || manifest.SaveFiles.Count == 0)
+        if (manifest.SchemaVersion != 1 || manifest.SaveFiles.Count == 0)
             throw new InvalidDataException("The campaign baseline is incomplete or unsupported.");
         return manifest;
     }
 
-    internal static bool IsIncludedGameDataFile(string relativePath)
+    internal static async Task<List<BaselineMod>> InventoryGameDataAsync(
+        string kspRoot,
+        IReadOnlyCollection<string> ignoredFolders,
+        IProgress<BaselineProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        var path = SafePaths.ManifestPath(relativePath);
-        var fileName = Path.GetFileName(path);
-        if (fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
-            fileName.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) ||
-            fileName.EndsWith(".bak", StringComparison.OrdinalIgnoreCase)) return false;
-        return !path.Split('/').Any(segment => segment.Equals("cache", StringComparison.OrdinalIgnoreCase) ||
-                                               segment.Equals("logs", StringComparison.OrdinalIgnoreCase) ||
-                                               segment.Equals("PluginData", StringComparison.OrdinalIgnoreCase) ||
-                                               segment.Equals("@thumbs", StringComparison.OrdinalIgnoreCase));
+        var gameDataRoot = Path.Combine(kspRoot, "GameData");
+        progress?.Report(new BaselineProgress("Discovering GameData mods", 0, 0, null));
+        var roots = await Task.Run(() => EnumerateModRoots(gameDataRoot, ignoredFolders).ToList(), cancellationToken);
+        var result = new List<BaselineMod>(roots.Count);
+        for (var index = 0; index < roots.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var item = roots[index];
+            SafePaths.RejectReparsePoints(gameDataRoot, item.Path);
+            progress?.Report(new BaselineProgress("Reading GameData mod versions", index, roots.Count, item.Folder));
+            result.Add(new BaselineMod(item.Folder, ReadDeclaredModVersion(item.Path)));
+        }
+        progress?.Report(new BaselineProgress("GameData inventory complete", roots.Count, roots.Count, null));
+        return result.OrderBy(item => item.Folder, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static IEnumerable<(string Folder, string Path)> EnumerateModRoots(
+        string gameDataRoot,
+        IReadOnlyCollection<string> ignoredFolders)
+    {
+        foreach (var directory in Directory.EnumerateDirectories(gameDataRoot, "*", SearchOption.TopDirectoryOnly)
+                     .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase))
+        {
+            var name = Path.GetFileName(directory);
+            if (IsStockGameDataFolder(name) || ignoredFolders.Contains(name, StringComparer.OrdinalIgnoreCase)) continue;
+            if (name.Equals("ContractPacks", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (var pack in Directory.EnumerateDirectories(directory, "*", SearchOption.TopDirectoryOnly)
+                             .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase))
+                    yield return ($"ContractPacks/{Path.GetFileName(pack)}", pack);
+                continue;
+            }
+            yield return (name, directory);
+        }
+    }
+
+    internal static bool IsStockGameDataFolder(string folder) =>
+        folder.Equals("Squad", StringComparison.OrdinalIgnoreCase) ||
+        folder.Equals("SquadExpansion", StringComparison.OrdinalIgnoreCase);
+
+    private static string? ReadDeclaredModVersion(string directory)
+    {
+        var declared = new List<string>();
+        foreach (var path in Directory.EnumerateFiles(directory, "*.version", SearchOption.AllDirectories)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(path));
+                var root = document.RootElement;
+                if (!TryGetProperty(root, "VERSION", out var version)) continue;
+                var text = VersionText(version);
+                if (!string.IsNullOrWhiteSpace(text))
+                    declared.Add($"{SafePaths.ManifestPath(Path.GetRelativePath(directory, path))}={text}");
+            }
+            catch (JsonException) { }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        if (declared.Count > 0) return string.Join(";", declared);
+
+        foreach (var path in Directory.EnumerateFiles(directory, "*.dll", SearchOption.AllDirectories)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var version = AssemblyName.GetAssemblyName(path).Version;
+                if (version is not null)
+                    declared.Add($"{SafePaths.ManifestPath(Path.GetRelativePath(directory, path))}={version}");
+            }
+            catch (BadImageFormatException) { }
+            catch (FileLoadException) { }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        return declared.Count == 0 ? null : string.Join(";", declared);
+    }
+
+    private static bool TryGetProperty(JsonElement element, string name, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+            if (property.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        value = default;
+        return false;
+    }
+
+    private static string? VersionText(JsonElement element)
+    {
+        if (element.ValueKind == JsonValueKind.String) return element.GetString();
+        if (element.ValueKind != JsonValueKind.Object) return null;
+        var values = new List<string>();
+        foreach (var name in new[] { "MAJOR", "MINOR", "PATCH", "BUILD" })
+        {
+            if (!TryGetProperty(element, name, out var value))
+            {
+                if (name is "MAJOR" or "MINOR") return null;
+                continue;
+            }
+            values.Add(value.ToString());
+        }
+        return values.Count >= 2 ? string.Join('.', values) : null;
     }
 
     public static List<string> NormalizeIgnoredFolders(IEnumerable<string>? folders)
@@ -180,12 +282,6 @@ public sealed class CampaignBaselineBuilder
     public static bool IsProtectedGameDataFolder(string folderName) =>
         ProtectedGameDataFolders.Contains(folderName.Trim());
 
-    internal static bool IsIgnoredGameDataPath(string relativePath, IReadOnlyCollection<string> ignoredFolders)
-    {
-        var firstSegment = SafePaths.ManifestPath(relativePath).Split('/', 2)[0];
-        return ignoredFolders.Contains(firstSegment, StringComparer.OrdinalIgnoreCase);
-    }
-
     internal static bool IsIncludedSaveFile(string relativePath)
     {
         var fileName = Path.GetFileName(relativePath);
@@ -199,34 +295,6 @@ public sealed class CampaignBaselineBuilder
                !fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) &&
                !fileName.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) &&
                !fileName.EndsWith(".bak", StringComparison.OrdinalIgnoreCase);
-    }
-
-    internal static async Task<List<BaselineFile>> FingerprintTreeAsync(
-        string root,
-        Func<string, bool> include,
-        string stage,
-        IProgress<BaselineProgress>? progress,
-        CancellationToken cancellationToken)
-    {
-        progress?.Report(new BaselineProgress("Discovering GameData files", 0, 0, null));
-        var files = await Task.Run(() =>
-            Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
-                .Select(path => (Full: path, Relative: SafePaths.ManifestPath(Path.GetRelativePath(root, path))))
-                .Where(item => include(item.Relative))
-                .OrderBy(item => item.Relative, StringComparer.OrdinalIgnoreCase)
-                .ToList(), cancellationToken);
-        var result = new List<BaselineFile>(files.Count);
-        for (var index = 0; index < files.Count; index++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var item = files[index];
-            SafePaths.RejectReparsePoints(root, item.Full);
-            progress?.Report(new BaselineProgress(stage, index, files.Count, item.Relative));
-            result.Add(new BaselineFile(item.Relative, new FileInfo(item.Full).Length,
-                await PackageService.ComputeSha256Async(item.Full, cancellationToken)));
-        }
-        progress?.Report(new BaselineProgress("GameData reading complete", files.Count, files.Count, null));
-        return result;
     }
 
     private static async Task<List<BaselineFile>> CreateMasterSaveAsync(
@@ -279,10 +347,13 @@ public sealed class CampaignBaselineBuilder
 
     internal static string ReadKspVersion(string kspRoot)
     {
-        foreach (var name in new[] { "buildID64.txt", "buildID.txt", "readme.txt" })
+        foreach (var name in new[] { "buildID64.txt", "buildID.txt" })
         {
             var path = Path.Combine(kspRoot, name);
-            if (File.Exists(path)) return File.ReadLines(path).FirstOrDefault()?.Trim() ?? "unknown";
+            if (!File.Exists(path)) continue;
+            var build = File.ReadLines(path).FirstOrDefault(line =>
+                line.TrimStart().StartsWith("build id", StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(build)) return build.Trim();
         }
         return "unknown";
     }
@@ -298,15 +369,16 @@ public sealed class CampaignBaselineComparer
     {
         var selection = KspCareerSaveLocator.Resolve(savePath);
         var ignoredFolders = CampaignBaselineBuilder.NormalizeIgnoredFolders(baseline.IgnoredGameDataFolders);
-        var actualFiles = await CampaignBaselineBuilder.FingerprintTreeAsync(
-            Path.Combine(selection.KspRoot, "GameData"),
-            path => CampaignBaselineBuilder.IsIncludedGameDataFile(path) &&
-                    !CampaignBaselineBuilder.IsIgnoredGameDataPath(path, ignoredFolders),
-            "Checking GameData", progress, cancellationToken);
-        var expectedFiles = baseline.GameDataFiles.Where(item => CampaignBaselineBuilder.IsIncludedGameDataFile(item.Path));
-        var differences = CompareFiles(expectedFiles, actualFiles, BaselineDifferenceArea.GameData);
+        var actualMods = await CampaignBaselineBuilder.InventoryGameDataAsync(
+            selection.KspRoot, ignoredFolders, progress, cancellationToken);
+        var expectedMods = baseline.GameDataMods.Count > 0
+            ? baseline.GameDataMods.Where(item => !CampaignBaselineBuilder.IsStockGameDataFolder(item.Folder.Split('/', 2)[0])).ToList()
+            : LegacyModInventory(baseline.GameDataFiles, ignoredFolders);
+        var differences = CompareMods(expectedMods, actualMods);
         var actualKspVersion = CampaignBaselineBuilder.ReadKspVersion(selection.KspRoot);
-        if (!string.Equals(baseline.KspVersion, actualKspVersion, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(baseline.KspVersion, "[config]", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(baseline.KspVersion, "unknown", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(baseline.KspVersion, actualKspVersion, StringComparison.OrdinalIgnoreCase))
             differences.Add(new(BaselineDifferenceArea.GameData, BaselineDifferenceKind.ValueMismatch,
                 "KSP version", baseline.KspVersion, actualKspVersion, "KSP version"));
 
@@ -326,23 +398,45 @@ public sealed class CampaignBaselineComparer
         return new CampaignComplianceResult(differences);
     }
 
-    private static List<BaselineDifference> CompareFiles(
-        IEnumerable<BaselineFile> expected,
-        IEnumerable<BaselineFile> actual,
-        BaselineDifferenceArea area)
+    private static List<BaselineMod> LegacyModInventory(
+        IEnumerable<BaselineFile> files,
+        IReadOnlyCollection<string> ignoredFolders)
     {
-        var expectedMap = expected.ToDictionary(item => item.Path, StringComparer.OrdinalIgnoreCase);
-        var actualMap = actual.ToDictionary(item => item.Path, StringComparer.OrdinalIgnoreCase);
+        var folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in files)
+        {
+            var parts = SafePaths.ManifestPath(file.Path).Split('/');
+            if (parts.Length == 0 || CampaignBaselineBuilder.IsStockGameDataFolder(parts[0]) ||
+                ignoredFolders.Contains(parts[0], StringComparer.OrdinalIgnoreCase)) continue;
+            var folder = parts[0].Equals("ContractPacks", StringComparison.OrdinalIgnoreCase) && parts.Length > 1
+                ? $"ContractPacks/{parts[1]}"
+                : parts[0];
+            folders.Add(folder);
+        }
+        return folders.OrderBy(item => item, StringComparer.OrdinalIgnoreCase)
+            .Select(folder => new BaselineMod(folder, null)).ToList();
+    }
+
+    private static List<BaselineDifference> CompareMods(
+        IEnumerable<BaselineMod> expected,
+        IEnumerable<BaselineMod> actual)
+    {
+        var expectedMap = expected.ToDictionary(item => item.Folder, StringComparer.OrdinalIgnoreCase);
+        var actualMap = actual.ToDictionary(item => item.Folder, StringComparer.OrdinalIgnoreCase);
         var differences = new List<BaselineDifference>();
         foreach (var item in expectedMap.Values)
         {
-            if (!actualMap.TryGetValue(item.Path, out var current))
-                differences.Add(new(area, BaselineDifferenceKind.Missing, item.Path, item.Sha256, null, item.Path));
-            else if (!string.Equals(item.Sha256, current.Sha256, StringComparison.OrdinalIgnoreCase))
-                differences.Add(new(area, BaselineDifferenceKind.Modified, item.Path, item.Sha256, current.Sha256, item.Path));
+            if (!actualMap.TryGetValue(item.Folder, out var current))
+                differences.Add(new(BaselineDifferenceArea.GameData, BaselineDifferenceKind.Missing,
+                    item.Folder, item.Version, null, item.Folder));
+            else if (!string.IsNullOrWhiteSpace(item.Version) &&
+                     !string.Equals(item.Version, current.Version, StringComparison.OrdinalIgnoreCase))
+                differences.Add(new(BaselineDifferenceArea.GameData, BaselineDifferenceKind.ValueMismatch,
+                    item.Folder, item.Version, current.Version ?? "version not declared", $"{item.Folder} version"));
         }
-        foreach (var item in actualMap.Values.Where(item => !expectedMap.ContainsKey(item.Path)))
-            differences.Add(new(area, BaselineDifferenceKind.Extra, item.Path, null, item.Sha256, item.Path));
+        foreach (var item in actualMap.Values.Where(item => !expectedMap.ContainsKey(item.Folder)))
+            differences.Add(new(BaselineDifferenceArea.GameData, BaselineDifferenceKind.Extra,
+                item.Folder, null, item.Version, item.Folder));
         return differences;
     }
 

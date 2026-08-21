@@ -391,11 +391,11 @@ public partial class MainWindow : Window
             RefreshCampaignState();
             CampaignsList.SelectedItem = item;
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
-            CampaignCreationStatusText.Text = $"Baseline ready: {package.Manifest.GameDataFiles.Count} files captured; {package.Manifest.IgnoredGameDataFolders.Count} GameData folder(s) ignored.";
+            CampaignCreationStatusText.Text = $"Baseline ready: {package.Manifest.GameDataMods.Count} mod folder(s) catalogued; {package.Manifest.IgnoredGameDataFolders.Count} GameData folder(s) ignored.";
             SetBaselineActivity(
                 "> READING COMPLETE",
-                $"{package.Manifest.GameDataFiles.Count} GameData files catalogued. {package.Manifest.IgnoredGameDataFolders.Count} optional mod folder(s) ignored.",
-                "TerminalGreenBrush", package.Manifest.GameDataFiles.Count, Math.Max(1, package.Manifest.GameDataFiles.Count));
+                $"{package.Manifest.GameDataMods.Count} GameData mod folder(s) catalogued. {package.Manifest.IgnoredGameDataFolders.Count} optional mod folder(s) ignored.",
+                "TerminalGreenBrush", package.Manifest.GameDataMods.Count, Math.Max(1, package.Manifest.GameDataMods.Count));
             await UploadCampaignDraftAsync(item, package);
         }
         catch (Exception exception)
@@ -507,9 +507,9 @@ public partial class MainWindow : Window
         {
             "Discovering Master Save files" => "> LOCATING MASTER SAVE FILES...",
             "Packaging Master Save" => "> PACKAGING MASTER SAVE",
-            "Discovering GameData files" => "> SEARCHING GAMEDATA...",
-            "Scanning GameData" => "> READING GAMEDATA",
-            "GameData reading complete" => "> GAMEDATA READING COMPLETE",
+            "Discovering GameData mods" => "> SEARCHING GAMEDATA MODS...",
+            "Reading GameData mod versions" => "> READING MOD VERSIONS",
+            "GameData inventory complete" => "> GAMEDATA INVENTORY COMPLETE",
             "Baseline ready" => "> FINALIZING BASELINE",
             _ => $"> {progress.Stage.ToUpperInvariant()}"
         };
