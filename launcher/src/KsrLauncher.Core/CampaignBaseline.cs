@@ -40,6 +40,7 @@ public sealed class CampaignBaselineManifest
     public string MasterSaveFile { get; set; } = "master-save.zip";
     public string MasterSaveSha256 { get; set; } = "";
     public long MasterSaveSize { get; set; }
+    public List<string> IgnoredGameDataFolders { get; set; } = [];
     public List<BaselineFile> SaveFiles { get; set; } = [];
     public List<BaselineFile> GameDataFiles { get; set; } = [];
     public List<BaselineSetting> Settings { get; set; } = [];
@@ -75,11 +76,13 @@ public sealed class CampaignBaselineBuilder
         string campaignName,
         string savePath,
         string outputRoot,
+        IEnumerable<string>? ignoredGameDataFolders = null,
         IProgress<BaselineProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(campaignName)) throw new ArgumentException("Enter a campaign name.");
         var selection = KspCareerSaveLocator.Resolve(savePath);
+        var ignoredFolders = NormalizeIgnoredFolders(ignoredGameDataFolders);
         var created = DateTimeOffset.UtcNow;
         var safeName = string.Concat(campaignName.Trim().Select(character =>
             char.IsLetterOrDigit(character) || character is '-' or '_' ? character : '_')).Trim('_');
@@ -92,7 +95,9 @@ public sealed class CampaignBaselineBuilder
             var masterSavePath = Path.Combine(directory, "master-save.zip");
             var saveFiles = await CreateMasterSaveAsync(selection.SavePath, masterSavePath, progress, cancellationToken);
             var gameDataFiles = await FingerprintTreeAsync(
-                Path.Combine(selection.KspRoot, "GameData"), IsIncludedGameDataFile, "Scanning GameData", progress, cancellationToken);
+                Path.Combine(selection.KspRoot, "GameData"),
+                path => IsIncludedGameDataFile(path) && !IsIgnoredGameDataPath(path, ignoredFolders),
+                "Scanning GameData", progress, cancellationToken);
             var settings = ReadSettings(selection.SavePath);
             var manifest = new CampaignBaselineManifest
             {
@@ -102,6 +107,7 @@ public sealed class CampaignBaselineBuilder
                 CreatedAtUtc = created,
                 MasterSaveSha256 = await PackageService.ComputeSha256Async(masterSavePath, cancellationToken),
                 MasterSaveSize = new FileInfo(masterSavePath).Length,
+                IgnoredGameDataFolders = ignoredFolders,
                 SaveFiles = saveFiles,
                 GameDataFiles = gameDataFiles,
                 Settings = settings
@@ -139,6 +145,27 @@ public sealed class CampaignBaselineBuilder
         return !path.Split('/').Any(segment => segment.Equals("cache", StringComparison.OrdinalIgnoreCase) ||
                                                segment.Equals("logs", StringComparison.OrdinalIgnoreCase) ||
                                                segment.Equals("PluginData", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static List<string> NormalizeIgnoredFolders(IEnumerable<string>? folders)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in folders ?? [])
+        {
+            var folder = raw.Trim();
+            if (folder.Length == 0) continue;
+            if (folder is "." or ".." || Path.IsPathRooted(folder) || folder.Contains('/') || folder.Contains('\\') ||
+                folder.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                throw new InvalidDataException($"Invalid ignored GameData folder name: '{raw}'. Enter only its direct folder name.");
+            result.Add(folder);
+        }
+        return result.OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    internal static bool IsIgnoredGameDataPath(string relativePath, IReadOnlyCollection<string> ignoredFolders)
+    {
+        var firstSegment = SafePaths.ManifestPath(relativePath).Split('/', 2)[0];
+        return ignoredFolders.Contains(firstSegment, StringComparer.OrdinalIgnoreCase);
     }
 
     internal static bool IsIncludedSaveFile(string relativePath)
@@ -246,8 +273,11 @@ public sealed class CampaignBaselineComparer
         CancellationToken cancellationToken = default)
     {
         var selection = KspCareerSaveLocator.Resolve(savePath);
+        var ignoredFolders = CampaignBaselineBuilder.NormalizeIgnoredFolders(baseline.IgnoredGameDataFolders);
         var actualFiles = await CampaignBaselineBuilder.FingerprintTreeAsync(
-            Path.Combine(selection.KspRoot, "GameData"), CampaignBaselineBuilder.IsIncludedGameDataFile,
+            Path.Combine(selection.KspRoot, "GameData"),
+            path => CampaignBaselineBuilder.IsIncludedGameDataFile(path) &&
+                    !CampaignBaselineBuilder.IsIgnoredGameDataPath(path, ignoredFolders),
             "Checking GameData", progress, cancellationToken);
         var differences = CompareFiles(baseline.GameDataFiles, actualFiles, BaselineDifferenceArea.GameData);
         var actualKspVersion = CampaignBaselineBuilder.ReadKspVersion(selection.KspRoot);

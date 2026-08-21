@@ -22,6 +22,7 @@ KSR's Windows launcher and testable update engine for Kerbal Space Race. The CLI
 - GameData file inventory with SHA-256 integrity comparison;
 - structured comparison of `persistent.sfs` difficulty values and save-root mod settings such as `KCT_Settings.cfg`;
 - campaign launch blocking for missing, extra or modified GameData files;
+- an administrator-defined list of exact top-level GameData folder names that are completely ignored by campaign checks;
 - settings alignment with an automatic backup while preserving save progress outside the `PARAMETERS` node;
 - private-email account notice with no advertising use;
 - explicit `SEND LOG` and `SEND SAVE` support reports with description and consent;

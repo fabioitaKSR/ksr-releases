@@ -109,7 +109,11 @@ public partial class MainWindow : Window
             var drafts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "KSRLauncher", "CampaignDrafts");
             var package = await new CampaignBaselineBuilder().CreateAsync(
-                CampaignNameTextBox.Text, _referenceSavePath, drafts, progress);
+                CampaignNameTextBox.Text,
+                _referenceSavePath,
+                drafts,
+                IgnoredGameDataFoldersTextBox.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries),
+                progress);
             var draftCode = $"DRAFT-{package.Manifest.CreatedAtUtc:yyyyMMdd-HHmmss}";
             _localBaselines[draftCode] = package;
             var item = new CampaignListItem(draftCode, package.Manifest.CampaignName, "ADMIN", "NOT SELECTED", "DRAFT", true);
@@ -117,7 +121,7 @@ public partial class MainWindow : Window
             RefreshCampaignState();
             CampaignsList.SelectedItem = item;
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
-            CampaignCreationStatusText.Text = $"Baseline ready: {package.Manifest.GameDataFiles.Count} GameData files and {package.Manifest.Settings.Count} settings captured.";
+            CampaignCreationStatusText.Text = $"Baseline ready: {package.Manifest.GameDataFiles.Count} files captured; {package.Manifest.IgnoredGameDataFolders.Count} GameData folder(s) ignored.";
             MessageBox.Show(
                 $"The local campaign baseline is ready.\n\nMaster Save: {package.MasterSavePath}\nBaseline: {package.ManifestPath}\n\nIt will be uploaded when the server snapshot endpoint is connected.",
                 "KSR Race Baseline", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -157,6 +161,7 @@ public partial class MainWindow : Window
                 : "No Master Save is currently available for the selected campaign.";
         var hasBaseline = campaign is not null && _localBaselines.ContainsKey(campaign.CampaignCode);
         CheckInstallationButton.IsEnabled = hasBaseline;
+        ViewIgnoredModsButton.IsEnabled = hasBaseline;
         CampaignComplianceStatusText.Text = hasBaseline
             ? "Baseline available. Run the installation check before launching the campaign."
             : "The campaign baseline has not been downloaded yet.";
@@ -305,6 +310,18 @@ public partial class MainWindow : Window
         var more = result.Differences.Count > 18 ? $"\n…and {result.Differences.Count - 18} more differences." : string.Empty;
         MessageBox.Show(string.Join("\n", lines) + more, "Campaign Installation Differences",
             MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    private void ViewIgnoredMods_Click(object sender, RoutedEventArgs e)
+    {
+        if (CampaignsList.SelectedItem is not CampaignListItem campaign ||
+            !_localBaselines.TryGetValue(campaign.CampaignCode, out var package)) return;
+        var folders = package.Manifest.IgnoredGameDataFolders;
+        var text = folders.Count == 0
+            ? "This campaign does not ignore any GameData mod folders."
+            : "These exact GameData folders are ignored by campaign installation checks:\n\n" +
+              string.Join("\n", folders.Select(folder => $"• {folder}"));
+        MessageBox.Show(text, "Campaign Ignored Mods — Read Only", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;

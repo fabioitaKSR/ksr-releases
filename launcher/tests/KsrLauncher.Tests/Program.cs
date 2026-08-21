@@ -28,7 +28,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform authentication preserves server error code", PlatformAuthenticationPreservesErrorCode),
     ("Campaign baseline packages Career save safely", CampaignBaselinePackagesCareerSaveSafely),
     ("Campaign baseline detects mod and setting differences", CampaignBaselineDetectsDifferences),
-    ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress)
+    ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress),
+    ("Campaign whitelist ignores exact GameData folder", CampaignWhitelistIgnoresExactFolder)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -489,6 +490,25 @@ static async Task CampaignSettingsAlignmentPreservesProgress()
     True(text.Contains("ReentryHeatScale = 1.2", StringComparison.Ordinal), "Campaign difficulty was not aligned.");
     var result = await comparer.CompareAsync(package.Manifest, save);
     True(result.ReadyToLaunch, "The aligned save should match the campaign baseline.");
+}
+
+static async Task CampaignWhitelistIgnoresExactFolder()
+{
+    using var scope = new TempScope();
+    var (ksp, save) = CreateCampaignKsp(scope.Root);
+    var visualFolder = Path.Combine(ksp, "GameData", "PlayerVisuals");
+    Directory.CreateDirectory(visualFolder);
+    await File.WriteAllTextAsync(Path.Combine(visualFolder, "visual.dll"), "admin-version");
+    var package = await new CampaignBaselineBuilder().CreateAsync(
+        "Lunar Race", save, Path.Combine(scope.Root, "drafts"), ["PlayerVisuals"]);
+    True(package.Manifest.IgnoredGameDataFolders.SequenceEqual(["PlayerVisuals"]), "The ignored folder was not stored.");
+    False(package.Manifest.GameDataFiles.Any(item => item.Path.StartsWith("PlayerVisuals/", StringComparison.OrdinalIgnoreCase)),
+        "Ignored folder files must not enter the baseline.");
+
+    await File.WriteAllTextAsync(Path.Combine(visualFolder, "visual.dll"), "different-player-version");
+    await File.WriteAllTextAsync(Path.Combine(visualFolder, "extra.cfg"), "anything");
+    var result = await new CampaignBaselineComparer().CompareAsync(package.Manifest, save);
+    True(result.ReadyToLaunch, "Changes inside an ignored GameData folder must not block campaign launch.");
 }
 
 static (string Ksp, string Save) CreateCampaignKsp(string root)
