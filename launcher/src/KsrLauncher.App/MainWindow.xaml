@@ -333,7 +333,7 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBlock Text="CREATE A RACE" Style="{StaticResource SectionTitle}" />
-                        <TextBlock Grid.Row="1" Text="Prepare a Career save in KSP, then select it here as the official campaign starting point."
+                        <TextBlock Grid.Row="1" Text="Prepare a Career or Science save in KSP, then select it here as the official campaign starting point. Sandbox saves are not allowed."
                                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,18" />
 
                         <StackPanel Grid.Row="2">
@@ -392,13 +392,13 @@
                             </StackPanel>
                             <StackPanel Grid.Row="2">
                                 <TextBlock Text="✓ Complete starting Master Save" Margin="0,0,0,9" />
-                                <TextBlock Text="✓ Career difficulty and save-scoped mod settings" Margin="0,0,0,9" />
+                                <TextBlock Text="✓ Career or Science difficulty and save-scoped mod settings" Margin="0,0,0,9" />
                                 <TextBlock Text="✓ GameData mod inventory and file hashes" Margin="0,0,0,9" />
                                 <TextBlock Text="✓ Approved gameplay configuration" Margin="0,0,0,9" />
                                 <TextBlock Text="Private data, credentials, caches and logs are excluded." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0" />
                             </StackPanel>
                             <StackPanel Grid.Row="4">
-                                <TextBlock x:Name="CampaignCreationStatusText" Text="Select a Career save to continue."
+                                <TextBlock x:Name="CampaignCreationStatusText" Text="Select a Career or Science save to continue."
                                            Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,10" />
                                 <Button x:Name="CreateRaceButton" Content="CREATE RACE" Style="{StaticResource PrimaryButton}"
                                         IsEnabled="False" Click="CreateRace_Click" />

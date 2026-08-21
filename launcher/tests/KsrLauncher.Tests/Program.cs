@@ -28,6 +28,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract),
     ("Platform authentication preserves server error code", PlatformAuthenticationPreservesErrorCode),
     ("Campaign baseline packages Career save safely", CampaignBaselinePackagesCareerSaveSafely),
+    ("Campaign creation accepts Career and Science but rejects Sandbox", CampaignCreationAcceptsCareerAndScienceOnly),
     ("Campaign baseline detects mod and setting differences", CampaignBaselineDetectsDifferences),
     ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress),
     ("Campaign whitelist ignores exact GameData folder", CampaignWhitelistIgnoresExactFolder)
@@ -473,6 +474,30 @@ static async Task CampaignBaselinePackagesCareerSaveSafely()
     True(archive.GetEntry("persistent.sfs") is not null, "persistent.sfs is missing from the Master Save.");
     True(archive.GetEntry("KCT_Settings.cfg") is not null, "KCT_Settings.cfg is missing from the Master Save.");
     True(archive.GetEntry("KCT_Backup.sfs") is null, "KCT backup must not be included in the Master Save.");
+}
+
+static Task CampaignCreationAcceptsCareerAndScienceOnly()
+{
+    using var scope = new TempScope();
+    var (_, save) = CreateCampaignKsp(scope.Root);
+    KspCareerSaveLocator.Resolve(save);
+
+    File.WriteAllText(Path.Combine(save, "persistent.sfs"), "GAME\n{\n mode = SCIENCE_SANDBOX\n}");
+    KspCareerSaveLocator.Resolve(save);
+
+    File.WriteAllText(Path.Combine(save, "persistent.sfs"), "GAME\n{\n mode = SANDBOX\n}");
+
+    try
+    {
+        KspCareerSaveLocator.Resolve(save);
+        throw new Exception("A Sandbox save must not be accepted as a campaign starting point.");
+    }
+    catch (InvalidDataException exception)
+    {
+        True(exception.Message.Contains("Career or Science", StringComparison.OrdinalIgnoreCase),
+            "The unsupported game-mode validation message is unclear.");
+    }
+    return Task.CompletedTask;
 }
 
 static async Task CampaignBaselineDetectsDifferences()

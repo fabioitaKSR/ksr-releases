@@ -69,7 +69,7 @@ public partial class MainWindow : Window
     {
         var picker = new OpenFolderDialog
         {
-            Title = "Select the Career save to use as the campaign starting point",
+            Title = "Select the Career or Science save to use as the campaign starting point",
             Multiselect = false
         };
         if (!string.IsNullOrWhiteSpace(_kspRoot)) picker.InitialDirectory = Path.Combine(_kspRoot, "saves");
@@ -83,7 +83,7 @@ public partial class MainWindow : Window
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             _referenceSavePath = null;
-            ReferenceSavePathTextBox.Text = "No valid Career save selected";
+            ReferenceSavePathTextBox.Text = "No valid Career or Science save selected";
             ResolvedKspPathText.Text = "Not resolved";
             CampaignCreationStatusText.Text = exception.Message;
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
@@ -97,7 +97,7 @@ public partial class MainWindow : Window
         ReferenceSavePathTextBox.Foreground = (System.Windows.Media.Brush)FindResource("ForegroundBrush");
         ResolvedKspPathText.Text = _kspRoot;
         ResolvedKspPathText.Foreground = (System.Windows.Media.Brush)FindResource("ForegroundBrush");
-        CampaignCreationStatusText.Text = "Career save validated. Enter a campaign name to continue.";
+        CampaignCreationStatusText.Text = "Career or Science save validated. Enter a campaign name to continue.";
         CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
         UpdateCreateRaceState();
     }

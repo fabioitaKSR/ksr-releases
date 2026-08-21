@@ -23,8 +23,8 @@ public static class KspCareerSaveLocator
         if (!File.Exists(Path.Combine(kspRoot.FullName, "KSP_x64.exe")) ||
             !Directory.Exists(Path.Combine(kspRoot.FullName, "GameData")))
             throw new InvalidDataException("The selected save does not belong to a valid KSP installation.");
-        if (!KspConfigSnapshot.ContainsCareerMode(Path.Combine(fullSavePath, "persistent.sfs")))
-            throw new InvalidDataException("The selected save is not a Career game.");
+        if (!KspConfigSnapshot.ContainsSupportedCampaignMode(Path.Combine(fullSavePath, "persistent.sfs")))
+            throw new InvalidDataException("The selected save must use Career or Science mode. Sandbox games cannot start a KSR campaign.");
         SafePaths.RejectReparsePoints(kspRoot.FullName, fullSavePath);
         return new KspCareerSave(fullSavePath, kspRoot.FullName, saveDirectory.Name);
     }
@@ -391,8 +391,13 @@ public sealed class CampaignSettingsAligner
 
 internal static class KspConfigSnapshot
 {
-    public static bool ContainsCareerMode(string path) =>
-        File.ReadLines(path).Take(300).Any(line => string.Equals(line.Trim(), "mode = CAREER", StringComparison.OrdinalIgnoreCase));
+    public static bool ContainsSupportedCampaignMode(string path) =>
+        File.ReadLines(path).Take(300).Any(line =>
+        {
+            var value = line.Trim();
+            return string.Equals(value, "mode = CAREER", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(value, "mode = SCIENCE_SANDBOX", StringComparison.OrdinalIgnoreCase);
+        });
 
     public static IReadOnlyList<KeyValuePair<string, string>> ReadValues(string path, string source, bool parametersOnly)
     {
