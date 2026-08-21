@@ -186,7 +186,12 @@
                             <TextBlock Text="MY CAMPAIGNS" Style="{StaticResource SectionTitle}" />
                             <TextBlock Text="Select the campaign you want to play." Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0" />
                         </StackPanel>
-                        <Button Grid.Column="1" Content="+  JOIN CAMPAIGN" Style="{StaticResource GhostButton}" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button x:Name="RefreshCampaignsButton" Content="REFRESH" Style="{StaticResource GhostButton}"
+                                    Margin="0,0,8,0" Click="RefreshCampaigns_Click" />
+                            <Button x:Name="JoinCampaignButton" Content="+  JOIN CAMPAIGN" Style="{StaticResource GhostButton}"
+                                    Click="JoinCampaign_Click" />
+                        </StackPanel>
                     </Grid>
 
                     <Border Grid.Row="2" Background="#E30A0E11" BorderBrush="#FF34383B" BorderThickness="1" CornerRadius="5" MinHeight="230">

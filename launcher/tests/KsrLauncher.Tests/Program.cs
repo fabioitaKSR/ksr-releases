@@ -24,6 +24,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform refresh rotates remembered session", PlatformRefreshRotatesSession),
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
     ("Platform campaign creation uploads baseline idempotently", PlatformCampaignCreationIsMultipartAndIdempotent),
+    ("Platform joins campaign through authenticated endpoint", PlatformJoinCampaignIsAuthenticated),
     ("Platform closes campaign through authenticated endpoint", PlatformCloseCampaignIsAuthenticated),
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
@@ -402,6 +403,26 @@ static async Task PlatformCloseCampaignIsAuthenticated()
     await new KsrPlatformClient(http).CloseCampaignAsync(
         "https://ksr.example", "access-1", "KSR-20260821-ABC");
     True(requestChecked, "The campaign close endpoint was not called.");
+}
+
+static async Task PlatformJoinCampaignIsAuthenticated()
+{
+    var requestChecked = false;
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://ksr.example/api/v1/campaigns/KSR-20260822-ABC123/join", request.RequestUri!.ToString());
+        Equal("POST", request.Method.Method);
+        Equal("Bearer", request.Headers.Authorization!.Scheme);
+        Equal("access-1", request.Headers.Authorization.Parameter!);
+        requestChecked = true;
+        return "{\"ok\":true,\"campaign\":{\"campaignCode\":\"KSR-20260822-ABC123\",\"name\":\"Lunar Race\",\"status\":\"active\",\"role\":\"player\",\"nationId\":null,\"masterSaveSha256\":\"abc123\",\"masterSaveSize\":12345}}";
+    }));
+
+    var campaign = await new KsrPlatformClient(http).JoinCampaignAsync(
+        "https://ksr.example", "access-1", "KSR-20260822-ABC123");
+    True(requestChecked, "The campaign join endpoint was not called.");
+    Equal("KSR-20260822-ABC123", campaign.CampaignCode);
+    Equal("player", campaign.Role);
 }
 
 static async Task PlatformCampaignCreationIsMultipartAndIdempotent()

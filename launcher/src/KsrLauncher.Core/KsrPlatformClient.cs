@@ -220,6 +220,30 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         return campaign;
     }
 
+    public async Task<KsrCampaign> JoinCampaignAsync(
+        string serverUrl,
+        string accessToken,
+        string campaignCode,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        var normalizedCode = campaignCode.Trim();
+        if (normalizedCode.Length < 5 || normalizedCode.Length > 100 ||
+            !normalizedCode.StartsWith("KSR-", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Enter a valid KSR Campaign ID.");
+        using var request = AuthorizedRequest(
+            HttpMethod.Post,
+            new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(normalizedCode)}/join"),
+            accessToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var root = Unwrap(document.RootElement);
+        var campaign = root.TryGetProperty("campaign", out var campaignElement) && campaignElement.ValueKind == JsonValueKind.Object
+            ? campaignElement
+            : root;
+        return ReadCampaign(campaign);
+    }
+
     public static string BuildCampaignIdempotencyKey(string campaignName, string masterSaveSha256, string baselineSha256)
     {
         var material = $"ksr-campaign-v1\n{campaignName.Trim()}\n{masterSaveSha256.ToLowerInvariant()}\n{baselineSha256.ToLowerInvariant()}";

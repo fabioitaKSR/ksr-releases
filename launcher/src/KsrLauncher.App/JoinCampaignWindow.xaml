@@ -1,0 +1,56 @@
+<Window x:Class="KsrLauncher.App.JoinCampaignWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Join KSR Campaign" Width="640" Height="390" MinWidth="560" MinHeight="350"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner" ResizeMode="NoResize">
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="24" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="16" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="JOIN A CAMPAIGN" Style="{StaticResource SectionTitle}" FontSize="27" />
+            <TextBlock Text="Enter the Campaign ID shared by the campaign administrator."
+                       Foreground="{StaticResource MutedBrush}" Margin="0,7,0,0" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="2">
+            <TextBlock Text="CAMPAIGN ID" Style="{StaticResource SmallLabel}" />
+            <TextBox x:Name="CampaignIdTextBox" Margin="0,6,0,0" MaxLength="100" FontSize="17"
+                     CharacterCasing="Upper" TextChanged="CampaignIdTextBox_TextChanged" />
+        </StackPanel>
+
+        <Border Grid.Row="4" Background="#CC101518" BorderBrush="#FF34383B" BorderThickness="1"
+                CornerRadius="6" Padding="16">
+            <StackPanel>
+                <TextBlock Text="WHAT HAPPENS NEXT" Foreground="{StaticResource OrangeBrush}"
+                           FontWeight="Bold" FontSize="16" />
+                <TextBlock Text="The server verifies that the campaign exists and is active, then adds your account as a player. The official Master Save and installation baseline will be available from your Player Area."
+                           Foreground="#FFD5D1C9" TextWrapping="Wrap" Margin="0,7,0,0" />
+                <TextBlock Text="A Campaign ID never gives administrator permissions."
+                           Foreground="{StaticResource MutedBrush}" Margin="0,7,0,0" />
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="StatusText" Foreground="{StaticResource ErrorBrush}"
+                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,14,0" />
+            <Button Grid.Column="1" Content="CANCEL" MinWidth="110" Click="Cancel_Click" />
+            <Button x:Name="JoinButton" Grid.Column="3" Content="JOIN CAMPAIGN"
+                    Style="{StaticResource PrimaryButton}" MinWidth="190" IsEnabled="False"
+                    Click="Join_Click" />
+        </Grid>
+    </Grid>
+</Window>

@@ -78,3 +78,5 @@ The administrator prepares a Career or Science save in KSP and selects its folde
 The player-side installation check compares the selected campaign save and GameData with that baseline. KSP campaign launch remains disabled while gameplay mod files differ. If only save-scoped difficulty or mod settings differ, the launcher offers to align them after creating a timestamped backup under the player's save folder.
 
 Campaign creation uploads `name`, `masterSave` and `baseline` to `POST /api/v1/campaigns` as authenticated multipart data. A deterministic `Idempotency-Key` makes a retry safe if the connection is interrupted after server creation. Failed uploads remain local drafts and expose a dedicated retry command; successful responses replace the draft code with the authoritative Campaign ID returned by the server.
+
+Players can join an active campaign by entering its Campaign ID. The Launcher calls the authenticated `POST /api/v1/campaigns/{campaignCode}/join` endpoint, reports server validation errors, adds the returned player membership to the real campaign list and supports an explicit campaign refresh without signing out.

@@ -25,6 +25,18 @@ internal static class ApiErrorMessages
         _ => SafeFallback(exception, "The account could not be created.")
     };
 
+    public static string ForCampaignJoin(KsrApiException exception) => exception.Code switch
+    {
+        "campaign_not_found" or "not_found" => "No campaign was found with this Campaign ID.",
+        "campaign_closed" => "This campaign is closed and no longer accepts players.",
+        "campaign_cancelled" => "This campaign was cancelled and no longer accepts players.",
+        "campaign_full" => "This campaign has no available player slots.",
+        "invite_required" or "invalid_invite" => "This Campaign ID does not grant access to the campaign.",
+        "email_not_verified" => "Verify your email address before joining a campaign.",
+        "forbidden" => "Your account is not allowed to join this campaign.",
+        _ => SafeFallback(exception, "The campaign could not be joined.")
+    };
+
     private static string SafeFallback(KsrApiException exception, string fallback) =>
         string.IsNullOrWhiteSpace(exception.Message) ? fallback : exception.Message;
 }

@@ -502,6 +502,76 @@ public partial class MainWindow : Window
         ApplyCampaignSelection(CampaignsList.SelectedItem as CampaignListItem);
     }
 
+    private void JoinCampaign_Click(object sender, RoutedEventArgs e)
+    {
+        if (!LauncherSession.IsAuthenticated || string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) ||
+            string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
+        {
+            MessageBox.Show("Sign in before joining a campaign.", "Join KSR Campaign",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dialog = new JoinCampaignWindow(
+            _platformClient, LauncherSession.ServerUrl, LauncherSession.AccessToken) { Owner = this };
+        if (dialog.ShowDialog() != true || dialog.JoinedCampaign is null) return;
+        var item = ToCampaignListItem(dialog.JoinedCampaign);
+        var existing = _campaigns.FirstOrDefault(value =>
+            value.CampaignCode.Equals(item.CampaignCode, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) _campaigns.Add(item);
+        else
+        {
+            var index = _campaigns.IndexOf(existing);
+            if (index >= 0) _campaigns[index] = item;
+        }
+        RefreshCampaignState();
+        CampaignsList.SelectedItem = item;
+    }
+
+    private async void RefreshCampaigns_Click(object sender, RoutedEventArgs e) =>
+        await RefreshCampaignsFromServerAsync(true);
+
+    private async Task RefreshCampaignsFromServerAsync(bool showFeedback)
+    {
+        if (!LauncherSession.IsAuthenticated || string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) ||
+            string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
+        {
+            if (showFeedback)
+                MessageBox.Show("Sign in to refresh your campaigns.", "KSR Campaigns",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        RefreshCampaignsButton.IsEnabled = false;
+        RefreshCampaignsButton.Content = "REFRESHING…";
+        try
+        {
+            var selectedCode = (CampaignsList.SelectedItem as CampaignListItem)?.CampaignCode;
+            var campaigns = await _platformClient.GetCampaignsAsync(
+                LauncherSession.ServerUrl, LauncherSession.AccessToken);
+            ReplaceCampaigns(campaigns.Select(ToCampaignListItem));
+            if (selectedCode is not null)
+                CampaignsList.SelectedItem = _campaigns.FirstOrDefault(item =>
+                    item.CampaignCode.Equals(selectedCode, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (KsrApiException exception)
+        {
+            if (showFeedback)
+                MessageBox.Show(exception.Message, "Campaign Refresh Failed",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (HttpRequestException)
+        {
+            if (showFeedback)
+                MessageBox.Show("The KSR server is unreachable. Your existing campaign list was kept.",
+                    "Campaign Refresh Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            RefreshCampaignsButton.IsEnabled = true;
+            RefreshCampaignsButton.Content = "REFRESH";
+        }
+    }
+
     private async void CopyCampaignId_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button || button.DataContext is not CampaignListItem campaign ||
@@ -821,16 +891,18 @@ public partial class MainWindow : Window
         LauncherSession.AccessToken = session.AccessToken;
         LauncherSession.RefreshToken = session.RefreshToken;
         LauncherSession.AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(session.ExpiresIn);
-        ReplaceCampaigns(campaigns.Select(campaign => new CampaignListItem(
-            campaign.CampaignCode,
-            campaign.Name,
-            campaign.Role.ToUpperInvariant(),
-            campaign.NationId ?? "NOT SELECTED",
-            campaign.Status.ToUpperInvariant(),
-            !string.IsNullOrWhiteSpace(campaign.MasterSaveSha256))));
+        ReplaceCampaigns(campaigns.Select(ToCampaignListItem));
         UpdateSessionVisuals();
         await RefreshServerStatusAsync();
     }
+
+    private static CampaignListItem ToCampaignListItem(KsrCampaign campaign) => new(
+        campaign.CampaignCode,
+        campaign.Name,
+        campaign.Role.ToUpperInvariant(),
+        campaign.NationId ?? "NOT SELECTED",
+        campaign.Status.ToUpperInvariant(),
+        !string.IsNullOrWhiteSpace(campaign.MasterSaveSha256));
 
     private void SetLoginBusy(bool busy, string busyText = "SIGNING IN…")
     {
