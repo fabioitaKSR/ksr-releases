@@ -3,6 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="KSR Platform" Icon="Assets/ksr-launcher.ico" Width="1280" Height="820" MinWidth="1080" MinHeight="720"
+        MaxWidth="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Width}"
+        MaxHeight="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Height}"
         WindowStartupLocation="CenterScreen" Background="#070A0C" WindowStyle="None" ResizeMode="CanResize">
     <shell:WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="34" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" />
@@ -17,7 +19,7 @@
         </Grid.Background>
         <Grid.RowDefinitions>
             <RowDefinition Height="34" />
-            <RowDefinition Height="92" />
+            <RowDefinition Height="112" />
             <RowDefinition Height="64" />
             <RowDefinition Height="*" />
             <RowDefinition Height="76" />
@@ -354,7 +356,14 @@
                             <TextBlock Text="IGNORED GAMEDATA FOLDERS — ONE NAME PER LINE" Style="{StaticResource SmallLabel}" VerticalAlignment="Center" />
                             <Border Grid.Column="1" Width="20" Height="20" CornerRadius="10" Margin="8,0,0,0"
                                     Background="#FF20262A" BorderBrush="#FF777B7E" BorderThickness="1"
-                                    ToolTip="Enter the exact name of each folder located directly inside GameData, one per line. The launcher completely ignores those folders and all of their contents when checking this campaign. Do not enter paths or wildcards.">
+                                    ToolTipService.InitialShowDelay="150" ToolTipService.ShowDuration="30000">
+                                <Border.ToolTip>
+                                    <ToolTip Background="#FF11171B" BorderBrush="{StaticResource OrangeBrush}"
+                                             BorderThickness="1" Padding="12" Placement="Mouse">
+                                        <TextBlock Width="360" TextWrapping="Wrap" Foreground="#FFF0EEE9" FontSize="13"
+                                                   Text="Enter the exact name of each folder located directly inside GameData, one per line. The launcher completely ignores those folders and all of their contents when checking this campaign. Do not enter paths or wildcards." />
+                                    </ToolTip>
+                                </Border.ToolTip>
                                 <TextBlock Text="?" Foreground="{StaticResource OrangeBrush}" FontWeight="Bold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
