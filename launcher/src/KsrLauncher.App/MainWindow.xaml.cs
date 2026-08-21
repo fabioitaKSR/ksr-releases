@@ -14,6 +14,7 @@ public partial class MainWindow : Window
     private string? _kspRoot;
     private string? _referenceSavePath;
     private readonly ObservableCollection<CampaignListItem> _campaigns = [];
+    private readonly ObservableCollection<string> _ignoredGameDataFolders = [];
     private readonly KsrPlatformClient _platformClient = new();
     private readonly Dictionary<string, CampaignBaselinePackage> _localBaselines = new(StringComparer.OrdinalIgnoreCase);
     private CampaignComplianceResult? _lastCompliance;
@@ -23,6 +24,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         CampaignsList.ItemsSource = _campaigns;
+        IgnoredGameDataFoldersList.ItemsSource = _ignoredGameDataFolders;
         LauncherSession.ServerUrl = LauncherSettingsStore.LoadServerUrl() ?? LauncherSession.ServerUrl;
         try
         {
@@ -40,6 +42,7 @@ public partial class MainWindow : Window
         _kspRoot = Environment.GetEnvironmentVariable("KSR_KSP_ROOT");
         UpdateSessionVisuals();
         RefreshCampaignState();
+        RefreshIgnoredFolderControls();
         Loaded += MainWindow_Loaded;
     }
 
@@ -90,23 +93,112 @@ public partial class MainWindow : Window
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
             _referenceSavePath = null;
+            _kspRoot = null;
+            _ignoredGameDataFolders.Clear();
             ReferenceSavePathTextBox.Text = "No valid Career or Science save selected";
             ResolvedKspPathText.Text = "Not resolved";
             CampaignCreationStatusText.Text = exception.Message;
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            RefreshIgnoredFolderControls();
             UpdateCreateRaceState();
             return;
         }
 
+        var installationChanged = !string.Equals(_kspRoot, selection.KspRoot, StringComparison.OrdinalIgnoreCase);
         _referenceSavePath = selection.SavePath;
         _kspRoot = selection.KspRoot;
+        if (installationChanged) _ignoredGameDataFolders.Clear();
         ReferenceSavePathTextBox.Text = _referenceSavePath;
         ReferenceSavePathTextBox.Foreground = (System.Windows.Media.Brush)FindResource("ForegroundBrush");
         ResolvedKspPathText.Text = _kspRoot;
         ResolvedKspPathText.Foreground = (System.Windows.Media.Brush)FindResource("ForegroundBrush");
         CampaignCreationStatusText.Text = "Career or Science save validated. Enter a campaign name to continue.";
         CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+        RefreshIgnoredFolderControls();
         UpdateCreateRaceState();
+    }
+
+    private void SelectIgnoredFolders_Click(object sender, RoutedEventArgs e)
+    {
+        if (_referenceSavePath is null || string.IsNullOrWhiteSpace(_kspRoot)) return;
+        var gameDataRoot = Path.GetFullPath(Path.Combine(_kspRoot, "GameData"));
+        if (!Directory.Exists(gameDataRoot))
+        {
+            MessageBox.Show("The selected KSP installation does not contain GameData.", "KSR Campaign", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var picker = new OpenFolderDialog
+        {
+            Title = "Select optional mod folders to ignore during campaign checks",
+            InitialDirectory = gameDataRoot,
+            Multiselect = true
+        };
+        if (picker.ShowDialog(this) != true) return;
+
+        var rejected = new List<string>();
+        foreach (var selectedPath in picker.FolderNames)
+        {
+            try
+            {
+                var fullPath = Path.GetFullPath(selectedPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var parent = Directory.GetParent(fullPath)?.FullName.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                if (!Directory.Exists(fullPath) || !string.Equals(parent, gameDataRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("Only folders directly inside GameData can be selected.");
+                SafePaths.RejectReparsePoints(gameDataRoot, fullPath);
+                var folderName = Path.GetFileName(fullPath);
+                CampaignBaselineBuilder.NormalizeIgnoredFolders([folderName]);
+                if (!_ignoredGameDataFolders.Contains(folderName, StringComparer.OrdinalIgnoreCase))
+                    _ignoredGameDataFolders.Add(folderName);
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                rejected.Add($"{Path.GetFileName(selectedPath)} — {exception.Message}");
+            }
+        }
+
+        SortIgnoredFolders();
+        RefreshIgnoredFolderControls();
+        if (rejected.Count > 0)
+        {
+            MessageBox.Show(
+                "Some folders were not added:\n\n" + string.Join("\n", rejected),
+                "KSR Ignored Mods", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void RemoveIgnoredFolders_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = IgnoredGameDataFoldersList.SelectedItems.Cast<string>().ToList();
+        foreach (var folder in selected) _ignoredGameDataFolders.Remove(folder);
+        RefreshIgnoredFolderControls();
+    }
+
+    private void ClearIgnoredFolders_Click(object sender, RoutedEventArgs e)
+    {
+        _ignoredGameDataFolders.Clear();
+        RefreshIgnoredFolderControls();
+    }
+
+    private void IgnoredGameDataFoldersList_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        RefreshIgnoredFolderControls();
+
+    private void SortIgnoredFolders()
+    {
+        var sorted = _ignoredGameDataFolders.OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToList();
+        _ignoredGameDataFolders.Clear();
+        foreach (var folder in sorted) _ignoredGameDataFolders.Add(folder);
+    }
+
+    private void RefreshIgnoredFolderControls()
+    {
+        if (!IsInitialized) return;
+        var hasFolders = _ignoredGameDataFolders.Count > 0;
+        IgnoredFoldersEmptyText.Visibility = hasFolders ? Visibility.Collapsed : Visibility.Visible;
+        SelectIgnoredFoldersButton.IsEnabled = _referenceSavePath is not null &&
+            !string.IsNullOrWhiteSpace(_kspRoot) && Directory.Exists(Path.Combine(_kspRoot, "GameData"));
+        RemoveIgnoredFoldersButton.IsEnabled = IgnoredGameDataFoldersList.SelectedItems.Count > 0;
+        ClearIgnoredFoldersButton.IsEnabled = hasFolders;
     }
 
     private void CampaignCreationInput_Changed(object sender, TextChangedEventArgs e) => UpdateCreateRaceState();
@@ -137,7 +229,7 @@ public partial class MainWindow : Window
                 CampaignNameTextBox.Text,
                 _referenceSavePath,
                 drafts,
-                IgnoredGameDataFoldersTextBox.Text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries),
+                _ignoredGameDataFolders,
                 progress);
             var draftCode = $"DRAFT-{package.Manifest.CreatedAtUtc:yyyyMMdd-HHmmss}";
             _localBaselines[draftCode] = package;

@@ -353,7 +353,7 @@
 
                         <Grid Grid.Row="4" Margin="0,15,0,6">
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <TextBlock Text="IGNORED GAMEDATA FOLDERS — ONE NAME PER LINE" Style="{StaticResource SmallLabel}" VerticalAlignment="Center" />
+                            <TextBlock Text="IGNORED GAMEDATA FOLDERS" Style="{StaticResource SmallLabel}" VerticalAlignment="Center" />
                             <Border Grid.Column="1" Width="20" Height="20" CornerRadius="10" Margin="8,0,0,0"
                                     Background="#FF20262A" BorderBrush="#FF777B7E" BorderThickness="1"
                                     ToolTipService.InitialShowDelay="150" ToolTipService.ShowDuration="30000">
@@ -361,16 +361,50 @@
                                     <ToolTip Background="#FF11171B" BorderBrush="{StaticResource OrangeBrush}"
                                              BorderThickness="1" Padding="12" Placement="Mouse">
                                         <TextBlock Width="360" TextWrapping="Wrap" Foreground="#FFF0EEE9" FontSize="13"
-                                                   Text="Enter the exact name of each folder located directly inside GameData, one per line. The launcher completely ignores those folders and all of their contents when checking this campaign. Do not enter paths or wildcards." />
+                                                   Text="Select one or more optional mod folders located directly inside this installation's GameData. The launcher ignores those folders and all their contents during campaign checks. Protected KSP and KSR folders cannot be ignored." />
                                     </ToolTip>
                                 </Border.ToolTip>
                                 <TextBlock Text="?" Foreground="{StaticResource OrangeBrush}" FontWeight="Bold"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
                             </Border>
                         </Grid>
-                        <TextBox x:Name="IgnoredGameDataFoldersTextBox" Grid.Row="5" MinHeight="130" AcceptsReturn="True"
-                                 VerticalAlignment="Stretch" VerticalScrollBarVisibility="Auto"
-                                 TextChanged="CampaignCreationInput_Changed" />
+                        <Grid Grid.Row="5" MinHeight="130">
+                            <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <Border Background="#FF0B0F12" BorderBrush="#FF44494C" BorderThickness="1">
+                                <Grid>
+                                    <ListBox x:Name="IgnoredGameDataFoldersList" Background="Transparent" BorderThickness="0"
+                                             Foreground="{StaticResource ForegroundBrush}" SelectionMode="Extended"
+                                             SelectionChanged="IgnoredGameDataFoldersList_SelectionChanged">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="10,7">
+                                                    <TextBlock Text="▰" Foreground="{StaticResource OrangeBrush}" Margin="0,0,9,0" />
+                                                    <TextBlock Text="{Binding}" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                    <TextBlock x:Name="IgnoredFoldersEmptyText" Text="No ignored mod folders selected."
+                                               Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" />
+                                </Grid>
+                            </Border>
+                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="10" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="SelectIgnoredFoldersButton" Content="SELECT MOD FOLDERS" Style="{StaticResource GhostButton}"
+                                        HorizontalAlignment="Left" IsEnabled="False" Click="SelectIgnoredFolders_Click" />
+                                <Button x:Name="RemoveIgnoredFoldersButton" Grid.Column="2" Content="REMOVE SELECTED"
+                                        Style="{StaticResource GhostButton}" IsEnabled="False" Click="RemoveIgnoredFolders_Click" />
+                                <Button x:Name="ClearIgnoredFoldersButton" Grid.Column="4" Content="CLEAR ALL"
+                                        Style="{StaticResource GhostButton}" IsEnabled="False" Click="ClearIgnoredFolders_Click" />
+                            </Grid>
+                        </Grid>
 
                         <Border Grid.Row="6" Background="#CC101518" BorderBrush="#FF3B3E40" BorderThickness="1" CornerRadius="5" Padding="14" Margin="0,14,0,0">
                             <Grid>

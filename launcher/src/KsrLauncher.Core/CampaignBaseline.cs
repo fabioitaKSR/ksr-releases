@@ -72,6 +72,18 @@ public sealed record CampaignComplianceResult(IReadOnlyList<BaselineDifference> 
 
 public sealed class CampaignBaselineBuilder
 {
+    private static readonly HashSet<string> ProtectedGameDataFolders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Squad",
+        "SquadExpansion",
+        "KerbalSpaceRace",
+        "KerbalSpaceRaceNationSelector",
+        "KerbalSpaceRaceSuite",
+        "ContractPacks",
+        "KSRParameterLogger",
+        "KSRDisableDBSUI"
+    };
+
     public async Task<CampaignBaselinePackage> CreateAsync(
         string campaignName,
         string savePath,
@@ -157,10 +169,15 @@ public sealed class CampaignBaselineBuilder
             if (folder is "." or ".." || Path.IsPathRooted(folder) || folder.Contains('/') || folder.Contains('\\') ||
                 folder.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
                 throw new InvalidDataException($"Invalid ignored GameData folder name: '{raw}'. Enter only its direct folder name.");
+            if (ProtectedGameDataFolders.Contains(folder))
+                throw new InvalidDataException($"'{folder}' is a protected KSP/KSR folder and cannot be ignored.");
             result.Add(folder);
         }
         return result.OrderBy(item => item, StringComparer.OrdinalIgnoreCase).ToList();
     }
+
+    public static bool IsProtectedGameDataFolder(string folderName) =>
+        ProtectedGameDataFolders.Contains(folderName.Trim());
 
     internal static bool IsIgnoredGameDataPath(string relativePath, IReadOnlyCollection<string> ignoredFolders)
     {

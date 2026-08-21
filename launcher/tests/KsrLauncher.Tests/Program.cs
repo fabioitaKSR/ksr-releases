@@ -31,7 +31,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Campaign creation accepts Career and Science but rejects Sandbox", CampaignCreationAcceptsCareerAndScienceOnly),
     ("Campaign baseline detects mod and setting differences", CampaignBaselineDetectsDifferences),
     ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress),
-    ("Campaign whitelist ignores exact GameData folder", CampaignWhitelistIgnoresExactFolder)
+    ("Campaign whitelist ignores exact GameData folder", CampaignWhitelistIgnoresExactFolder),
+    ("Campaign whitelist rejects protected KSP and KSR folders", CampaignWhitelistRejectsProtectedFolders)
 };
 var failures = 0;
 foreach (var test in tests)
@@ -556,6 +557,22 @@ static async Task CampaignWhitelistIgnoresExactFolder()
     await File.WriteAllTextAsync(Path.Combine(visualFolder, "extra.cfg"), "anything");
     var result = await new CampaignBaselineComparer().CompareAsync(package.Manifest, save);
     True(result.ReadyToLaunch, "Changes inside an ignored GameData folder must not block campaign launch.");
+}
+
+static Task CampaignWhitelistRejectsProtectedFolders()
+{
+    foreach (var folder in new[]
+             {
+                 "Squad", "SquadExpansion", "KerbalSpaceRace", "KerbalSpaceRaceNationSelector",
+                 "KerbalSpaceRaceSuite", "ContractPacks", "KSRParameterLogger", "KSRDisableDBSUI"
+             })
+    {
+        Throws<InvalidDataException>(() => CampaignBaselineBuilder.NormalizeIgnoredFolders([folder]));
+        True(CampaignBaselineBuilder.IsProtectedGameDataFolder(folder), $"{folder} was not recognized as protected.");
+    }
+    False(CampaignBaselineBuilder.IsProtectedGameDataFolder("EnvironmentalVisualEnhancements"),
+        "An optional visual mod was incorrectly protected.");
+    return Task.CompletedTask;
 }
 
 static (string Ksp, string Save) CreateCampaignKsp(string root)
