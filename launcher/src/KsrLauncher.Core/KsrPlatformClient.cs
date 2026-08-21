@@ -163,6 +163,25 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         return campaigns.EnumerateArray().Select(ReadCampaign).ToList();
     }
 
+    public async Task CloseCampaignAsync(
+        string serverUrl,
+        string accessToken,
+        string campaignCode,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(campaignCode)) throw new ArgumentException("A campaign code is required.");
+        using var request = AuthorizedRequest(
+            HttpMethod.Post,
+            new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(campaignCode.Trim())}/close"),
+            accessToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var root = Unwrap(document.RootElement);
+        if (root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
+            throw new InvalidDataException("The KSR server did not close the campaign.");
+    }
+
     private static KsrCampaign ReadCampaign(JsonElement item) => new(
         RequiredString(item, "campaignCode"),
         RequiredString(item, "name"),

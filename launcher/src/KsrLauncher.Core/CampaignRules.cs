@@ -13,5 +13,8 @@ public static class CampaignRules
 
     public static bool BlocksNewAdminCampaign(string? role, string? status) =>
         string.Equals(role?.Trim(), "ADMIN", StringComparison.OrdinalIgnoreCase) &&
-        (string.IsNullOrWhiteSpace(status) || !TerminalStatuses.Contains(status.Trim()));
+        !IsTerminalStatus(status);
+
+    public static bool IsTerminalStatus(string? status) =>
+        !string.IsNullOrWhiteSpace(status) && TerminalStatuses.Contains(status.Trim());
 }

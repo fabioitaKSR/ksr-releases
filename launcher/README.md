@@ -17,6 +17,7 @@ KSR's Windows launcher and testable update engine for Kerbal Space Race. The CLI
 - no scanning, replacement or removal of third-party mods;
 - WPF Player Area and Admin Area shell;
 - KSR V1 registration, login, password recovery and dynamic campaign loading;
+- one active administered campaign per account, with authenticated close and safe local-draft discard flows;
 - optional automatic sign-in backed by a rotating refresh token in Windows Credential Manager (the password is never stored);
 - local Log & Launch campaign baselines created from an administrator-selected Career or Science save;
 - complete Master Save packaging with transient backups, quicksaves and logs excluded;

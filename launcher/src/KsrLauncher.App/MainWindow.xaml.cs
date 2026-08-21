@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, CampaignBaselinePackage> _localBaselines = new(StringComparer.OrdinalIgnoreCase);
     private CampaignComplianceResult? _lastCompliance;
     private RememberedSession? _rememberedSession;
+    private bool _campaignCloseInProgress;
 
     public MainWindow()
     {
@@ -213,6 +214,12 @@ public partial class MainWindow : Window
         var campaignCreationAvailable = LauncherSession.IsAuthenticated && blockingCampaign is null;
         CampaignNameTextBox.IsEnabled = campaignCreationAvailable;
         BrowseReferenceSaveButton.IsEnabled = campaignCreationAvailable;
+        CreateRaceButton.Visibility = blockingCampaign is null ? Visibility.Visible : Visibility.Collapsed;
+        CloseCampaignButton.Visibility = blockingCampaign is null ? Visibility.Collapsed : Visibility.Visible;
+        CloseCampaignButton.Content = blockingCampaign?.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase) == true
+            ? "DISCARD LOCAL DRAFT"
+            : _campaignCloseInProgress ? "CLOSING CAMPAIGN…" : "CLOSE CAMPAIGN";
+        CloseCampaignButton.IsEnabled = blockingCampaign is not null && LauncherSession.IsAuthenticated && !_campaignCloseInProgress;
         CreateRaceButton.IsEnabled = campaignCreationAvailable &&
             !string.IsNullOrWhiteSpace(_referenceSavePath) &&
             !string.IsNullOrWhiteSpace(CampaignNameTextBox.Text);
@@ -220,13 +227,83 @@ public partial class MainWindow : Window
         if (blockingCampaign is not null)
         {
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
-            CampaignCreationStatusText.Text =
-                $"You already administer {blockingCampaign.Name} ({blockingCampaign.CampaignCode}). Close that campaign before creating another one.";
+            CampaignCreationStatusText.Text = _campaignCloseInProgress
+                ? $"Closing {blockingCampaign.Name} ({blockingCampaign.CampaignCode})..."
+                : $"You already administer {blockingCampaign.Name} ({blockingCampaign.CampaignCode}). Close that campaign before creating another one.";
         }
     }
 
     private CampaignListItem? GetBlockingAdminCampaign() =>
         _campaigns.FirstOrDefault(campaign => CampaignRules.BlocksNewAdminCampaign(campaign.Role, campaign.Status));
+
+    private async void CloseCampaign_Click(object sender, RoutedEventArgs e)
+    {
+        var campaign = GetBlockingAdminCampaign();
+        if (campaign is null || _campaignCloseInProgress) return;
+
+        if (campaign.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase))
+        {
+            var confirmDraft = MessageBox.Show(
+                $"Discard the local draft '{campaign.Name}' ({campaign.CampaignCode})?\n\nThe generated Master Save and baseline files will remain on disk inside the selected save.",
+                "Discard KSR Draft", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (confirmDraft != MessageBoxResult.Yes) return;
+            _localBaselines.Remove(campaign.CampaignCode);
+            _campaigns.Remove(campaign);
+            RefreshCampaignState();
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+            CampaignCreationStatusText.Text = "Local draft discarded. You can now create a new campaign.";
+            SetBaselineActivity("> LOCAL DRAFT DISCARDED", "Generated files were kept safely inside the selected KSP save.");
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"Close '{campaign.Name}' ({campaign.CampaignCode}) for every player?\n\nThe campaign will no longer be playable or accept new results. Master Save, baseline, members, achievements and standings will be retained. A closed campaign cannot be reopened in V1.",
+            "Close KSR Campaign", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (confirm != MessageBoxResult.Yes) return;
+        if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) || string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
+        {
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            CampaignCreationStatusText.Text = "Sign in to close this campaign.";
+            return;
+        }
+
+        _campaignCloseInProgress = true;
+        UpdateCreateRaceState();
+        try
+        {
+            await _platformClient.CloseCampaignAsync(
+                LauncherSession.ServerUrl,
+                LauncherSession.AccessToken,
+                campaign.CampaignCode);
+            var index = _campaigns.IndexOf(campaign);
+            var closedCampaign = campaign with { Status = "CLOSED" };
+            if (index >= 0) _campaigns[index] = closedCampaign;
+            if (CampaignsList.SelectedItem is CampaignListItem selectedCampaign && selectedCampaign == campaign)
+                CampaignsList.SelectedItem = closedCampaign;
+            RefreshCampaignState();
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+            CampaignCreationStatusText.Text = $"{campaign.Name} is closed. You can now create a new campaign.";
+            SetBaselineActivity("> CAMPAIGN CLOSED", "Server state updated. Historical campaign data has been retained.");
+        }
+        catch (KsrApiException exception)
+        {
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            CampaignCreationStatusText.Text = exception.Message;
+            SetBaselineActivity("> CLOSE REQUEST FAILED", exception.Message, "ErrorBrush");
+        }
+        catch (HttpRequestException)
+        {
+            const string message = "The KSR server is unreachable. The campaign was not closed.";
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            CampaignCreationStatusText.Text = message;
+            SetBaselineActivity("> CLOSE REQUEST FAILED", message, "ErrorBrush");
+        }
+        finally
+        {
+            _campaignCloseInProgress = false;
+            UpdateCreateRaceState();
+        }
+    }
 
     private async void CreateRace_Click(object sender, RoutedEventArgs e)
     {
@@ -355,7 +432,7 @@ public partial class MainWindow : Window
             : "The campaign baseline has not been downloaded yet.";
         CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
         _lastCompliance = null;
-        LaunchKspButton.IsEnabled = !hasBaseline;
+        LaunchKspButton.IsEnabled = !hasBaseline && !CampaignRules.IsTerminalStatus(campaign?.Status);
     }
 
     internal void ReplaceCampaigns(IEnumerable<CampaignListItem> campaigns)

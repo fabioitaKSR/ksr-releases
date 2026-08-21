@@ -23,6 +23,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform login parses V1 session", PlatformLoginParsesSession),
     ("Platform refresh rotates remembered session", PlatformRefreshRotatesSession),
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
+    ("Platform closes campaign through authenticated endpoint", PlatformCloseCampaignIsAuthenticated),
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
     ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract),
@@ -384,6 +385,24 @@ static async Task PlatformCampaignsUseBearerSession()
     True(campaigns[0].MasterSaveSize == 12345, "Master Save metadata was not parsed.");
 }
 
+static async Task PlatformCloseCampaignIsAuthenticated()
+{
+    var requestChecked = false;
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://ksr.example/api/v1/campaigns/KSR-20260821-ABC/close", request.RequestUri!.ToString());
+        Equal("POST", request.Method.Method);
+        Equal("Bearer", request.Headers.Authorization!.Scheme);
+        Equal("access-1", request.Headers.Authorization.Parameter!);
+        requestChecked = true;
+        return "{\"ok\":true}";
+    }));
+
+    await new KsrPlatformClient(http).CloseCampaignAsync(
+        "https://ksr.example", "access-1", "KSR-20260821-ABC");
+    True(requestChecked, "The campaign close endpoint was not called.");
+}
+
 static async Task PlatformRegistrationSendsEmail()
 {
     using var http = new HttpClient(new FakeHttpHandler(request =>
@@ -470,7 +489,10 @@ static Task OnlyOneAdminCampaignIsAllowed()
     True(CampaignRules.BlocksNewAdminCampaign("ADMIN", null), "An unknown admin campaign status must fail closed.");
     False(CampaignRules.BlocksNewAdminCampaign("player", "active"), "Player membership must not block admin creation.");
     foreach (var status in new[] { "closed", "completed", "cancelled", "archived", "ended" })
+    {
         False(CampaignRules.BlocksNewAdminCampaign("admin", status), $"Terminal status {status} must allow a new campaign.");
+        True(CampaignRules.IsTerminalStatus(status), $"Terminal status {status} was not recognized.");
+    }
     return Task.CompletedTask;
 }
 
