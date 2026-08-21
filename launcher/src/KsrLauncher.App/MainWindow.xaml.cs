@@ -53,16 +53,23 @@ public partial class MainWindow : Window
     {
         PlayerArea.Visibility = Visibility.Visible;
         AdminArea.Visibility = Visibility.Collapsed;
-        PlayerTabButton.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
-        AdminTabButton.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
+        UpdateAreaTabVisuals(PlayerTabButton, AdminTabButton);
     }
 
     private void AdminTab_Click(object sender, RoutedEventArgs e)
     {
         PlayerArea.Visibility = Visibility.Collapsed;
         AdminArea.Visibility = Visibility.Visible;
-        PlayerTabButton.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
-        AdminTabButton.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+        UpdateAreaTabVisuals(AdminTabButton, PlayerTabButton);
+    }
+
+    private void UpdateAreaTabVisuals(Button activeTab, Button inactiveTab)
+    {
+        var orange = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+        activeTab.Foreground = orange;
+        activeTab.BorderBrush = orange;
+        inactiveTab.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
+        inactiveTab.BorderBrush = (System.Windows.Media.Brush)FindResource("BorderBrush");
     }
 
     private void BrowseReferenceSave_Click(object sender, RoutedEventArgs e)
