@@ -224,8 +224,7 @@ public partial class MainWindow : Window
         var progress = new Progress<BaselineProgress>(UpdateBaselineActivity);
         try
         {
-            var drafts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "KSRLauncher", "CampaignDrafts");
+            var drafts = Path.Combine(_referenceSavePath, "KSR_CampaignData");
             var package = await new CampaignBaselineBuilder().CreateAsync(
                 CampaignNameTextBox.Text,
                 _referenceSavePath,
@@ -245,7 +244,7 @@ public partial class MainWindow : Window
                 $"{package.Manifest.GameDataFiles.Count} GameData files catalogued. {package.Manifest.IgnoredGameDataFolders.Count} optional mod folder(s) ignored.",
                 "TerminalGreenBrush", package.Manifest.GameDataFiles.Count, Math.Max(1, package.Manifest.GameDataFiles.Count));
             MessageBox.Show(
-                $"The local campaign baseline is ready.\n\nMaster Save: {package.MasterSavePath}\nBaseline: {package.ManifestPath}\n\nIt will be uploaded when the server snapshot endpoint is connected.",
+                $"The local campaign baseline is ready and has been stored inside the selected KSP save.\n\nMaster Save: {package.MasterSavePath}\nBaseline: {package.ManifestPath}\n\nIt will be uploaded when the server snapshot endpoint is connected.",
                 "KSR Race Baseline", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception exception)

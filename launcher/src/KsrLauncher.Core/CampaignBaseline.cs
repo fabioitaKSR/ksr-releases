@@ -189,7 +189,8 @@ public sealed class CampaignBaselineBuilder
     {
         var fileName = Path.GetFileName(relativePath);
         if (SafePaths.ManifestPath(relativePath).Split('/').Any(segment =>
-                segment.Equals("KSR_Backups", StringComparison.OrdinalIgnoreCase))) return false;
+                segment.Equals("KSR_Backups", StringComparison.OrdinalIgnoreCase) ||
+                segment.Equals("KSR_CampaignData", StringComparison.OrdinalIgnoreCase))) return false;
         return !fileName.StartsWith("quicksave", StringComparison.OrdinalIgnoreCase) &&
                !fileName.StartsWith("autosave", StringComparison.OrdinalIgnoreCase) &&
                !fileName.StartsWith("KCT_Backup", StringComparison.OrdinalIgnoreCase) &&

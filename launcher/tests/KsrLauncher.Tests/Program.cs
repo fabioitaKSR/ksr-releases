@@ -466,16 +466,23 @@ static async Task CampaignBaselinePackagesCareerSaveSafely()
 {
     using var scope = new TempScope();
     var (ksp, save) = CreateCampaignKsp(scope.Root);
-    var package = await new CampaignBaselineBuilder().CreateAsync("Lunar Race", save, Path.Combine(scope.Root, "drafts"));
+    var campaignData = Path.Combine(save, "KSR_CampaignData");
+    Directory.CreateDirectory(Path.Combine(campaignData, "previous-draft"));
+    await File.WriteAllTextAsync(Path.Combine(campaignData, "previous-draft", "baseline.json"), "old-local-artifact");
+    var package = await new CampaignBaselineBuilder().CreateAsync("Lunar Race", save, campaignData);
 
     True(File.Exists(package.ManifestPath), "The baseline manifest was not created.");
     True(File.Exists(package.MasterSavePath), "The Master Save was not created.");
+    True(package.MasterSavePath.StartsWith(campaignData + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase),
+        "The Master Save was not stored inside the selected KSP save.");
     True(package.Manifest.GameDataFiles.Any(item => item.Path == "TestMod/Plugins/TestMod.dll"), "GameData was not captured.");
     True(package.Manifest.Settings.Any(item => item.Source == "KCT_Settings.cfg" && item.Key.EndsWith("OverallMultiplier")), "KCT settings were not parsed.");
     using var archive = ZipFile.OpenRead(package.MasterSavePath);
     True(archive.GetEntry("persistent.sfs") is not null, "persistent.sfs is missing from the Master Save.");
     True(archive.GetEntry("KCT_Settings.cfg") is not null, "KCT_Settings.cfg is missing from the Master Save.");
     True(archive.GetEntry("KCT_Backup.sfs") is null, "KCT backup must not be included in the Master Save.");
+    False(archive.Entries.Any(entry => entry.FullName.StartsWith("KSR_CampaignData/", StringComparison.OrdinalIgnoreCase)),
+        "Local campaign artifacts must not be packaged inside the Master Save.");
 }
 
 static async Task CampaignBaselineReportsScannerActivity()
