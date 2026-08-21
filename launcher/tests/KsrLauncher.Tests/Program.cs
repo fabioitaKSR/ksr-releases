@@ -13,6 +13,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("SHA errato non modifica installazione", WrongHashDoesNotModify),
     ("Errore nel gruppo ripristina componenti precedenti", GroupFailureRollsBack),
     ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease),
+    ("Launcher auto-update downloads a verified newer release", LauncherAutoUpdateDownloadsVerifiedRelease),
     ("Update ordinario ignora componente assente", ExistingOnlySkipsMissing),
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
     ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched),
@@ -424,6 +425,41 @@ static async Task PlatformJoinCampaignIsAuthenticated()
     True(requestChecked, "The campaign join endpoint was not called.");
     Equal("KSR-20260822-ABC123", campaign.CampaignCode);
     Equal("player", campaign.Role);
+}
+
+static async Task LauncherAutoUpdateDownloadsVerifiedRelease()
+{
+    using var scope = new TempScope();
+    var executable = Encoding.UTF8.GetBytes("verified launcher update");
+    var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(executable)).ToLowerInvariant();
+    using var http = new HttpClient(new ResponseHttpHandler(request =>
+    {
+        var path = request.RequestUri!.AbsoluteUri;
+        if (path.Contains("/releases?", StringComparison.Ordinal))
+        {
+            var json = "[{\"tag_name\":\"v0.1.2\",\"draft\":false,\"prerelease\":false,\"assets\":[" +
+                       "{\"name\":\"KSR-Launcher-v0.1.2-win-x64.exe\",\"browser_download_url\":\"https://downloads.example/launcher.exe\"}," +
+                       "{\"name\":\"SHA256SUMS.txt\",\"browser_download_url\":\"https://downloads.example/SHA256SUMS.txt\"}]}]";
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        }
+        if (path.EndsWith("SHA256SUMS.txt", StringComparison.Ordinal))
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent($"{sha256}  KSR-Launcher-v0.1.2-win-x64.exe\n", Encoding.UTF8, "text/plain")
+            };
+        if (path.EndsWith("launcher.exe", StringComparison.Ordinal))
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(executable) };
+        throw new Exception("Unexpected auto-update endpoint.");
+    }));
+    var service = new LauncherUpdateService(http);
+    var update = await service.CheckAsync("fabioitaKSR/ksr-releases", new Version(0, 1, 1));
+    True(update is not null, "The newer launcher release was not detected.");
+    Equal("v0.1.2", update!.Tag);
+    var downloaded = await service.DownloadAsync(update, Path.Combine(scope.Root, "updates"));
+    Equal(sha256, await PackageService.ComputeSha256Async(downloaded));
 }
 
 static async Task PlatformDownloadsVerifiedCampaignArtifacts()

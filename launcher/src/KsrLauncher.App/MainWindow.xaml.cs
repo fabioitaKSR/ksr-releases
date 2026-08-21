@@ -56,6 +56,46 @@ public partial class MainWindow : Window
     {
         await RefreshServerStatusAsync();
         await TryRestoreSessionAsync();
+        await CheckForLauncherUpdateAsync();
+    }
+
+    private async Task CheckForLauncherUpdateAsync()
+    {
+        var current = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
+        if (current is null) return;
+        try
+        {
+            var service = new LauncherUpdateService();
+            var update = await service.CheckAsync("fabioitaKSR/ksr-releases", current);
+            if (update is null) return;
+
+            LauncherVersionText.Text = $"LAUNCHER  ·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}  ·  UPDATING";
+            LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+            var updateDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "KSRLauncher", "Updates", update.Tag);
+            var progress = new Progress<long>(bytes =>
+                LauncherVersionText.Text = $"LAUNCHER  ·  DOWNLOADING {update.Tag}  ·  {bytes / 1048576d:0.0} MB");
+            var downloaded = await service.DownloadAsync(update, updateDirectory, progress);
+            LauncherVersionText.Text = $"LAUNCHER  ·  {update.Tag} READY";
+            var restart = MessageBox.Show(
+                $"KSR Launcher {update.Tag} has been downloaded and verified.\n\nRestart now to install the update?",
+                "KSR Launcher Update Ready", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (restart != MessageBoxResult.Yes) return;
+            if (!LauncherSelfUpdateCoordinator.TrySchedule(downloaded))
+            {
+                MessageBox.Show(
+                    $"The update was downloaded but cannot replace this development launcher automatically.\n\nFile: {downloaded}",
+                    "KSR Launcher Update", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            Application.Current.Shutdown();
+        }
+        catch
+        {
+            LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
+            LauncherVersionText.Text = $"LAUNCHER  ·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}";
+        }
     }
 
     private void PlayerTab_Click(object sender, RoutedEventArgs e)
