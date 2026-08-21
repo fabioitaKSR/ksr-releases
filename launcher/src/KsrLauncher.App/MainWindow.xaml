@@ -115,6 +115,8 @@
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="KSR USERNAME" Style="{StaticResource SmallLabel}" />
                         <TextBox x:Name="LoginUsernameTextBox" MinWidth="115" Margin="0,5,0,0" />
+                        <CheckBox x:Name="RememberMeCheckBox" Content="REMEMBER ME" FontSize="10"
+                                  Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0" />
                     </StackPanel>
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
                         <Grid>
@@ -318,28 +320,50 @@
                 <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="1.3*" /><ColumnDefinition Width="24" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
 
-                    <StackPanel>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
                         <TextBlock Text="CREATE A RACE" Style="{StaticResource SectionTitle}" />
-                        <TextBlock Text="Prepare a Career save in KSP, then select it here as the official campaign starting point."
+                        <TextBlock Grid.Row="1" Text="Prepare a Career save in KSP, then select it here as the official campaign starting point."
                                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,6,0,18" />
 
-                        <TextBlock Text="CAMPAIGN NAME" Style="{StaticResource SmallLabel}" />
-                        <TextBox x:Name="CampaignNameTextBox" Margin="0,6,0,16" MaxLength="80" TextChanged="CampaignCreationInput_Changed" />
+                        <StackPanel Grid.Row="2">
+                            <TextBlock Text="CAMPAIGN NAME" Style="{StaticResource SmallLabel}" />
+                            <TextBox x:Name="CampaignNameTextBox" Margin="0,6,0,16" MaxLength="80" TextChanged="CampaignCreationInput_Changed" />
+                        </StackPanel>
 
-                        <TextBlock Text="REFERENCE CAREER SAVE" Style="{StaticResource SmallLabel}" />
-                        <Grid Margin="0,6,0,0">
+                        <StackPanel Grid.Row="3">
+                            <TextBlock Text="REFERENCE CAREER SAVE" Style="{StaticResource SmallLabel}" />
+                            <Grid Margin="0,6,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="12" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <TextBox x:Name="ReferenceSavePathTextBox" IsReadOnly="True" Text="No save selected" Foreground="{StaticResource MutedBrush}" />
                             <Button Grid.Column="2" Content="BROWSE SAVE" Style="{StaticResource GhostButton}" MinWidth="145"
                                     Click="BrowseReferenceSave_Click" />
+                            </Grid>
+                        </StackPanel>
+
+                        <Grid Grid.Row="4" Margin="0,15,0,6">
+                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBlock Text="IGNORED GAMEDATA FOLDERS — ONE NAME PER LINE" Style="{StaticResource SmallLabel}" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Width="20" Height="20" CornerRadius="10" Margin="8,0,0,0"
+                                    Background="#FF20262A" BorderBrush="#FF777B7E" BorderThickness="1"
+                                    ToolTip="Enter the exact name of each folder located directly inside GameData, one per line. The launcher completely ignores those folders and all of their contents when checking this campaign. Do not enter paths or wildcards.">
+                                <TextBlock Text="?" Foreground="{StaticResource OrangeBrush}" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
                         </Grid>
+                        <TextBox x:Name="IgnoredGameDataFoldersTextBox" Grid.Row="5" MinHeight="130" AcceptsReturn="True"
+                                 VerticalAlignment="Stretch" VerticalScrollBarVisibility="Auto"
+                                 TextChanged="CampaignCreationInput_Changed" />
 
-                        <TextBlock Text="IGNORED GAMEDATA FOLDERS — ONE NAME PER LINE" Style="{StaticResource SmallLabel}" Margin="0,15,0,0" />
-                        <TextBox x:Name="IgnoredGameDataFoldersTextBox" Height="58" AcceptsReturn="True"
-                                 VerticalScrollBarVisibility="Auto" Margin="0,6,0,0" TextChanged="CampaignCreationInput_Changed"
-                                 ToolTip="Enter exact direct folder names from GameData. Their complete contents will be ignored during campaign checks." />
-
-                        <Border Background="#CC101518" BorderBrush="#FF3B3E40" BorderThickness="1" CornerRadius="5" Padding="14" Margin="0,14,0,0">
+                        <Border Grid.Row="6" Background="#CC101518" BorderBrush="#FF3B3E40" BorderThickness="1" CornerRadius="5" Padding="14" Margin="0,14,0,0">
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="14" /><ColumnDefinition /></Grid.ColumnDefinitions>
                                 <TextBlock Text="KSP INSTALLATION" Style="{StaticResource SmallLabel}" VerticalAlignment="Center" />
@@ -347,7 +371,7 @@
                                            Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                             </Grid>
                         </Border>
-                    </StackPanel>
+                    </Grid>
 
                     <Border Grid.Column="2" Background="#D90B0F12" BorderBrush="#FF3B3E40" BorderThickness="1" CornerRadius="6" Padding="20">
                         <Grid>

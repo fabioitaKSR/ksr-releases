@@ -113,6 +113,30 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             new { username = username.Trim(), password },
             ManifestService.JsonOptions,
             cancellationToken);
+        return await ReadLoginSessionAsync(response, cancellationToken);
+    }
+
+    public async Task<KsrLoginSession> RefreshAsync(
+        string serverUrl,
+        string refreshToken,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(refreshToken))
+            throw new ArgumentException("A refresh token is required.");
+
+        using var response = await _httpClient.PostAsJsonAsync(
+            new Uri(baseUri, "/api/v1/auth/refresh"),
+            new { refreshToken },
+            ManifestService.JsonOptions,
+            cancellationToken);
+        return await ReadLoginSessionAsync(response, cancellationToken);
+    }
+
+    private static async Task<KsrLoginSession> ReadLoginSessionAsync(
+        HttpResponseMessage response,
+        CancellationToken cancellationToken)
+    {
         using var document = await ReadResponseAsync(response, cancellationToken);
         var root = Unwrap(document.RootElement);
         var userElement = RequiredObject(root, "user");

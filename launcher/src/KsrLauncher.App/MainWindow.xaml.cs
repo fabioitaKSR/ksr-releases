@@ -17,19 +17,37 @@ public partial class MainWindow : Window
     private readonly KsrPlatformClient _platformClient = new();
     private readonly Dictionary<string, CampaignBaselinePackage> _localBaselines = new(StringComparer.OrdinalIgnoreCase);
     private CampaignComplianceResult? _lastCompliance;
+    private RememberedSession? _rememberedSession;
 
     public MainWindow()
     {
         InitializeComponent();
         CampaignsList.ItemsSource = _campaigns;
         LauncherSession.ServerUrl = LauncherSettingsStore.LoadServerUrl() ?? LauncherSession.ServerUrl;
+        try
+        {
+            _rememberedSession = LauncherCredentialStore.Load();
+            if (_rememberedSession is not null)
+            {
+                LoginUsernameTextBox.Text = _rememberedSession.Username;
+                RememberMeCheckBox.IsChecked = true;
+            }
+        }
+        catch
+        {
+            _rememberedSession = null;
+        }
         _kspRoot = Environment.GetEnvironmentVariable("KSR_KSP_ROOT");
         UpdateSessionVisuals();
         RefreshCampaignState();
         Loaded += MainWindow_Loaded;
     }
 
-    private async void MainWindow_Loaded(object sender, RoutedEventArgs e) => await RefreshServerStatusAsync();
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        await RefreshServerStatusAsync();
+        await TryRestoreSessionAsync();
+    }
 
     private void PlayerTab_Click(object sender, RoutedEventArgs e)
     {
@@ -353,21 +371,18 @@ public partial class MainWindow : Window
                 LauncherSession.ServerUrl,
                 username,
                 LoginPasswordBox.Password);
-            LauncherSession.Username = session.User.Username;
-            LauncherSession.AccessToken = session.AccessToken;
-            LauncherSession.RefreshToken = session.RefreshToken;
-            LauncherSession.AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(session.ExpiresIn);
             LoginPasswordBox.Clear();
-
-            var campaigns = await _platformClient.GetCampaignsAsync(LauncherSession.ServerUrl, session.AccessToken);
-            ReplaceCampaigns(campaigns.Select(campaign => new CampaignListItem(
-                campaign.CampaignCode,
-                campaign.Name,
-                campaign.Role.ToUpperInvariant(),
-                campaign.NationId ?? "NOT SELECTED",
-                campaign.Status.ToUpperInvariant(),
-                !string.IsNullOrWhiteSpace(campaign.MasterSaveSha256))));
-            UpdateSessionVisuals();
+            await ApplySessionAsync(session);
+            if (RememberMeCheckBox.IsChecked == true)
+            {
+                _rememberedSession = new RememberedSession(session.User.Username, LauncherSession.ServerUrl, session.RefreshToken);
+                LauncherCredentialStore.Save(_rememberedSession);
+            }
+            else
+            {
+                _rememberedSession = null;
+                LauncherCredentialStore.Clear();
+            }
         }
         catch (KsrApiException exception)
         {
@@ -387,12 +402,78 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SetLoginBusy(bool busy)
+    private async Task TryRestoreSessionAsync()
+    {
+        if (_rememberedSession is null ||
+            string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) ||
+            !string.Equals(_rememberedSession.ServerUrl.TrimEnd('/'), LauncherSession.ServerUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+            return;
+
+        HideAuthFeedback();
+        SetLoginBusy(true, "RESTORING…");
+        try
+        {
+            KsrLoginSession session;
+            try
+            {
+                session = await _platformClient.RefreshAsync(LauncherSession.ServerUrl, _rememberedSession.RefreshToken);
+            }
+            catch (KsrApiException exception)
+            {
+                _rememberedSession = null;
+                RememberMeCheckBox.IsChecked = false;
+                TryClearRememberedSession();
+                ShowAuthFeedback(exception.StatusCode == 401
+                    ? "Your saved session has expired. Sign in again."
+                    : ApiErrorMessages.ForAuthentication(exception));
+                return;
+            }
+
+            // The API rotates refresh tokens: replace the old credential immediately.
+            _rememberedSession = new RememberedSession(session.User.Username, LauncherSession.ServerUrl, session.RefreshToken);
+            LauncherCredentialStore.Save(_rememberedSession);
+            await ApplySessionAsync(session);
+        }
+        catch (HttpRequestException)
+        {
+            ShowAuthFeedback("Your saved session could not be restored because the KSR server is unreachable.");
+        }
+        catch (Exception exception)
+        {
+            ShowAuthFeedback($"Your saved session could not be restored: {exception.Message}");
+        }
+        finally
+        {
+            SetLoginBusy(false);
+        }
+    }
+
+    private async Task ApplySessionAsync(KsrLoginSession session)
+    {
+        var serverUrl = LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server has not been configured.");
+        var campaigns = await _platformClient.GetCampaignsAsync(serverUrl, session.AccessToken);
+        LauncherSession.Username = session.User.Username;
+        LauncherSession.AccessToken = session.AccessToken;
+        LauncherSession.RefreshToken = session.RefreshToken;
+        LauncherSession.AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(session.ExpiresIn);
+        ReplaceCampaigns(campaigns.Select(campaign => new CampaignListItem(
+            campaign.CampaignCode,
+            campaign.Name,
+            campaign.Role.ToUpperInvariant(),
+            campaign.NationId ?? "NOT SELECTED",
+            campaign.Status.ToUpperInvariant(),
+            !string.IsNullOrWhiteSpace(campaign.MasterSaveSha256))));
+        UpdateSessionVisuals();
+        await RefreshServerStatusAsync();
+    }
+
+    private void SetLoginBusy(bool busy, string busyText = "SIGNING IN…")
     {
         LoginUsernameTextBox.IsEnabled = !busy;
         LoginPasswordBox.IsEnabled = !busy;
+        RememberMeCheckBox.IsEnabled = !busy;
         SignInButton.IsEnabled = !busy;
-        SignInButton.Content = busy ? "SIGNING IN…" : "SIGN IN";
+        SignInButton.Content = busy ? busyText : "SIGN IN";
     }
 
     private void ShowAuthFeedback(string message)
@@ -409,6 +490,9 @@ public partial class MainWindow : Window
 
     private void SignOut_Click(object sender, RoutedEventArgs e)
     {
+        _rememberedSession = null;
+        RememberMeCheckBox.IsChecked = false;
+        TryClearRememberedSession();
         LauncherSession.AccessToken = null;
         LauncherSession.RefreshToken = null;
         LauncherSession.AccessTokenExpiresAtUtc = null;
@@ -417,6 +501,12 @@ public partial class MainWindow : Window
         LoginPasswordBox.Clear();
         HideAuthFeedback();
         UpdateSessionVisuals();
+    }
+
+    private static void TryClearRememberedSession()
+    {
+        try { LauncherCredentialStore.Clear(); }
+        catch { /* Signing out must still clear the in-memory session. */ }
     }
 
     private void CreateAccount_Click(object sender, RoutedEventArgs e)

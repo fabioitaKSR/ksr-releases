@@ -21,6 +21,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Support report requires a useful description", SupportDescriptionIsRequired),
     ("Support upload uses authenticated HTTPS endpoint", SupportUploadIsAuthenticated),
     ("Platform login parses V1 session", PlatformLoginParsesSession),
+    ("Platform refresh rotates remembered session", PlatformRefreshRotatesSession),
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
@@ -338,6 +339,27 @@ static async Task PlatformLoginParsesSession()
     Equal("refresh-1", session.RefreshToken);
     Equal("Fabio", session.User.Username);
     True(session.User.Id == 7, "The user ID was not parsed.");
+}
+
+static async Task PlatformRefreshRotatesSession()
+{
+    var requestChecked = false;
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://ksr.example/api/v1/auth/refresh", request.RequestUri!.ToString());
+        Equal("POST", request.Method.Method);
+        var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        using var document = JsonDocument.Parse(body);
+        Equal("refresh-old", document.RootElement.GetProperty("refreshToken").GetString()!);
+        requestChecked = true;
+        return "{\"accessToken\":\"access-new\",\"refreshToken\":\"refresh-new\",\"expiresIn\":1800,\"user\":{\"id\":7,\"username\":\"Fabio\"}}";
+    }));
+
+    var session = await new KsrPlatformClient(http).RefreshAsync("https://ksr.example", "refresh-old");
+    True(requestChecked, "The refresh endpoint was not called.");
+    Equal("access-new", session.AccessToken);
+    Equal("refresh-new", session.RefreshToken);
+    Equal("Fabio", session.User.Username);
 }
 
 static async Task PlatformCampaignsUseBearerSession()
