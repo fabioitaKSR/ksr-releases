@@ -346,7 +346,7 @@
                             <Grid Margin="0,6,0,0">
                             <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="12" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <TextBox x:Name="ReferenceSavePathTextBox" IsReadOnly="True" Text="No save selected" Foreground="{StaticResource MutedBrush}" />
-                            <Button Grid.Column="2" Content="BROWSE SAVE" Style="{StaticResource GhostButton}" MinWidth="145"
+                            <Button x:Name="BrowseReferenceSaveButton" Grid.Column="2" Content="BROWSE SAVE" Style="{StaticResource GhostButton}" MinWidth="145"
                                     Click="BrowseReferenceSave_Click" />
                             </Grid>
                         </StackPanel>

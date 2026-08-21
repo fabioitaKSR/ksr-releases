@@ -196,11 +196,12 @@ public partial class MainWindow : Window
     {
         if (!IsInitialized) return;
         var hasFolders = _ignoredGameDataFolders.Count > 0;
+        var campaignCreationAvailable = LauncherSession.IsAuthenticated && GetBlockingAdminCampaign() is null;
         IgnoredFoldersEmptyText.Visibility = hasFolders ? Visibility.Collapsed : Visibility.Visible;
-        SelectIgnoredFoldersButton.IsEnabled = _referenceSavePath is not null &&
+        SelectIgnoredFoldersButton.IsEnabled = campaignCreationAvailable && _referenceSavePath is not null &&
             !string.IsNullOrWhiteSpace(_kspRoot) && Directory.Exists(Path.Combine(_kspRoot, "GameData"));
-        RemoveIgnoredFoldersButton.IsEnabled = IgnoredGameDataFoldersList.SelectedItems.Count > 0;
-        ClearIgnoredFoldersButton.IsEnabled = hasFolders;
+        RemoveIgnoredFoldersButton.IsEnabled = campaignCreationAvailable && IgnoredGameDataFoldersList.SelectedItems.Count > 0;
+        ClearIgnoredFoldersButton.IsEnabled = campaignCreationAvailable && hasFolders;
     }
 
     private void CampaignCreationInput_Changed(object sender, TextChangedEventArgs e) => UpdateCreateRaceState();
@@ -208,14 +209,32 @@ public partial class MainWindow : Window
     private void UpdateCreateRaceState()
     {
         if (!IsInitialized) return;
-        CreateRaceButton.IsEnabled = LauncherSession.IsAuthenticated &&
+        var blockingCampaign = GetBlockingAdminCampaign();
+        var campaignCreationAvailable = LauncherSession.IsAuthenticated && blockingCampaign is null;
+        CampaignNameTextBox.IsEnabled = campaignCreationAvailable;
+        BrowseReferenceSaveButton.IsEnabled = campaignCreationAvailable;
+        CreateRaceButton.IsEnabled = campaignCreationAvailable &&
             !string.IsNullOrWhiteSpace(_referenceSavePath) &&
             !string.IsNullOrWhiteSpace(CampaignNameTextBox.Text);
+        RefreshIgnoredFolderControls();
+        if (blockingCampaign is not null)
+        {
+            CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+            CampaignCreationStatusText.Text =
+                $"You already administer {blockingCampaign.Name} ({blockingCampaign.CampaignCode}). Close that campaign before creating another one.";
+        }
     }
+
+    private CampaignListItem? GetBlockingAdminCampaign() =>
+        _campaigns.FirstOrDefault(campaign => CampaignRules.BlocksNewAdminCampaign(campaign.Role, campaign.Status));
 
     private async void CreateRace_Click(object sender, RoutedEventArgs e)
     {
-        if (_referenceSavePath is null) return;
+        if (_referenceSavePath is null || GetBlockingAdminCampaign() is not null)
+        {
+            UpdateCreateRaceState();
+            return;
+        }
         CreateRaceButton.IsEnabled = false;
         CampaignNameTextBox.IsEnabled = false;
         CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
@@ -352,6 +371,7 @@ public partial class MainWindow : Window
         EmptyCampaignsPanel.Visibility = _campaigns.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         CampaignsList.Visibility = _campaigns.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (_campaigns.Count == 0) ApplyCampaignSelection(null);
+        UpdateCreateRaceState();
     }
 
     private void SendLog_Click(object sender, RoutedEventArgs e)

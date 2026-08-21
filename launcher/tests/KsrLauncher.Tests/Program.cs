@@ -27,6 +27,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
     ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract),
     ("Platform authentication preserves server error code", PlatformAuthenticationPreservesErrorCode),
+    ("Only one non-terminal admin campaign is allowed", OnlyOneAdminCampaignIsAllowed),
     ("Campaign baseline packages Career save safely", CampaignBaselinePackagesCareerSaveSafely),
     ("Campaign baseline reports GameData scanner activity", CampaignBaselineReportsScannerActivity),
     ("Campaign creation accepts Career and Science but rejects Sandbox", CampaignCreationAcceptsCareerAndScienceOnly),
@@ -460,6 +461,17 @@ static async Task PlatformAuthenticationPreservesErrorCode()
         Equal("email_not_verified", exception.Code!);
         True(exception.StatusCode == 401, "The authentication HTTP status was not preserved.");
     }
+}
+
+static Task OnlyOneAdminCampaignIsAllowed()
+{
+    True(CampaignRules.BlocksNewAdminCampaign("admin", "active"), "An active admin campaign must block creation.");
+    True(CampaignRules.BlocksNewAdminCampaign("ADMIN", "DRAFT"), "A local admin draft must block creation.");
+    True(CampaignRules.BlocksNewAdminCampaign("ADMIN", null), "An unknown admin campaign status must fail closed.");
+    False(CampaignRules.BlocksNewAdminCampaign("player", "active"), "Player membership must not block admin creation.");
+    foreach (var status in new[] { "closed", "completed", "cancelled", "archived", "ended" })
+        False(CampaignRules.BlocksNewAdminCampaign("admin", status), $"Terminal status {status} must allow a new campaign.");
+    return Task.CompletedTask;
 }
 
 static async Task CampaignBaselinePackagesCareerSaveSafely()
