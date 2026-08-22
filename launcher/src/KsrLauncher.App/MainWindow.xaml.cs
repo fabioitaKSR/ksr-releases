@@ -23,14 +23,13 @@ public partial class MainWindow : Window
     private bool _campaignUploadInProgress;
     private static readonly string[] LaunchAndLogsComponentIds =
     [
-        "ksr-core", "nation-selector", "contract-pack", "parameter-logger",
+        "ksr-core", "nation-selector", "parameter-logger",
         "achievements", "click-through-blocker", "toolbar-controller", "spacetux-library"
     ];
     private static readonly string[] LaunchAndLogsRequiredFiles =
     [
         "GameData/KerbalSpaceRace/Plugins/KSRRemoteLogger.dll",
         "GameData/KerbalSpaceRaceNationSelector/Plugins/KerbalSpaceRace.NationSelector.dll",
-        "GameData/ContractPacks/KerbalSpaceRace/KerbalSpaceRace_Group.cfg",
         "GameData/KSRParameterLogger/Plugins/KSRParameterLogger.dll",
         "GameData/Achievements/Plugins/Achievements.dll",
         "GameData/000_ClickThroughBlocker/Plugins/ClickThroughBlocker.dll",
