@@ -849,6 +849,33 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void DismissClosedCampaign_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.DataContext is not CampaignListItem campaign ||
+            !campaign.Status.Equals("CLOSED", StringComparison.OrdinalIgnoreCase)) return;
+        var confirmed = MessageBox.Show(
+            $"Remove '{campaign.Name}' from your campaign list?\n\nRace results and history will be preserved.",
+            "Remove Closed Campaign", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirmed != MessageBoxResult.Yes) return;
+        try
+        {
+            button.IsEnabled = false;
+            button.Content = "REMOVING…";
+            await _platformClient.DismissClosedCampaignAsync(
+                LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured."),
+                LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in before removing a campaign."),
+                campaign.CampaignCode);
+            _campaigns.Remove(campaign);
+            RefreshCampaignState();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(exception.Message, "Remove Closed Campaign", MessageBoxButton.OK, MessageBoxImage.Warning);
+            button.IsEnabled = true;
+            button.Content = "REMOVE";
+        }
+    }
+
     private void ApplyCampaignSelection(CampaignListItem? campaign)
     {
         LauncherSession.CampaignCode = campaign?.CampaignCode;
@@ -933,7 +960,7 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
-    private void LaunchKsp_Click(object sender, RoutedEventArgs e)
+    private async void LaunchKsp_Click(object sender, RoutedEventArgs e)
     {
         if (CampaignsList.SelectedItem is CampaignListItem campaign &&
             _localBaselines.ContainsKey(campaign.CampaignCode) && _lastCompliance?.ReadyToLaunch != true)
@@ -943,6 +970,23 @@ public partial class MainWindow : Window
             return;
         }
         if (!EnsureKspRoot()) return;
+        if (CampaignsList.SelectedItem is CampaignListItem selectedCampaign)
+        {
+            try
+            {
+                var ticket = await _platformClient.GetGameTicketAsync(
+                    LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured."),
+                    LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in before launching a campaign."),
+                    selectedCampaign.CampaignCode);
+                GameLoggerConfiguration.Write(_kspRoot!, LauncherSession.ServerUrl!, selectedCampaign.CampaignCode, ticket.Token);
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show($"KSP was not launched because the campaign logger could not be configured.\n\n{exception.Message}",
+                    "KSR Game Logger", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+        }
         var executable = Path.Combine(_kspRoot!, "KSP_x64.exe");
         Process.Start(new ProcessStartInfo(executable) { WorkingDirectory = _kspRoot!, UseShellExecute = true });
     }
@@ -1002,7 +1046,7 @@ public partial class MainWindow : Window
 
             var savesRoot = Path.Combine(_kspRoot!, "saves");
             Directory.CreateDirectory(savesRoot);
-            var installedSave = Path.Combine(savesRoot, $"{campaign.CampaignCode} Start");
+            var installedSave = Path.Combine(savesRoot, CampaignSaveNaming.CreateStartFolderName(campaign.Name));
             if (!Directory.Exists(installedSave))
             {
                 temporarySave = Path.Combine(savesRoot, $".ksr-install-{Guid.NewGuid():N}");

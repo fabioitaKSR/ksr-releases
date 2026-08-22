@@ -28,6 +28,8 @@ public sealed record KsrCampaign(
     int? BaselineSchemaVersion = null,
     string? BaselineSha256 = null);
 
+public sealed record KsrGameTicket(string Token, string CampaignCode, int ExpiresIn, double? ExpiresAt);
+
 public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 {
     public const string ProductionServerUrl = "https://play.kerbalspacerace.net";
@@ -165,6 +167,26 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             ? root
             : RequiredArray(Unwrap(root), "campaigns");
         return campaigns.EnumerateArray().Select(ReadCampaign).ToList();
+    }
+
+    public async Task<KsrGameTicket> GetGameTicketAsync(
+        string serverUrl,
+        string accessToken,
+        string campaignCode,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(campaignCode)) throw new ArgumentException("A campaign code is required.");
+        using var request = AuthorizedRequest(HttpMethod.Post, new Uri(baseUri, "/api/v1/auth/game-ticket"), accessToken);
+        request.Content = JsonContent.Create(new { campaignCode = campaignCode.Trim() }, options: ManifestService.JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var root = Unwrap(document.RootElement);
+        return new KsrGameTicket(
+            RequiredString(root, "gameTicket"),
+            OptionalString(root, "campaignCode") ?? campaignCode.Trim(),
+            OptionalInt32(root, "expiresIn") ?? 43200,
+            root.TryGetProperty("expiresAt", out var expiresAt) && expiresAt.TryGetDouble(out var value) ? value : null);
     }
 
     public async Task<KsrCampaign> CreateCampaignAsync(
@@ -358,6 +380,25 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         var root = Unwrap(document.RootElement);
         if (root.TryGetProperty("ok", out var ok) && ok.ValueKind == JsonValueKind.False)
             throw new InvalidDataException("The KSR server did not close the campaign.");
+    }
+
+    public async Task DismissClosedCampaignAsync(
+        string serverUrl,
+        string accessToken,
+        string campaignCode,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(campaignCode)) throw new ArgumentException("A campaign code is required.");
+        using var request = AuthorizedRequest(
+            HttpMethod.Post,
+            new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(campaignCode.Trim())}/dismiss"),
+            accessToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var root = Unwrap(document.RootElement);
+        if (root.TryGetProperty("dismissed", out var dismissed) && dismissed.ValueKind == JsonValueKind.False)
+            throw new InvalidDataException("The KSR server did not remove the closed campaign from your list.");
     }
 
     private static KsrCampaign ReadCampaign(JsonElement item) => new(

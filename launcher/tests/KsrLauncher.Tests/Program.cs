@@ -24,10 +24,13 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform login parses V1 session", PlatformLoginParsesSession),
     ("Platform refresh rotates remembered session", PlatformRefreshRotatesSession),
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
+    ("Platform game ticket is campaign scoped", PlatformGameTicketIsCampaignScoped),
     ("Platform campaign creation uploads baseline idempotently", PlatformCampaignCreationIsMultipartAndIdempotent),
     ("Platform joins campaign through authenticated endpoint", PlatformJoinCampaignIsAuthenticated),
     ("Platform downloads and verifies campaign artifacts", PlatformDownloadsVerifiedCampaignArtifacts),
     ("Platform closes campaign through authenticated endpoint", PlatformCloseCampaignIsAuthenticated),
+    ("Platform dismisses closed campaign through authenticated endpoint", PlatformDismissClosedCampaignIsAuthenticated),
+    ("Campaign start save uses stable KSRstart naming", CampaignStartSaveUsesStableNaming),
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
     ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract),
@@ -407,6 +410,44 @@ static async Task PlatformCloseCampaignIsAuthenticated()
     await new KsrPlatformClient(http).CloseCampaignAsync(
         "https://ksr.example", "access-1", "KSR-20260821-ABC");
     True(requestChecked, "The campaign close endpoint was not called.");
+}
+
+static async Task PlatformGameTicketIsCampaignScoped()
+{
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://ksr.example/api/v1/auth/game-ticket", request.RequestUri!.ToString());
+        Equal("Bearer", request.Headers.Authorization?.Scheme);
+        var body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+        True(body.Contains("KSR-20260822-ABC", StringComparison.Ordinal), "Campaign code was not sent with the ticket request.");
+        return "{\"gameTicket\":\"game-1\",\"campaignCode\":\"KSR-20260822-ABC\",\"expiresIn\":43200}";
+    }));
+    var ticket = await new KsrPlatformClient(http).GetGameTicketAsync(
+        "https://ksr.example", "access-1", "KSR-20260822-ABC");
+    Equal("game-1", ticket.Token);
+    Equal("KSR-20260822-ABC", ticket.CampaignCode);
+}
+
+static async Task PlatformDismissClosedCampaignIsAuthenticated()
+{
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("POST", request.Method.Method);
+        Equal("https://ksr.example/api/v1/campaigns/KSR-20260821-ABC/dismiss", request.RequestUri!.ToString());
+        Equal("Bearer", request.Headers.Authorization?.Scheme);
+        Equal("access-1", request.Headers.Authorization?.Parameter);
+        return "{\"ok\":true,\"dismissed\":true}";
+    }));
+    await new KsrPlatformClient(http).DismissClosedCampaignAsync(
+        "https://ksr.example", "access-1", "KSR-20260821-ABC");
+}
+
+static Task CampaignStartSaveUsesStableNaming()
+{
+    Equal("KSRstart-Race to Duna", CampaignSaveNaming.CreateStartFolderName("Race to Duna"));
+    True(CampaignSaveNaming.IsStartFolder("KSRstart-Race to Duna"), "KSRstart prefix was not recognized.");
+    True(!CampaignSaveNaming.IsStartFolder("KSRstarter-Race"), "An unrelated prefix was accepted.");
+    return Task.CompletedTask;
 }
 
 static async Task PlatformJoinCampaignIsAuthenticated()
