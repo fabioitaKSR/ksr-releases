@@ -3,7 +3,7 @@
   "product": "KerbalSpaceRace",
   "version": "1.0.0",
   "channel": "stable",
-  "minimumLauncherVersion": "1.0.0",
+  "minimumLauncherVersion": "0.1.5",
   "components": [
     {
       "id": "ksr-core",

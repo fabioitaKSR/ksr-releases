@@ -411,7 +411,7 @@ try {
         product = 'KerbalSpaceRace'
         version = $Version
         channel = $Channel
-        minimumLauncherVersion = '1.0.0'
+        minimumLauncherVersion = '0.1.5'
         components = $manifestComponents
         preserve = @(
             'GameData/KerbalSpaceRace/PluginData/**',
