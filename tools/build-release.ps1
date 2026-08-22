@@ -244,6 +244,58 @@ $definitions = @(
         RequiredPaths = @('Plugins/KSRParameterLogger.dll')
     },
     @{
+        Id = 'achievements'
+        AssetPrefix = 'KSP-Achievements'
+        SourceRoot = Join-Path $gameDataRoot 'Achievements'
+        PackageRoot = 'GameData/Achievements'
+        Target = 'GameData/Achievements'
+        TargetKind = 'ksp'
+        ExplicitOnly = $false
+        ExplicitFiles = @()
+        ExcludePrefixes = @()
+        AllowedTopEntries = @()
+        RequiredPaths = @('Plugins/Achievements.dll', 'Achievements.version', 'LICENSE.txt')
+    },
+    @{
+        Id = 'click-through-blocker'
+        AssetPrefix = 'KSP-ClickThroughBlocker'
+        SourceRoot = Join-Path $gameDataRoot '000_ClickThroughBlocker'
+        PackageRoot = 'GameData/000_ClickThroughBlocker'
+        Target = 'GameData/000_ClickThroughBlocker'
+        TargetKind = 'ksp'
+        ExplicitOnly = $false
+        ExplicitFiles = @()
+        ExcludePrefixes = @()
+        AllowedTopEntries = @()
+        RequiredPaths = @('Plugins/ClickThroughBlocker.dll')
+    },
+    @{
+        Id = 'toolbar-controller'
+        AssetPrefix = 'KSP-ToolbarController'
+        SourceRoot = Join-Path $gameDataRoot '001_ToolbarControl'
+        PackageRoot = 'GameData/001_ToolbarControl'
+        Target = 'GameData/001_ToolbarControl'
+        TargetKind = 'ksp'
+        ExplicitOnly = $false
+        ExplicitFiles = @()
+        ExcludePrefixes = @()
+        AllowedTopEntries = @()
+        RequiredPaths = @('Plugins/ToolbarControl.dll')
+    },
+    @{
+        Id = 'spacetux-library'
+        AssetPrefix = 'KSP-SpaceTuxLibrary'
+        SourceRoot = Join-Path $gameDataRoot 'SpaceTuxLibrary'
+        PackageRoot = 'GameData/SpaceTuxLibrary'
+        Target = 'GameData/SpaceTuxLibrary'
+        TargetKind = 'ksp'
+        ExplicitOnly = $false
+        ExplicitFiles = @()
+        ExcludePrefixes = @()
+        AllowedTopEntries = @()
+        RequiredPaths = @('Plugins/SpaceTuxUtility.dll')
+    },
+    @{
         Id = 'disable-dbs-ui'
         AssetPrefix = 'KSR-DisableDBSUI'
         SourceRoot = Join-Path $gameDataRoot 'KSRDisableDBSUI'
@@ -396,6 +448,7 @@ try {
             source = $definition.PackageRoot
             target = $definition.Target
             required = $true
+            requiredFiles = @($definition.RequiredPaths)
         }
         if ($definition.TargetKind -ne 'ksp') {
             $componentManifest.targetKind = $definition.TargetKind
@@ -411,13 +464,17 @@ try {
         product = 'KerbalSpaceRace'
         version = $Version
         channel = $Channel
-        minimumLauncherVersion = '0.1.5'
+        minimumLauncherVersion = '0.1.6'
         components = $manifestComponents
         preserve = @(
             'GameData/KerbalSpaceRace/PluginData/**',
             'GameData/KerbalSpaceRaceNationSelector/PluginData/**',
             'GameData/KerbalSpaceRaceNationSelector/Patches/Generated/**',
             'GameData/KSRParameterLogger/PluginData/**',
+            'GameData/Achievements/PluginData/**',
+            'GameData/000_ClickThroughBlocker/PluginData/**',
+            'GameData/001_ToolbarControl/PluginData/**',
+            'GameData/SpaceTuxLibrary/PluginData/**',
             'LauncherData/RemoteLoggerServer/remote_logger.sqlite3',
             'LauncherData/RemoteLoggerServer/remote_logger_paths.json',
             'LauncherData/RemoteLoggerServer/*.cfg',

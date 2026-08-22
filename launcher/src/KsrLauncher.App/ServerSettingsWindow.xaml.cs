@@ -47,23 +47,52 @@ internal static class LauncherSettingsStore
 
     public static string? LoadServerUrl()
     {
-        try
-        {
-            if (!File.Exists(SettingsPath)) return null;
-            var settings = JsonSerializer.Deserialize<LauncherSettings>(File.ReadAllText(SettingsPath));
-            return string.IsNullOrWhiteSpace(settings?.ServerUrl) ? null : settings.ServerUrl;
-        }
-        catch (JsonException) { return null; }
-        catch (IOException) { return null; }
+        var settings = Load();
+        return string.IsNullOrWhiteSpace(settings.ServerUrl) ? null : settings.ServerUrl;
     }
 
     public static void SaveServerUrl(string serverUrl)
     {
+        var settings = Load();
+        settings.ServerUrl = serverUrl;
+        Save(settings);
+    }
+
+    public static string? LoadKspRoot()
+    {
+        var settings = Load();
+        return string.IsNullOrWhiteSpace(settings.KspRoot) ? null : settings.KspRoot;
+    }
+
+    public static void SaveKspRoot(string kspRoot)
+    {
+        var settings = Load();
+        settings.KspRoot = Path.GetFullPath(kspRoot);
+        Save(settings);
+    }
+
+    private static LauncherSettings Load()
+    {
+        try
+        {
+            if (!File.Exists(SettingsPath)) return new LauncherSettings();
+            return JsonSerializer.Deserialize<LauncherSettings>(File.ReadAllText(SettingsPath)) ?? new LauncherSettings();
+        }
+        catch (JsonException) { return new LauncherSettings(); }
+        catch (IOException) { return new LauncherSettings(); }
+    }
+
+    private static void Save(LauncherSettings settings)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
         var temporary = SettingsPath + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(new LauncherSettings(serverUrl), new JsonSerializerOptions { WriteIndented = true }));
+        File.WriteAllText(temporary, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
         File.Move(temporary, SettingsPath, true);
     }
 
-    private sealed record LauncherSettings(string ServerUrl);
+    private sealed class LauncherSettings
+    {
+        public string? ServerUrl { get; set; }
+        public string? KspRoot { get; set; }
+    }
 }

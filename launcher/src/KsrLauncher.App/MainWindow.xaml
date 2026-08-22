@@ -61,7 +61,7 @@
                     <TextBlock Text="KSR" Foreground="{StaticResource OrangeBrush}" FontSize="42" FontWeight="Black" />
                     <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="KERBAL SPACE RACE" FontSize="11" FontWeight="Bold" />
-                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER  ·  v0.1.5"
+                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER  ·  v0.1.6"
                                    Style="{StaticResource SmallLabel}" FontSize="10" Margin="0,3,0,0" />
                     </StackPanel>
                 </StackPanel>
@@ -336,7 +336,63 @@
 
         <!-- Admin area -->
         <Grid x:Name="AdminArea" Grid.Row="3" Margin="18,16,18,10" Visibility="Collapsed">
-            <Border Style="{StaticResource Card}">
+            <Border x:Name="LaunchAndLogsSetupPanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*" /><ColumnDefinition Width="24" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="LAUNCH &amp; LOGS SETUP" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="Install the official KSR race tools before creating a campaign. Select your Kerbal Space Program folder; the launcher will install only the required GameData folders and preserve user settings."
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,20" />
+                        <TextBlock Text="KERBAL SPACE PROGRAM FOLDER" Style="{StaticResource SmallLabel}" />
+                        <Grid Margin="0,7,0,18">
+                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="12" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBox x:Name="LaunchAndLogsKspPathTextBox" IsReadOnly="True" Text="No KSP folder selected" Foreground="{StaticResource MutedBrush}" />
+                            <Button Grid.Column="2" Content="SELECT KSP FOLDER" Style="{StaticResource GhostButton}" MinWidth="170" Click="SelectLaunchAndLogsKspFolder_Click" />
+                        </Grid>
+
+                        <Border Background="#CC101518" BorderBrush="#FF3B3E40" BorderThickness="1" CornerRadius="5" Padding="16">
+                            <StackPanel>
+                                <TextBlock Text="KSR COMPONENTS" Foreground="{StaticResource OrangeBrush}" FontSize="16" FontWeight="Bold" />
+                                <TextBlock Text="KSR Core + Remote Logger — securely sends race events to the campaign server." TextWrapping="Wrap" Margin="0,10,0,4" />
+                                <TextBlock Text="Parameter Logger — records contracts, parameters and individual achievements." TextWrapping="Wrap" Margin="0,0,0,4" />
+                                <TextBlock Text="Nation Selector — assigns the player's nation and applies campaign identity." TextWrapping="Wrap" Margin="0,0,0,4" />
+                                <TextBlock Text="KSR Contract Pack — official race objectives and contract scoring tables." TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="Approximate download: 355 MB  ·  Installed size: 455 MB"
+                                   Foreground="{StaticResource MutedBrush}" Margin="0,12,0,0" />
+                    </StackPanel>
+
+                    <Border Grid.Column="2" Background="#D90B0F12" BorderBrush="#FF3B3E40" BorderThickness="1" CornerRadius="6" Padding="20">
+                        <Grid>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="ACHIEVEMENTS &amp; DEPENDENCIES" Foreground="{StaticResource OrangeBrush}" FontSize="19" FontWeight="Bold" />
+                                <TextBlock Text="Achievements adds approximately 145 in-game milestones. KSR records each milestone and awards race points to the first three agencies that complete it."
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,7,0,12" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1">
+                                <Button Content="ACHIEVEMENTS 1.10.2  ·  GPLv3  ·  ~6.3 MB" Tag="https://forum.kerbalspaceprogram.com/topic/193073-112x-achievements-updated-dependencies-updated-11302020/" Click="OpenExternalReference_Click" HorizontalContentAlignment="Left" />
+                                <Button Content="CLICK THROUGH BLOCKER  ·  GPLv3  ·  ~0.2 MB" Tag="https://forum.kerbalspaceprogram.com/topic/170747-112x-click-through-blocker-new-dependency/" Click="OpenExternalReference_Click" HorizontalContentAlignment="Left" Margin="0,7,0,0" />
+                                <Button Content="TOOLBAR CONTROLLER  ·  ~0.2 MB" Tag="https://forum.kerbalspaceprogram.com/topic/169509-112x-toolbar-controller-for-modders/" Click="OpenExternalReference_Click" HorizontalContentAlignment="Left" Margin="0,7,0,0" />
+                                <Button Content="SPACETUX LIBRARY  ·  ~0.6 MB" Tag="https://github.com/linuxgurugamer/SpaceTuxLibrary/releases" Click="OpenExternalReference_Click" HorizontalContentAlignment="Left" Margin="0,7,0,0" />
+                                <TextBlock Text="External projects remain credited to their authors. Their original license and reference files are included unchanged."
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,12,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="3">
+                                <TextBlock x:Name="LaunchAndLogsStatusText" Text="Select the KSP folder to check the required components."
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,10" />
+                                <ProgressBar x:Name="LaunchAndLogsProgressBar" Height="8" Minimum="0" Maximum="1" Value="0"
+                                             Foreground="{StaticResource TerminalGreenBrush}" Background="#FF0A160B" Margin="0,0,0,12" />
+                                <Button x:Name="DownloadLaunchAndLogsButton" Content="DOWNLOAD LAUNCH &amp; LOGS" Style="{StaticResource PrimaryButton}"
+                                        IsEnabled="False" Click="DownloadLaunchAndLogs_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border x:Name="AdminCampaignPanel" Style="{StaticResource Card}">
                 <Grid>
                     <Grid.ColumnDefinitions><ColumnDefinition Width="1.3*" /><ColumnDefinition Width="24" /><ColumnDefinition Width="1*" /></Grid.ColumnDefinitions>
 

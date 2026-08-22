@@ -21,6 +21,22 @@ public partial class MainWindow : Window
     private RememberedSession? _rememberedSession;
     private bool _campaignCloseInProgress;
     private bool _campaignUploadInProgress;
+    private static readonly string[] LaunchAndLogsComponentIds =
+    [
+        "ksr-core", "nation-selector", "contract-pack", "parameter-logger",
+        "achievements", "click-through-blocker", "toolbar-controller", "spacetux-library"
+    ];
+    private static readonly string[] LaunchAndLogsRequiredFiles =
+    [
+        "GameData/KerbalSpaceRace/Plugins/KSRRemoteLogger.dll",
+        "GameData/KerbalSpaceRaceNationSelector/Plugins/KerbalSpaceRace.NationSelector.dll",
+        "GameData/ContractPacks/KerbalSpaceRace/KerbalSpaceRace_Group.cfg",
+        "GameData/KSRParameterLogger/Plugins/KSRParameterLogger.dll",
+        "GameData/Achievements/Plugins/Achievements.dll",
+        "GameData/000_ClickThroughBlocker/Plugins/ClickThroughBlocker.dll",
+        "GameData/001_ToolbarControl/Plugins/ToolbarControl.dll",
+        "GameData/SpaceTuxLibrary/Plugins/SpaceTuxUtility.dll"
+    ];
 
     public MainWindow()
     {
@@ -45,7 +61,7 @@ public partial class MainWindow : Window
         {
             _rememberedSession = null;
         }
-        _kspRoot = Environment.GetEnvironmentVariable("KSR_KSP_ROOT");
+        _kspRoot = Environment.GetEnvironmentVariable("KSR_KSP_ROOT") ?? LauncherSettingsStore.LoadKspRoot();
         UpdateSessionVisuals();
         RefreshCampaignState();
         RefreshIgnoredFolderControls();
@@ -109,7 +125,120 @@ public partial class MainWindow : Window
     {
         PlayerArea.Visibility = Visibility.Collapsed;
         AdminArea.Visibility = Visibility.Visible;
+        RefreshLaunchAndLogsSetupState();
         UpdateAreaTabVisuals(AdminTabButton, PlayerTabButton);
+    }
+
+    private void SelectLaunchAndLogsKspFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new OpenFolderDialog { Title = "Select the Kerbal Space Program folder", Multiselect = false };
+        if (!string.IsNullOrWhiteSpace(_kspRoot)) picker.InitialDirectory = _kspRoot;
+        if (picker.ShowDialog(this) != true) return;
+        if (!TrySetKspRoot(picker.FolderName, out var error))
+        {
+            MessageBox.Show(error, "Launch & Logs Setup", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        RefreshLaunchAndLogsSetupState();
+    }
+
+    private void OpenExternalReference_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string url } && Uri.TryCreate(url, UriKind.Absolute, out _))
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+    }
+
+    private async void DownloadLaunchAndLogs_Click(object sender, RoutedEventArgs e) =>
+        await InstallLaunchAndLogsAsync(false);
+
+    private void RefreshLaunchAndLogsSetupState()
+    {
+        var validRoot = IsValidKspRoot(_kspRoot);
+        LaunchAndLogsKspPathTextBox.Text = validRoot ? _kspRoot! : "No KSP folder selected";
+        LaunchAndLogsKspPathTextBox.Foreground = (System.Windows.Media.Brush)FindResource(validRoot ? "ForegroundBrush" : "MutedBrush");
+        var ready = validRoot && AreLaunchAndLogsInstalled(_kspRoot!);
+        LaunchAndLogsSetupPanel.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
+        AdminCampaignPanel.Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
+        DownloadLaunchAndLogsButton.IsEnabled = validRoot;
+        LaunchAndLogsStatusText.Text = !validRoot
+            ? "Select the KSP folder to check the required components."
+            : "Required components are missing. Download and verify Launch & Logs before creating a race.";
+        LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource(validRoot ? "OrangeBrush" : "MutedBrush");
+    }
+
+    private async Task<bool> InstallLaunchAndLogsAsync(bool automaticPlayerInstall)
+    {
+        if (!IsValidKspRoot(_kspRoot)) return false;
+        if (AreLaunchAndLogsInstalled(_kspRoot!))
+        {
+            RefreshLaunchAndLogsSetupState();
+            return true;
+        }
+
+        DownloadLaunchAndLogsButton.IsEnabled = false;
+        DownloadLaunchAndLogsButton.Content = "DOWNLOADING & VERIFYING…";
+        LaunchAndLogsProgressBar.IsIndeterminate = true;
+        LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+        LaunchAndLogsStatusText.Text = automaticPlayerInstall
+            ? "Installing the campaign's required Launch & Logs components…"
+            : "Downloading verified components from the official KSR release…";
+        try
+        {
+            var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            var selected = release.Manifest.Components
+                .Where(component => LaunchAndLogsComponentIds.Contains(component.Id, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            var missingDefinitions = LaunchAndLogsComponentIds
+                .Where(id => selected.All(component => !component.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
+                .ToArray();
+            if (missingDefinitions.Length > 0)
+                throw new InvalidDataException($"The official release is missing: {string.Join(", ", missingDefinitions)}.");
+            release.Manifest.Components = selected;
+            var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
+            await new UpdateEngine().RunAsync(
+                release.Manifest, new LauncherLocations(_kspRoot!, launcherData), release.AssetsBaseUrl,
+                true, UpdatePolicy.InstallOrRepair);
+            if (!AreLaunchAndLogsInstalled(_kspRoot!))
+                throw new InvalidDataException("Installation completed, but one or more required files are still missing.");
+            LaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY — all required components are installed and verified.";
+            LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+            RefreshLaunchAndLogsSetupState();
+            return true;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            LaunchAndLogsStatusText.Text = exception.Message;
+            LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            if (automaticPlayerInstall)
+                MessageBox.Show(exception.Message, "Launch & Logs Setup", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+        finally
+        {
+            LaunchAndLogsProgressBar.IsIndeterminate = false;
+            DownloadLaunchAndLogsButton.Content = "DOWNLOAD LAUNCH & LOGS";
+            DownloadLaunchAndLogsButton.IsEnabled = IsValidKspRoot(_kspRoot) && !AreLaunchAndLogsInstalled(_kspRoot!);
+        }
+    }
+
+    private static bool AreLaunchAndLogsInstalled(string kspRoot) =>
+        LaunchAndLogsRequiredFiles.All(path => File.Exists(Path.Combine(kspRoot, path.Replace('/', Path.DirectorySeparatorChar))));
+
+    private static bool IsValidKspRoot(string? root) =>
+        !string.IsNullOrWhiteSpace(root) && File.Exists(Path.Combine(root, "KSP_x64.exe")) && Directory.Exists(Path.Combine(root, "GameData"));
+
+    private bool TrySetKspRoot(string root, out string error)
+    {
+        var fullPath = Path.GetFullPath(root);
+        if (!IsValidKspRoot(fullPath))
+        {
+            error = "The selected folder must contain KSP_x64.exe and GameData.";
+            return false;
+        }
+        _kspRoot = fullPath;
+        LauncherSettingsStore.SaveKspRoot(fullPath);
+        error = string.Empty;
+        return true;
     }
 
     private void UpdateAreaTabVisuals(Button activeTab, Button inactiveTab)
@@ -154,6 +283,7 @@ public partial class MainWindow : Window
         var installationChanged = !string.Equals(_kspRoot, selection.KspRoot, StringComparison.OrdinalIgnoreCase);
         _referenceSavePath = selection.SavePath;
         _kspRoot = selection.KspRoot;
+        LauncherSettingsStore.SaveKspRoot(_kspRoot);
         if (installationChanged) _ignoredGameDataFolders.Clear();
         ReferenceSavePathTextBox.Text = _referenceSavePath;
         ReferenceSavePathTextBox.Foreground = (System.Windows.Media.Brush)FindResource("ForegroundBrush");
@@ -670,7 +800,8 @@ public partial class MainWindow : Window
             : "The campaign baseline has not been downloaded yet.";
         CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
         _lastCompliance = null;
-        LaunchKspButton.IsEnabled = !hasBaseline && !CampaignRules.IsTerminalStatus(campaign?.Status);
+        LaunchKspButton.IsEnabled = IsValidKspRoot(_kspRoot) && AreLaunchAndLogsInstalled(_kspRoot!) &&
+                                    !hasBaseline && !CampaignRules.IsTerminalStatus(campaign?.Status);
     }
 
     internal void ReplaceCampaigns(IEnumerable<CampaignListItem> campaigns)
@@ -769,6 +900,13 @@ public partial class MainWindow : Window
             return;
         }
         if (!EnsureKspRoot()) return;
+        if (!await InstallLaunchAndLogsAsync(true))
+        {
+            CampaignComplianceStatusText.Text = "Launch & Logs installation is required before downloading the campaign save.";
+            CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            LaunchKspButton.IsEnabled = false;
+            return;
+        }
 
         DownloadMasterSaveButton.IsEnabled = false;
         DownloadMasterSaveButton.Content = "DOWNLOADING…";
@@ -1165,15 +1303,14 @@ public partial class MainWindow : Window
 
     private bool EnsureKspRoot()
     {
-        if (!string.IsNullOrWhiteSpace(_kspRoot) && File.Exists(Path.Combine(_kspRoot, "KSP_x64.exe"))) return true;
+        if (IsValidKspRoot(_kspRoot)) return true;
         var picker = new OpenFolderDialog { Title = "Select the Kerbal Space Program folder", Multiselect = false };
         if (picker.ShowDialog(this) != true) return false;
-        if (!File.Exists(Path.Combine(picker.FolderName, "KSP_x64.exe")))
+        if (!TrySetKspRoot(picker.FolderName, out var error))
         {
-            MessageBox.Show("KSP_x64.exe was not found in the selected folder.", "KSR Platform", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(error, "KSR Platform", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
-        _kspRoot = picker.FolderName;
         return true;
     }
 }
