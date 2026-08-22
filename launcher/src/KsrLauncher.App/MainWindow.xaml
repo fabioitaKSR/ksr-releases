@@ -61,7 +61,7 @@
                     <TextBlock Text="KSR" Foreground="{StaticResource OrangeBrush}" FontSize="42" FontWeight="Black" />
                     <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="KERBAL SPACE RACE" FontSize="11" FontWeight="Bold" />
-                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER  ·  v0.1.8"
+                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER  ·  v0.1.9"
                                    Style="{StaticResource SmallLabel}" FontSize="10" Margin="0,3,0,0" />
                     </StackPanel>
                 </StackPanel>
@@ -311,6 +311,14 @@
                                 IsEnabled="False" Click="DownloadMasterSave_Click" />
                         <TextBlock x:Name="CampaignComplianceStatusText" Text="Campaign compliance has not been checked."
                                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,13,0,9" />
+                        <TextBlock x:Name="PlayerLaunchAndLogsStatusText" Text="Launch &amp; Logs installation has not been checked."
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,7" />
+                        <ProgressBar x:Name="PlayerLaunchAndLogsProgressBar" Height="8" Minimum="0" Maximum="100" Value="0"
+                                     Foreground="{StaticResource TerminalGreenBrush}" Background="#FF0A160B" Margin="0,0,0,8"
+                                     Visibility="Collapsed" />
+                        <Button x:Name="PlayerDownloadLaunchAndLogsButton" Content="DOWNLOAD LAUNCH &amp; LOGS"
+                                Style="{StaticResource PrimaryButton}" Margin="0,0,0,8"
+                                Click="PlayerDownloadLaunchAndLogs_Click" />
                         <Button x:Name="CheckInstallationButton" Content="CHECK INSTALLATION" IsEnabled="False"
                                 Click="CheckInstallation_Click" />
                         <Button x:Name="ViewIgnoredModsButton" Content="VIEW IGNORED MODS" IsEnabled="False"

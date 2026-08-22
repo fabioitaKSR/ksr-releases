@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private RememberedSession? _rememberedSession;
     private bool _campaignCloseInProgress;
     private bool _campaignUploadInProgress;
+    private bool _launchAndLogsInstallInProgress;
     private static readonly string[] LaunchAndLogsComponentIds =
     [
         "ksr-core", "nation-selector", "parameter-logger",
@@ -150,6 +151,13 @@ public partial class MainWindow : Window
     private async void DownloadLaunchAndLogs_Click(object sender, RoutedEventArgs e) =>
         await InstallLaunchAndLogsAsync(false);
 
+    private async void PlayerDownloadLaunchAndLogs_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureKspRoot()) return;
+        RefreshLaunchAndLogsSetupState();
+        await InstallLaunchAndLogsAsync(false);
+    }
+
     private void RefreshLaunchAndLogsSetupState()
     {
         var validRoot = IsValidKspRoot(_kspRoot);
@@ -158,11 +166,38 @@ public partial class MainWindow : Window
         var ready = validRoot && AreLaunchAndLogsInstalled(_kspRoot!);
         LaunchAndLogsSetupPanel.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
         AdminCampaignPanel.Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
-        DownloadLaunchAndLogsButton.IsEnabled = validRoot;
+        DownloadLaunchAndLogsButton.IsEnabled = validRoot && !_launchAndLogsInstallInProgress;
         LaunchAndLogsStatusText.Text = !validRoot
             ? "Select the KSP folder to check the required components."
-            : "Required components are missing. Download and verify Launch & Logs before creating a race.";
-        LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource(validRoot ? "OrangeBrush" : "MutedBrush");
+            : ready
+                ? "LAUNCH & LOGS READY — all required components are installed and verified."
+                : "Required components are missing. Download and verify Launch & Logs before creating a race.";
+        LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource(
+            ready ? "GreenBrush" : validRoot ? "OrangeBrush" : "MutedBrush");
+        RefreshPlayerLaunchAndLogsState();
+    }
+
+    private void RefreshPlayerLaunchAndLogsState()
+    {
+        var validRoot = IsValidKspRoot(_kspRoot);
+        var ready = validRoot && AreLaunchAndLogsInstalled(_kspRoot!);
+        PlayerDownloadLaunchAndLogsButton.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
+        PlayerDownloadLaunchAndLogsButton.IsEnabled = !_launchAndLogsInstallInProgress;
+        PlayerDownloadLaunchAndLogsButton.Content = _launchAndLogsInstallInProgress
+            ? "DOWNLOADING & VERIFYING…"
+            : "DOWNLOAD LAUNCH & LOGS";
+        PlayerLaunchAndLogsProgressBar.Visibility = _launchAndLogsInstallInProgress || ready
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (_launchAndLogsInstallInProgress) return;
+        PlayerLaunchAndLogsProgressBar.Value = ready ? 100 : 0;
+        PlayerLaunchAndLogsStatusText.Text = ready
+            ? "LAUNCH & LOGS READY — required race mods are installed."
+            : validRoot
+                ? "Required race mods are missing. Download Launch & Logs before checking the campaign."
+                : "Select your KSP folder, then download the required race mods.";
+        PlayerLaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource(
+            ready ? "GreenBrush" : validRoot ? "OrangeBrush" : "MutedBrush");
     }
 
     private async Task<bool> InstallLaunchAndLogsAsync(bool automaticPlayerInstall)
@@ -174,16 +209,24 @@ public partial class MainWindow : Window
             return true;
         }
 
+        _launchAndLogsInstallInProgress = true;
         DownloadLaunchAndLogsButton.IsEnabled = false;
         DownloadLaunchAndLogsButton.Content = "DOWNLOADING & VERIFYING…";
+        PlayerDownloadLaunchAndLogsButton.IsEnabled = false;
+        PlayerDownloadLaunchAndLogsButton.Content = "DOWNLOADING & VERIFYING…";
         LaunchAndLogsProgressBar.IsIndeterminate = false;
         LaunchAndLogsProgressBar.Minimum = 0;
         LaunchAndLogsProgressBar.Maximum = 100;
         LaunchAndLogsProgressBar.Value = 0;
+        PlayerLaunchAndLogsProgressBar.Visibility = Visibility.Visible;
+        PlayerLaunchAndLogsProgressBar.IsIndeterminate = false;
+        PlayerLaunchAndLogsProgressBar.Value = 0;
         LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
         LaunchAndLogsStatusText.Text = automaticPlayerInstall
             ? "Installing the campaign's required Launch & Logs components…"
             : "Downloading verified components from the official KSR release…";
+        PlayerLaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+        PlayerLaunchAndLogsStatusText.Text = LaunchAndLogsStatusText.Text;
         try
         {
             var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
@@ -202,11 +245,13 @@ public partial class MainWindow : Window
                     ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
                     : Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100);
                 LaunchAndLogsProgressBar.Value = percent;
+                PlayerLaunchAndLogsProgressBar.Value = percent;
                 var downloadedMb = value.BytesDownloaded / 1048576d;
                 var totalMb = value.TotalBytes / 1048576d;
                 LaunchAndLogsStatusText.Text = value.TotalBytes > 0
                     ? $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} — {percent:0}%  ·  {downloadedMb:0.0} / {totalMb:0.0} MB"
                     : $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} — component {value.ComponentsCompleted + 1} of {value.TotalComponents}";
+                PlayerLaunchAndLogsStatusText.Text = LaunchAndLogsStatusText.Text;
             });
             var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
             await new UpdateEngine().RunAsync(
@@ -216,6 +261,8 @@ public partial class MainWindow : Window
                 throw new InvalidDataException("Installation completed, but one or more required files are still missing.");
             LaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY — all required components are installed and verified.";
             LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+            PlayerLaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY — required race mods are installed.";
+            PlayerLaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
             RefreshLaunchAndLogsSetupState();
             return true;
         }
@@ -223,16 +270,27 @@ public partial class MainWindow : Window
         {
             LaunchAndLogsStatusText.Text = exception.Message;
             LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            PlayerLaunchAndLogsStatusText.Text = exception.Message;
+            PlayerLaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             if (automaticPlayerInstall)
                 MessageBox.Show(exception.Message, "Launch & Logs Setup", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
         finally
         {
+            _launchAndLogsInstallInProgress = false;
             LaunchAndLogsProgressBar.IsIndeterminate = false;
-            if (AreLaunchAndLogsInstalled(_kspRoot!)) LaunchAndLogsProgressBar.Value = 100;
+            var ready = AreLaunchAndLogsInstalled(_kspRoot!);
+            if (ready)
+            {
+                LaunchAndLogsProgressBar.Value = 100;
+                PlayerLaunchAndLogsProgressBar.Value = 100;
+            }
             DownloadLaunchAndLogsButton.Content = "DOWNLOAD LAUNCH & LOGS";
-            DownloadLaunchAndLogsButton.IsEnabled = IsValidKspRoot(_kspRoot) && !AreLaunchAndLogsInstalled(_kspRoot!);
+            DownloadLaunchAndLogsButton.IsEnabled = IsValidKspRoot(_kspRoot) && !ready;
+            PlayerDownloadLaunchAndLogsButton.Content = "DOWNLOAD LAUNCH & LOGS";
+            PlayerDownloadLaunchAndLogsButton.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
+            PlayerDownloadLaunchAndLogsButton.IsEnabled = !ready;
         }
     }
 
@@ -814,6 +872,7 @@ public partial class MainWindow : Window
             ? "Baseline available. Run the installation check before launching the campaign."
             : "The campaign baseline has not been downloaded yet.";
         CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
+        RefreshPlayerLaunchAndLogsState();
         _lastCompliance = null;
         LaunchKspButton.IsEnabled = IsValidKspRoot(_kspRoot) && AreLaunchAndLogsInstalled(_kspRoot!) &&
                                     !hasBaseline && !CampaignRules.IsTerminalStatus(campaign?.Status);

@@ -140,7 +140,8 @@ public sealed class UpdateEngine(PackageService? packageService = null)
             if (hadOriginal)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
-                Directory.Move(target, backup);
+                FileTree.CopyDirectory(target, backup);
+                FileTree.DeleteDirectory(target);
             }
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             Directory.Move(replacement, target);
@@ -156,7 +157,8 @@ public sealed class UpdateEngine(PackageService? packageService = null)
         catch
         {
             FileTree.DeleteDirectory(replacement);
-            if (!Directory.Exists(target) && Directory.Exists(backup)) Directory.Move(backup, target);
+            if (!Directory.Exists(target) && Directory.Exists(backup))
+                FileTree.CopyDirectory(backup, target);
             throw;
         }
     }
@@ -199,7 +201,7 @@ public sealed class UpdateEngine(PackageService? packageService = null)
             {
                 if (!Directory.Exists(backup)) throw new DirectoryNotFoundException($"Backup mancante per {entry.ComponentId}: {backup}");
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                Directory.Move(backup, target);
+                FileTree.CopyDirectory(backup, target);
             }
         }
 
