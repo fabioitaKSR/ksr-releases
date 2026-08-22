@@ -22,6 +22,10 @@ public partial class MainWindow : Window
     private bool _campaignCloseInProgress;
     private bool _campaignUploadInProgress;
     private bool _launchAndLogsInstallInProgress;
+    private static readonly string[] AutoUpdateKsrComponentIds =
+    [
+        "ksr-core", "nation-selector", "parameter-logger", "contract-pack", "disable-dbs-ui"
+    ];
     private static readonly string[] LaunchAndLogsComponentIds =
     [
         "ksr-core", "nation-selector", "parameter-logger",
@@ -72,7 +76,63 @@ public partial class MainWindow : Window
     {
         await RefreshServerStatusAsync();
         await TryRestoreSessionAsync();
+        await UpdateInstalledKsrModsAsync();
         await CheckForLauncherUpdateAsync();
+    }
+
+    private async Task UpdateInstalledKsrModsAsync()
+    {
+        if (!IsValidKspRoot(_kspRoot)) return;
+
+        var launcherVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
+        var normalVersionText = launcherVersion is null
+            ? "LAUNCHER"
+            : $"LAUNCHER  ·  v{launcherVersion.Major}.{launcherVersion.Minor}.{Math.Max(0, launcherVersion.Build)}";
+        try
+        {
+            LauncherVersionText.Text = $"{normalVersionText}  ·  CHECKING KSR MODS";
+            LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
+
+            var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            release.Manifest.Components = release.Manifest.Components
+                .Where(component => AutoUpdateKsrComponentIds.Contains(component.Id, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            if (release.Manifest.Components.Count == 0)
+            {
+                LauncherVersionText.Text = normalVersionText;
+                LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
+                return;
+            }
+
+            var launcherData = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
+            var progress = new Progress<UpdateProgress>(value =>
+            {
+                var percent = value.TotalBytes > 0
+                    ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
+                    : Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100);
+                LauncherVersionText.Text = $"{normalVersionText}  ·  UPDATING {value.ComponentId.ToUpperInvariant()} {percent:0}%";
+            });
+            var result = await new UpdateEngine().RunAsync(
+                release.Manifest,
+                new LauncherLocations(_kspRoot!, launcherData),
+                release.AssetsBaseUrl,
+                true,
+                UpdatePolicy.ExistingOnly,
+                progress);
+
+            LauncherVersionText.Text = result.Applied
+                ? $"{normalVersionText}  ·  KSR MODS UPDATED"
+                : normalVersionText;
+            LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource(
+                result.Applied ? "GreenBrush" : "MutedBrush");
+            RefreshLaunchAndLogsSetupState();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            LauncherVersionText.Text = $"{normalVersionText}  ·  MOD UPDATE FAILED";
+            LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+        }
     }
 
     private async Task CheckForLauncherUpdateAsync()

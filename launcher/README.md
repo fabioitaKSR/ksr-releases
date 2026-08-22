@@ -12,7 +12,7 @@ KSR's Windows launcher and testable update engine for Kerbal Space Race. The CLI
 - persistent backups, rollback and atomic installed state;
 - `preserve` paths and `managedFilesInsidePreservedPaths` exceptions;
 - automatic stable or beta discovery through GitHub Releases;
-- ordinary updates restricted to KSR components that are already installed;
+- automatic startup updates restricted to KSR-owned components that are already installed;
 - missing component installation or repair only after explicit consent;
 - no scanning, replacement or removal of third-party mods;
 - WPF Player Area and Admin Area shell;
