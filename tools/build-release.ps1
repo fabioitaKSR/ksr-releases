@@ -199,10 +199,36 @@ $definitions = @(
         Target = 'GameData/KerbalSpaceRaceNationSelector'
         TargetKind = 'ksp'
         ExplicitOnly = $true
-        ExplicitFiles = @('Plugins/KerbalSpaceRace.NationSelector.dll', 'KerbalNames/KSR_KerbalNameSets.cfg')
+        ExplicitFiles = @(
+            'Plugins/KerbalSpaceRace.NationSelector.dll',
+            'KerbalNames/KSR_KerbalNameSets.cfg',
+            'Flags/KSR_AfricanUnion.png',
+            'Flags/KSR_China.png',
+            'Flags/KSR_ESA.png',
+            'Flags/KSR_India.png',
+            'Flags/KSR_Italy.png',
+            'Flags/KSR_Japan.png',
+            'Flags/KSR_Russia.png',
+            'Flags/KSR_UK.png',
+            'Flags/KSR_USA.png',
+            'Flags/KSR_USSR.png'
+        )
         ExcludePrefixes = @()
         AllowedTopEntries = @()
-        RequiredPaths = @('Plugins/KerbalSpaceRace.NationSelector.dll', 'KerbalNames/KSR_KerbalNameSets.cfg')
+        RequiredPaths = @(
+            'Plugins/KerbalSpaceRace.NationSelector.dll',
+            'KerbalNames/KSR_KerbalNameSets.cfg',
+            'Flags/KSR_AfricanUnion.png',
+            'Flags/KSR_China.png',
+            'Flags/KSR_ESA.png',
+            'Flags/KSR_India.png',
+            'Flags/KSR_Italy.png',
+            'Flags/KSR_Japan.png',
+            'Flags/KSR_Russia.png',
+            'Flags/KSR_UK.png',
+            'Flags/KSR_USA.png',
+            'Flags/KSR_USSR.png'
+        )
     },
     @{
         Id = 'ksr-suit-pack'

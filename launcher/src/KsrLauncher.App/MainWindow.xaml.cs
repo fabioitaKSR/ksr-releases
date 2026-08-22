@@ -80,9 +80,16 @@ public partial class MainWindow : Window
         await CheckForLauncherUpdateAsync();
     }
 
+    private bool _installedKsrModsUpdateInProgress;
+
     private async Task UpdateInstalledKsrModsAsync()
     {
         if (!IsValidKspRoot(_kspRoot)) return;
+
+        if (Process.GetProcessesByName("KSP_x64").Length > 0)
+        {
+            return;
+        }
 
         var launcherVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
         var normalVersionText = launcherVersion is null
@@ -90,6 +97,8 @@ public partial class MainWindow : Window
             : $"LAUNCHER  ·  v{launcherVersion.Major}.{launcherVersion.Minor}.{Math.Max(0, launcherVersion.Build)}";
         try
         {
+			_installedKsrModsUpdateInProgress = true;
+			LaunchKspButton.IsEnabled = false;
             LauncherVersionText.Text = $"{normalVersionText}  ·  CHECKING KSR MODS";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
 
@@ -133,6 +142,11 @@ public partial class MainWindow : Window
             LauncherVersionText.Text = $"{normalVersionText}  ·  MOD UPDATE FAILED";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
         }
+		finally
+		{
+			_installedKsrModsUpdateInProgress = false;
+			RefreshCampaignState();
+		}
     }
 
     private async Task CheckForLauncherUpdateAsync()
@@ -1022,6 +1036,12 @@ public partial class MainWindow : Window
 
     private async void LaunchKsp_Click(object sender, RoutedEventArgs e)
     {
+		if (_installedKsrModsUpdateInProgress)
+		{
+			MessageBox.Show("KSR mods are still being checked or updated. Wait for the operation to finish before launching KSP.",
+				"KSR Mod Update", MessageBoxButton.OK, MessageBoxImage.Information);
+			return;
+		}
         if (CampaignsList.SelectedItem is CampaignListItem campaign &&
             _localBaselines.ContainsKey(campaign.CampaignCode) && _lastCompliance?.ReadyToLaunch != true)
         {
