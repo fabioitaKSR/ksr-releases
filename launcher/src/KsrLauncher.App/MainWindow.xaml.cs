@@ -70,6 +70,18 @@ public partial class MainWindow : Window
         RefreshCampaignState();
         RefreshIgnoredFolderControls();
         Loaded += MainWindow_Loaded;
+        Activated += MainWindow_Activated;
+    }
+
+    private DateTimeOffset _lastActivationCampaignRefreshUtc = DateTimeOffset.MinValue;
+    private bool _campaignRefreshInProgress;
+
+    private async void MainWindow_Activated(object? sender, EventArgs e)
+    {
+        if (!LauncherSession.IsAuthenticated || _campaignRefreshInProgress ||
+            DateTimeOffset.UtcNow - _lastActivationCampaignRefreshUtc < TimeSpan.FromSeconds(3)) return;
+        _lastActivationCampaignRefreshUtc = DateTimeOffset.UtcNow;
+        await RefreshCampaignsFromServerAsync(false);
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -99,6 +111,11 @@ public partial class MainWindow : Window
         {
 			_installedKsrModsUpdateInProgress = true;
 			LaunchKspButton.IsEnabled = false;
+            ModUpdateOverlay.Visibility = Visibility.Visible;
+            ModUpdatePhaseText.Text = "CHECKING INSTALLED KSR MODS";
+            ModUpdateDetailText.Text = "Reading the local installation and release manifest...";
+            ModUpdateProgressBar.IsIndeterminate = true;
+            ModUpdateProgressBar.Value = 0;
             LauncherVersionText.Text = $"{normalVersionText}  ·  CHECKING KSR MODS";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
 
@@ -117,10 +134,17 @@ public partial class MainWindow : Window
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
             var progress = new Progress<UpdateProgress>(value =>
             {
-                var percent = value.TotalBytes > 0
+                var percent = value.Phase == "INSTALLING"
+                    ? Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100)
+                    : value.TotalBytes > 0
                     ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
                     : Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100);
-                LauncherVersionText.Text = $"{normalVersionText}  ·  UPDATING {value.ComponentId.ToUpperInvariant()} {percent:0}%";
+                var component = value.ComponentId.ToUpperInvariant();
+                ModUpdateProgressBar.IsIndeterminate = false;
+                ModUpdateProgressBar.Value = percent;
+                ModUpdatePhaseText.Text = $"{value.Phase} {component}";
+                ModUpdateDetailText.Text = $"{value.ComponentsCompleted}/{value.TotalComponents} components · {percent:0}%";
+                LauncherVersionText.Text = $"{normalVersionText}  ·  {value.Phase} {component} {percent:0}%";
             });
             var result = await new UpdateEngine().RunAsync(
                 release.Manifest,
@@ -135,16 +159,30 @@ public partial class MainWindow : Window
                 : normalVersionText;
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource(
                 result.Applied ? "GreenBrush" : "MutedBrush");
+            ModUpdateProgressBar.IsIndeterminate = false;
+            ModUpdateProgressBar.Value = 100;
+            ModUpdatePhaseText.Text = result.Applied ? "UPDATE COMPLETED" : "KSR MODS UP TO DATE";
+            ModUpdateDetailText.Text = result.Applied
+                ? "Installed KSR components are ready."
+                : "No installed KSR component requires an update.";
+            await Task.Delay(700);
             RefreshLaunchAndLogsSetupState();
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
             LauncherVersionText.Text = $"{normalVersionText}  ·  MOD UPDATE FAILED";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            ModUpdateProgressBar.IsIndeterminate = false;
+            ModUpdatePhaseText.Text = "MOD UPDATE FAILED";
+            ModUpdatePhaseText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            ModUpdateDetailText.Text = exception.Message;
+            await Task.Delay(1400);
         }
 		finally
 		{
 			_installedKsrModsUpdateInProgress = false;
+			ModUpdateOverlay.Visibility = Visibility.Collapsed;
+			ModUpdatePhaseText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
 			RefreshCampaignState();
 		}
     }
@@ -315,16 +353,18 @@ public partial class MainWindow : Window
             release.Manifest.Components = selected;
             var progress = new Progress<UpdateProgress>(value =>
             {
-                var percent = value.TotalBytes > 0
+                var percent = value.Phase == "INSTALLING"
+                    ? Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100)
+                    : value.TotalBytes > 0
                     ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
                     : Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100);
                 LaunchAndLogsProgressBar.Value = percent;
                 PlayerLaunchAndLogsProgressBar.Value = percent;
                 var downloadedMb = value.BytesDownloaded / 1048576d;
                 var totalMb = value.TotalBytes / 1048576d;
-                LaunchAndLogsStatusText.Text = value.TotalBytes > 0
+                LaunchAndLogsStatusText.Text = value.Phase == "DOWNLOADING" && value.TotalBytes > 0
                     ? $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} — {percent:0}%  ·  {downloadedMb:0.0} / {totalMb:0.0} MB"
-                    : $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} — component {value.ComponentsCompleted + 1} of {value.TotalComponents}";
+                    : $"{value.Phase} {value.ComponentId.ToUpperInvariant()} — component {value.ComponentsCompleted + 1} of {value.TotalComponents}";
                 PlayerLaunchAndLogsStatusText.Text = LaunchAndLogsStatusText.Text;
             });
             var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
@@ -861,6 +901,7 @@ public partial class MainWindow : Window
 
     private async Task RefreshCampaignsFromServerAsync(bool showFeedback)
     {
+        if (_campaignRefreshInProgress) return;
         if (!LauncherSession.IsAuthenticated || string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) ||
             string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
         {
@@ -869,6 +910,7 @@ public partial class MainWindow : Window
                     MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
+        _campaignRefreshInProgress = true;
         RefreshCampaignsButton.IsEnabled = false;
         RefreshCampaignsButton.Content = "REFRESHING…";
         try
@@ -895,6 +937,7 @@ public partial class MainWindow : Window
         }
         finally
         {
+            _campaignRefreshInProgress = false;
             RefreshCampaignsButton.IsEnabled = true;
             RefreshCampaignsButton.Content = "REFRESH";
         }

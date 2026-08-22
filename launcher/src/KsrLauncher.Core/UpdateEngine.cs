@@ -49,6 +49,9 @@ public sealed class UpdateEngine(PackageService? packageService = null)
                 foreach (var item in group)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    var installIndex = prepared.IndexOf(item);
+                    progress?.Report(new UpdateProgress(
+                        item.Plan.Component.Id, 0, 0, installIndex, prepared.Count, "INSTALLING"));
                     InstallComponent(item, manifest, locations, backupRoot, journal);
                 }
             }
@@ -102,11 +105,12 @@ public sealed class UpdateEngine(PackageService? packageService = null)
                 Math.Min(totalBytes, componentStart + bytes),
                 totalBytes,
                 currentIndex,
-                pending.Count)));
+                pending.Count,
+                "DOWNLOADING")));
             var zip = await _packages.AcquireAsync(
                 assetsBase, item.Component, Path.Combine(workRoot, "downloads"), cancellationToken, componentProgress);
             completedBytes += item.Component.Size > 0 ? item.Component.Size : new FileInfo(zip).Length;
-            progress?.Report(new UpdateProgress(item.Component.Id, Math.Min(totalBytes, completedBytes), totalBytes, currentIndex + 1, pending.Count));
+            progress?.Report(new UpdateProgress(item.Component.Id, Math.Min(totalBytes, completedBytes), totalBytes, currentIndex + 1, pending.Count, "DOWNLOADING"));
             var extractRoot = Path.Combine(workRoot, "extracted", item.Component.Id);
             PackageService.ExtractSafely(zip, extractRoot);
             var source = SafePaths.Under(extractRoot, item.Component.Source);

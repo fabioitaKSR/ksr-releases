@@ -99,4 +99,5 @@ public sealed record UpdateProgress(
     long BytesDownloaded,
     long TotalBytes,
     int ComponentsCompleted,
-    int TotalComponents);
+    int TotalComponents,
+    string Phase);

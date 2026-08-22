@@ -30,6 +30,24 @@
         <Image Grid.Row="3" Source="Assets/ksr-astronaut-v1.png" HorizontalAlignment="Right" VerticalAlignment="Bottom"
                Height="640" Margin="0,0,35,-18" Opacity="0.38" IsHitTestVisible="False" />
 
+        <Border x:Name="ModUpdateOverlay" Grid.Row="1" Grid.RowSpan="4" Panel.ZIndex="100"
+                Background="#D905080A" Visibility="Collapsed">
+            <Border Width="590" Padding="28" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="#FF0D1215" BorderBrush="{StaticResource OrangeBrush}" BorderThickness="1" CornerRadius="7">
+                <StackPanel>
+                    <TextBlock Text="KSR MOD UPDATE" Style="{StaticResource SectionTitle}" />
+                    <TextBlock x:Name="ModUpdatePhaseText" Text="CHECKING INSTALLED KSR MODS"
+                               Foreground="{StaticResource GreenBrush}" FontSize="18" FontWeight="Bold" Margin="0,18,0,6" />
+                    <TextBlock x:Name="ModUpdateDetailText" Text="Reading the local installation..."
+                               Foreground="{StaticResource MutedBrush}" Margin="0,0,0,15" />
+                    <ProgressBar x:Name="ModUpdateProgressBar" Height="12" Minimum="0" Maximum="100"
+                                 Value="0" IsIndeterminate="True" Foreground="{StaticResource GreenBrush}" />
+                    <TextBlock Text="Do not start KSP or close the launcher while files are being installed."
+                               Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,13,0,0" />
+                </StackPanel>
+            </Border>
+        </Border>
+
         <Border Grid.Row="0" Background="#FF101417" BorderBrush="#FF303538" BorderThickness="0,0,0,1">
             <Grid Margin="12,0,0,0">
                 <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
