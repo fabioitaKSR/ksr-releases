@@ -376,9 +376,9 @@ public sealed class CampaignBaselineComparer
             : LegacyModInventory(baseline.GameDataFiles, ignoredFolders);
         var differences = CompareMods(expectedMods, actualMods);
         var actualKspVersion = CampaignBaselineBuilder.ReadKspVersion(selection.KspRoot);
-        if (!string.Equals(baseline.KspVersion, "[config]", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(baseline.KspVersion, "unknown", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(baseline.KspVersion, actualKspVersion, StringComparison.OrdinalIgnoreCase))
+        if (TryParseComparableKspVersion(baseline.KspVersion, out var expectedVersion) &&
+            TryParseComparableKspVersion(actualKspVersion, out var installedVersion) &&
+            expectedVersion != installedVersion)
             differences.Add(new(BaselineDifferenceArea.GameData, BaselineDifferenceKind.ValueMismatch,
                 "KSP version", baseline.KspVersion, actualKspVersion, "KSP version"));
 
@@ -396,6 +396,17 @@ public sealed class CampaignBaselineComparer
         }
         differences.AddRange(CompareSettings(baseline.Settings, actualSettings));
         return new CampaignComplianceResult(differences);
+    }
+
+    private static bool TryParseComparableKspVersion(string value, out Version version)
+    {
+        version = new Version();
+        if (string.IsNullOrWhiteSpace(value) ||
+            value.Contains("build id", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("[config]", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("unknown", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return Version.TryParse(value.Trim().TrimStart('v', 'V'), out version!);
     }
 
     private static List<BaselineMod> LegacyModInventory(

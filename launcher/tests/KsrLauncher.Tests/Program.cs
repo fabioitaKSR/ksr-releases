@@ -38,6 +38,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Campaign creation accepts Career and Science but rejects Sandbox", CampaignCreationAcceptsCareerAndScienceOnly),
     ("Campaign baseline detects mod and setting differences", CampaignBaselineDetectsDifferences),
     ("Campaign baseline ignores stock KSP folders and file content", CampaignBaselineIgnoresStockFoldersAndFileContent),
+    ("Campaign baseline ignores KSP build id differences", CampaignBaselineIgnoresKspBuildIdDifferences),
     ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress),
     ("Campaign whitelist ignores exact GameData folder", CampaignWhitelistIgnoresExactFolder),
     ("Campaign whitelist rejects protected KSP and KSR folders", CampaignWhitelistRejectsProtectedFolders)
@@ -764,6 +765,21 @@ static async Task CampaignBaselineIgnoresStockFoldersAndFileContent()
     await File.WriteAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "Plugins", "TestMod.dll"), "different-content");
     var result = await new CampaignBaselineComparer().CompareAsync(package.Manifest, save);
     True(result.ReadyToLaunch, "Stock files and individual mod-file content must not block launch when mod versions match.");
+}
+
+static async Task CampaignBaselineIgnoresKspBuildIdDifferences()
+{
+    using var scope = new TempScope();
+    var (ksp, save) = CreateCampaignKsp(scope.Root);
+    await File.WriteAllTextAsync(Path.Combine(ksp, "buildID64.txt"), "[config]\nbuild id = 03173\n");
+    var package = await new CampaignBaselineBuilder().CreateAsync("Lunar Race", save, Path.Combine(scope.Root, "drafts"));
+    await File.WriteAllTextAsync(Path.Combine(ksp, "buildID64.txt"), "[config]\nbuild id = 03190\n");
+
+    var result = await new CampaignBaselineComparer().CompareAsync(package.Manifest, save);
+
+    True(result.ReadyToLaunch, "A KSP build id difference alone must not block campaign launch.");
+    False(result.Differences.Any(item => item.Path == "KSP version"),
+        "The internal KSP build id was incorrectly reported as an installation difference.");
 }
 
 static async Task CampaignSettingsAlignmentPreservesProgress()
