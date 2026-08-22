@@ -61,7 +61,7 @@
                     <TextBlock Text="KSR" Foreground="{StaticResource OrangeBrush}" FontSize="42" FontWeight="Black" />
                     <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="KERBAL SPACE RACE" FontSize="11" FontWeight="Bold" />
-                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER  ·  v0.1.7"
+                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER  ·  v0.1.8"
                                    Style="{StaticResource SmallLabel}" FontSize="10" Margin="0,3,0,0" />
                     </StackPanel>
                 </StackPanel>
@@ -358,7 +358,7 @@
                                 <TextBlock Text="Nation Selector — assigns the player's nation and applies campaign identity." TextWrapping="Wrap" Margin="0,0,0,4" />
                             </StackPanel>
                         </Border>
-                        <TextBlock Text="Approximate download: 353 MB  ·  Installed size: 453 MB"
+                        <TextBlock Text="Approximate download: 7.4 MB  ·  Installed size: 18 MB"
                                    Foreground="{StaticResource MutedBrush}" Margin="0,12,0,0" />
                     </StackPanel>
 

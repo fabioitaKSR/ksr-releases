@@ -12,6 +12,7 @@ public sealed class UpdateEngine(PackageService? packageService = null)
         string assetsBase,
         bool apply,
         UpdatePolicy policy = UpdatePolicy.ExistingOnly,
+        IProgress<UpdateProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         if (manifest.Components.Any(component => !string.Equals(component.TargetKind, "launcherData", StringComparison.OrdinalIgnoreCase)))
@@ -39,7 +40,7 @@ public sealed class UpdateEngine(PackageService? packageService = null)
         Directory.CreateDirectory(backupRoot);
         try
         {
-            var prepared = await PrepareAsync(plan, assetsBase, workRoot, cancellationToken);
+            var prepared = await PrepareAsync(plan, assetsBase, workRoot, progress, cancellationToken);
             var statePath = StateStore.GetStatePath(locations.LauncherDataRoot);
             if (File.Exists(statePath)) File.Copy(statePath, Path.Combine(backupRoot, "installed-state.previous.json"), true);
 
@@ -80,12 +81,32 @@ public sealed class UpdateEngine(PackageService? packageService = null)
         }
     }
 
-    private async Task<List<PreparedComponent>> PrepareAsync(UpdatePlan plan, string assetsBase, string workRoot, CancellationToken cancellationToken)
+    private async Task<List<PreparedComponent>> PrepareAsync(
+        UpdatePlan plan,
+        string assetsBase,
+        string workRoot,
+        IProgress<UpdateProgress>? progress,
+        CancellationToken cancellationToken)
     {
         var result = new List<PreparedComponent>();
-        foreach (var item in plan.Components.Where(item => item.NeedsUpdate))
+        var pending = plan.Components.Where(item => item.NeedsUpdate).ToList();
+        var totalBytes = pending.Sum(item => Math.Max(0, item.Component.Size));
+        long completedBytes = 0;
+        for (var index = 0; index < pending.Count; index++)
         {
-            var zip = await _packages.AcquireAsync(assetsBase, item.Component, Path.Combine(workRoot, "downloads"), cancellationToken);
+            var item = pending[index];
+            var currentIndex = index;
+            var componentStart = completedBytes;
+            var componentProgress = new Progress<long>(bytes => progress?.Report(new UpdateProgress(
+                item.Component.Id,
+                Math.Min(totalBytes, componentStart + bytes),
+                totalBytes,
+                currentIndex,
+                pending.Count)));
+            var zip = await _packages.AcquireAsync(
+                assetsBase, item.Component, Path.Combine(workRoot, "downloads"), cancellationToken, componentProgress);
+            completedBytes += item.Component.Size > 0 ? item.Component.Size : new FileInfo(zip).Length;
+            progress?.Report(new UpdateProgress(item.Component.Id, Math.Min(totalBytes, completedBytes), totalBytes, currentIndex + 1, pending.Count));
             var extractRoot = Path.Combine(workRoot, "extracted", item.Component.Id);
             PackageService.ExtractSafely(zip, extractRoot);
             var source = SafePaths.Under(extractRoot, item.Component.Source);

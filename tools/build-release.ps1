@@ -187,7 +187,7 @@ $definitions = @(
         TargetKind = 'ksp'
         ExplicitOnly = $false
         ExplicitFiles = @('PluginData/KSRDifficultyReference.cfg')
-        ExcludePrefixes = @('PluginData')
+        ExcludePrefixes = @('PluginData', 'KSPedia', 'LoadingScreens')
         AllowedTopEntries = @('KCT_Presets', 'KSPedia', 'LoadingScreens', 'MenuOverlay', 'Patches', 'Plugins', 'StationScience', 'Tools', 'README.txt')
         RequiredPaths = @('Plugins/KSRRemoteLogger.dll', 'Plugins/KerbalSpaceRace.MenuEditionOverlay.dll', 'Plugins/KerbalSpaceRace.MenuKerbalSuits.dll', 'Plugins/KerbalSpaceRace.RoverTools.dll', 'PluginData/KSRDifficultyReference.cfg')
     },
@@ -198,11 +198,11 @@ $definitions = @(
         PackageRoot = 'GameData/KerbalSpaceRaceNationSelector'
         Target = 'GameData/KerbalSpaceRaceNationSelector'
         TargetKind = 'ksp'
-        ExplicitOnly = $false
-        ExplicitFiles = @()
-        ExcludePrefixes = @('PluginData', 'Patches/Generated')
+        ExplicitOnly = $true
+        ExplicitFiles = @('Plugins/KerbalSpaceRace.NationSelector.dll', 'KerbalNames/KSR_KerbalNameSets.cfg')
+        ExcludePrefixes = @()
         AllowedTopEntries = @()
-        RequiredPaths = @('Plugins/KerbalSpaceRace.NationSelector.dll', 'Flags', 'NationSuits', 'ShuttleNameTextures')
+        RequiredPaths = @('Plugins/KerbalSpaceRace.NationSelector.dll', 'KerbalNames/KSR_KerbalNameSets.cfg')
     },
     @{
         Id = 'ksr-suit-pack'
@@ -464,7 +464,7 @@ try {
         product = 'KerbalSpaceRace'
         version = $Version
         channel = $Channel
-        minimumLauncherVersion = '0.1.7'
+        minimumLauncherVersion = '0.1.8'
         components = $manifestComponents
         preserve = @(
             'GameData/KerbalSpaceRace/PluginData/**',

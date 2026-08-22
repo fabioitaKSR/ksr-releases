@@ -7,7 +7,12 @@ public sealed class PackageService(HttpClient? httpClient = null)
 {
     private readonly HttpClient _httpClient = httpClient ?? new HttpClient();
 
-    public async Task<string> AcquireAsync(string assetsBase, ComponentManifest component, string downloadDirectory, CancellationToken cancellationToken)
+    public async Task<string> AcquireAsync(
+        string assetsBase,
+        ComponentManifest component,
+        string downloadDirectory,
+        CancellationToken cancellationToken,
+        IProgress<long>? progress = null)
     {
         Directory.CreateDirectory(downloadDirectory);
         var destination = Path.Combine(downloadDirectory, component.Asset);
@@ -18,12 +23,22 @@ public sealed class PackageService(HttpClient? httpClient = null)
             response.EnsureSuccessStatusCode();
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
             await using var output = File.Create(destination);
-            await source.CopyToAsync(output, cancellationToken);
+            var buffer = new byte[81920];
+            long downloaded = 0;
+            while (true)
+            {
+                var read = await source.ReadAsync(buffer, cancellationToken);
+                if (read == 0) break;
+                await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                downloaded += read;
+                progress?.Report(downloaded);
+            }
         }
         else
         {
             var source = SafePaths.Under(Path.GetFullPath(assetsBase), component.Asset);
             File.Copy(source, destination, true);
+            progress?.Report(new FileInfo(destination).Length);
         }
 
         var actualHash = await ComputeSha256Async(destination, cancellationToken);

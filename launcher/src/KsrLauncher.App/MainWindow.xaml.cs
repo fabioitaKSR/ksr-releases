@@ -176,7 +176,10 @@ public partial class MainWindow : Window
 
         DownloadLaunchAndLogsButton.IsEnabled = false;
         DownloadLaunchAndLogsButton.Content = "DOWNLOADING & VERIFYING…";
-        LaunchAndLogsProgressBar.IsIndeterminate = true;
+        LaunchAndLogsProgressBar.IsIndeterminate = false;
+        LaunchAndLogsProgressBar.Minimum = 0;
+        LaunchAndLogsProgressBar.Maximum = 100;
+        LaunchAndLogsProgressBar.Value = 0;
         LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
         LaunchAndLogsStatusText.Text = automaticPlayerInstall
             ? "Installing the campaign's required Launch & Logs components…"
@@ -193,10 +196,22 @@ public partial class MainWindow : Window
             if (missingDefinitions.Length > 0)
                 throw new InvalidDataException($"The official release is missing: {string.Join(", ", missingDefinitions)}.");
             release.Manifest.Components = selected;
+            var progress = new Progress<UpdateProgress>(value =>
+            {
+                var percent = value.TotalBytes > 0
+                    ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
+                    : Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100);
+                LaunchAndLogsProgressBar.Value = percent;
+                var downloadedMb = value.BytesDownloaded / 1048576d;
+                var totalMb = value.TotalBytes / 1048576d;
+                LaunchAndLogsStatusText.Text = value.TotalBytes > 0
+                    ? $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} — {percent:0}%  ·  {downloadedMb:0.0} / {totalMb:0.0} MB"
+                    : $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} — component {value.ComponentsCompleted + 1} of {value.TotalComponents}";
+            });
             var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
             await new UpdateEngine().RunAsync(
                 release.Manifest, new LauncherLocations(_kspRoot!, launcherData), release.AssetsBaseUrl,
-                true, UpdatePolicy.InstallOrRepair);
+                true, UpdatePolicy.InstallOrRepair, progress);
             if (!AreLaunchAndLogsInstalled(_kspRoot!))
                 throw new InvalidDataException("Installation completed, but one or more required files are still missing.");
             LaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY — all required components are installed and verified.";
@@ -215,6 +230,7 @@ public partial class MainWindow : Window
         finally
         {
             LaunchAndLogsProgressBar.IsIndeterminate = false;
+            if (AreLaunchAndLogsInstalled(_kspRoot!)) LaunchAndLogsProgressBar.Value = 100;
             DownloadLaunchAndLogsButton.Content = "DOWNLOAD LAUNCH & LOGS";
             DownloadLaunchAndLogsButton.IsEnabled = IsValidKspRoot(_kspRoot) && !AreLaunchAndLogsInstalled(_kspRoot!);
         }

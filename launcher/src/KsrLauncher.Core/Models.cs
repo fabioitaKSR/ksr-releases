@@ -21,6 +21,7 @@ public sealed class ComponentManifest
     public string Id { get; set; } = "";
     public string TransactionGroup { get; set; } = "ksp-client";
     public string Asset { get; set; } = "";
+    public long Size { get; set; }
     public string Sha256 { get; set; } = "";
     public string Source { get; set; } = "";
     public string TargetKind { get; set; } = "ksp";
@@ -92,3 +93,10 @@ public sealed class BackupEntry
 }
 
 public sealed record UpdateResult(UpdatePlan Plan, bool Applied, string? BackupDirectory);
+
+public sealed record UpdateProgress(
+    string ComponentId,
+    long BytesDownloaded,
+    long TotalBytes,
+    int ComponentsCompleted,
+    int TotalComponents);
