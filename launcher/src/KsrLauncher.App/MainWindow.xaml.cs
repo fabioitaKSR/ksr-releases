@@ -1024,6 +1024,7 @@ public partial class MainWindow : Window
 
     private void ApplyCampaignSelection(CampaignListItem? campaign)
     {
+        var isLaunchableCampaign = campaign is not null && !CampaignRules.IsTerminalStatus(campaign.Status);
         LauncherSession.CampaignCode = campaign?.CampaignCode;
         LauncherSession.CampaignName = campaign?.Name;
         ActiveCampaignText.Text = campaign?.Name?.ToUpperInvariant() ?? "NO CAMPAIGN SELECTED";
@@ -1031,7 +1032,7 @@ public partial class MainWindow : Window
             ? "NO CAMPAIGN SELECTED"
             : $"{campaign.Name}  ·  {campaign.Nation}  ·  {campaign.Role}";
         SelectedCampaignText.Foreground = (System.Windows.Media.Brush)FindResource(campaign is null ? "MutedBrush" : "ForegroundBrush");
-        OpenCampaignButton.IsEnabled = campaign is not null;
+        OpenCampaignButton.IsEnabled = isLaunchableCampaign;
         LeaderboardButton.IsEnabled = campaign is not null;
         DownloadMasterSaveButton.IsEnabled = campaign?.MasterSaveAvailable == true;
         MasterSaveStatusText.Text = campaign is null
@@ -1049,7 +1050,14 @@ public partial class MainWindow : Window
         RefreshPlayerLaunchAndLogsState();
         _lastCompliance = null;
         LaunchKspButton.IsEnabled = IsValidKspRoot(_kspRoot) && AreLaunchAndLogsInstalled(_kspRoot!) &&
-                                    !hasBaseline && !CampaignRules.IsTerminalStatus(campaign?.Status);
+                                    !hasBaseline && isLaunchableCampaign;
+
+        if (!isLaunchableCampaign && IsValidKspRoot(_kspRoot))
+        {
+            try { GameLoggerConfiguration.Clear(_kspRoot!); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
     }
 
     internal void ReplaceCampaigns(IEnumerable<CampaignListItem> campaigns)
@@ -1137,6 +1145,19 @@ public partial class MainWindow : Window
 				"KSR Mod Update", MessageBoxButton.OK, MessageBoxImage.Information);
 			return;
 		}
+        if (CampaignsList.SelectedItem is not CampaignListItem selectedCampaign)
+        {
+            MessageBox.Show("Select an active campaign before launching KSP.",
+                "KSR Campaign", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (CampaignRules.IsTerminalStatus(selectedCampaign.Status))
+        {
+            if (EnsureKspRoot()) GameLoggerConfiguration.Clear(_kspRoot!);
+            MessageBox.Show("This campaign is closed and cannot be launched. Select or create an active campaign.",
+                "KSR Campaign", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         if (CampaignsList.SelectedItem is CampaignListItem campaign &&
             _localBaselines.ContainsKey(campaign.CampaignCode) && _lastCompliance?.ReadyToLaunch != true)
         {
@@ -1145,22 +1166,21 @@ public partial class MainWindow : Window
             return;
         }
         if (!EnsureKspRoot()) return;
-        if (CampaignsList.SelectedItem is CampaignListItem selectedCampaign)
+        try
         {
-            try
-            {
-                var ticket = await _platformClient.GetGameTicketAsync(
-                    LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured."),
-                    LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in before launching a campaign."),
-                    selectedCampaign.CampaignCode);
-                GameLoggerConfiguration.Write(_kspRoot!, LauncherSession.ServerUrl!, selectedCampaign.CampaignCode, ticket.Token);
-            }
-            catch (Exception exception)
-            {
-                MessageBox.Show($"KSP was not launched because the campaign logger could not be configured.\n\n{exception.Message}",
-                    "KSR Game Logger", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+            GameLoggerConfiguration.Clear(_kspRoot!);
+            var ticket = await _platformClient.GetGameTicketAsync(
+                LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured."),
+                LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in before launching a campaign."),
+                selectedCampaign.CampaignCode);
+            GameLoggerConfiguration.Write(_kspRoot!, LauncherSession.ServerUrl!, selectedCampaign.CampaignCode, ticket.Token);
+        }
+        catch (Exception exception)
+        {
+            GameLoggerConfiguration.Clear(_kspRoot!);
+            MessageBox.Show($"KSP was not launched because the campaign logger could not be configured.\n\n{exception.Message}",
+                "KSR Game Logger", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
         var executable = Path.Combine(_kspRoot!, "KSP_x64.exe");
         Process.Start(new ProcessStartInfo(executable) { WorkingDirectory = _kspRoot!, UseShellExecute = true });
@@ -1284,7 +1304,7 @@ public partial class MainWindow : Window
             {
                 CampaignComplianceStatusText.Text = "READY TO LAUNCH — GameData mod folders and versions match. Campaign save files are ignored.";
                 CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
-                LaunchKspButton.IsEnabled = true;
+                LaunchKspButton.IsEnabled = !CampaignRules.IsTerminalStatus(campaign.Status);
             }
             else
             {

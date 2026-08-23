@@ -4,6 +4,17 @@ namespace KsrLauncher.Core;
 
 public static class GameLoggerConfiguration
 {
+    public static string GetPath(string kspRoot) =>
+        Path.Combine(kspRoot, "GameData", "KerbalSpaceRace", "PluginData", "RemoteLogger.cfg");
+
+    public static bool Clear(string kspRoot)
+    {
+        var path = GetPath(kspRoot);
+        if (!File.Exists(path)) return false;
+        File.Delete(path);
+        return true;
+    }
+
     public static string Write(string kspRoot, string serverUrl, string campaignCode, string gameTicket)
     {
         if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var server) || server.Scheme != Uri.UriSchemeHttps)
@@ -12,9 +23,9 @@ public static class GameLoggerConfiguration
             throw new InvalidOperationException("A campaign-scoped game ticket is required.");
 
         static string Safe(string value) => value.Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
-        var directory = Path.Combine(kspRoot, "GameData", "KerbalSpaceRace", "PluginData");
+        var path = GetPath(kspRoot);
+        var directory = Path.GetDirectoryName(path)!;
         Directory.CreateDirectory(directory);
-        var path = Path.Combine(directory, "RemoteLogger.cfg");
         var content = string.Join(Environment.NewLine,
             "RemoteLogger",
             "{",

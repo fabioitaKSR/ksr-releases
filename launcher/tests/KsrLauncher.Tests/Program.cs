@@ -26,6 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform refresh rotates remembered session", PlatformRefreshRotatesSession),
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
     ("Platform game ticket is campaign scoped", PlatformGameTicketIsCampaignScoped),
+    ("Game logger removes stale campaign ticket", GameLoggerRemovesStaleCampaignTicket),
     ("Platform campaign creation uploads baseline idempotently", PlatformCampaignCreationIsMultipartAndIdempotent),
     ("Platform joins campaign through authenticated endpoint", PlatformJoinCampaignIsAuthenticated),
     ("Platform downloads and verifies campaign artifacts", PlatformDownloadsVerifiedCampaignArtifacts),
@@ -743,6 +744,18 @@ static Task OnlyOneAdminCampaignIsAllowed()
         False(CampaignRules.BlocksNewAdminCampaign("admin", status), $"Terminal status {status} must allow a new campaign.");
         True(CampaignRules.IsTerminalStatus(status), $"Terminal status {status} was not recognized.");
     }
+    return Task.CompletedTask;
+}
+
+static Task GameLoggerRemovesStaleCampaignTicket()
+{
+    using var scope = new TempScope();
+    var path = GameLoggerConfiguration.Write(
+        scope.Root, "https://play.kerbalspacerace.net", "KSR-20260824-ACTIVE", "temporary-game-ticket");
+    True(File.Exists(path), "The campaign game configuration was not written.");
+    True(GameLoggerConfiguration.Clear(scope.Root), "The stale campaign game configuration was not removed.");
+    False(File.Exists(path), "The stale campaign ticket remains available to KSP.");
+    False(GameLoggerConfiguration.Clear(scope.Root), "Clearing an already absent game ticket should be harmless.");
     return Task.CompletedTask;
 }
 
