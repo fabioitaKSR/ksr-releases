@@ -22,14 +22,14 @@ public partial class MainWindow : Window
     private bool _campaignCloseInProgress;
     private bool _campaignUploadInProgress;
     private bool _launchAndLogsInstallInProgress;
-    private static readonly string[] AutoUpdateKsrComponentIds =
+    private static readonly string[] OptionalInstalledOnlyComponentIds =
     [
-        "ksr-core", "nation-selector", "parameter-logger", "contract-pack", "disable-dbs-ui"
+        "contract-pack", "disable-dbs-ui"
     ];
     private static readonly string[] LaunchAndLogsComponentIds =
     [
         "ksr-core", "nation-selector", "parameter-logger",
-        "achievements", "click-through-blocker", "toolbar-controller", "spacetux-library"
+        "achievements", "harmony", "click-through-blocker", "toolbar-controller", "spacetux-library"
     ];
     private static readonly string[] LaunchAndLogsRequiredFiles =
     [
@@ -37,6 +37,9 @@ public partial class MainWindow : Window
         "GameData/KerbalSpaceRaceNationSelector/Plugins/KerbalSpaceRace.NationSelector.dll",
         "GameData/KSRParameterLogger/Plugins/KSRParameterLogger.dll",
         "GameData/Achievements/Plugins/Achievements.dll",
+        "GameData/000_Harmony/0Harmony.dll",
+        "GameData/000_Harmony/Harmony.version",
+        "GameData/000_Harmony/HarmonyInstallChecker.dll",
         "GameData/000_ClickThroughBlocker/Plugins/ClickThroughBlocker.dll",
         "GameData/001_ToolbarControl/Plugins/ToolbarControl.dll",
         "GameData/SpaceTuxLibrary/Plugins/SpaceTuxUtility.dll"
@@ -120,10 +123,14 @@ public partial class MainWindow : Window
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
 
             var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
-            release.Manifest.Components = release.Manifest.Components
-                .Where(component => AutoUpdateKsrComponentIds.Contains(component.Id, StringComparer.OrdinalIgnoreCase))
+            var releaseComponents = release.Manifest.Components.ToList();
+            var requiredComponents = releaseComponents
+                .Where(component => LaunchAndLogsComponentIds.Contains(component.Id, StringComparer.OrdinalIgnoreCase))
                 .ToList();
-            if (release.Manifest.Components.Count == 0)
+            var optionalComponents = releaseComponents
+                .Where(component => OptionalInstalledOnlyComponentIds.Contains(component.Id, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            if (requiredComponents.Count == 0 && optionalComponents.Count == 0)
             {
                 LauncherVersionText.Text = normalVersionText;
                 LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
@@ -146,25 +153,47 @@ public partial class MainWindow : Window
                 ModUpdateDetailText.Text = $"{value.ComponentsCompleted}/{value.TotalComponents} components · {percent:0}%";
                 LauncherVersionText.Text = $"{normalVersionText}  ·  {value.Phase} {component} {percent:0}%";
             });
-            var result = await new UpdateEngine().RunAsync(
-                release.Manifest,
-                new LauncherLocations(_kspRoot!, launcherData),
-                release.AssetsBaseUrl,
-                true,
-                UpdatePolicy.ExistingOnly,
-                progress);
+            var locations = new LauncherLocations(_kspRoot!, launcherData);
+            var engine = new UpdateEngine();
+            var applied = false;
 
-            LauncherVersionText.Text = result.Applied
+            if (requiredComponents.Count > 0)
+            {
+                release.Manifest.Components = requiredComponents;
+                var requiredResult = await engine.RunAsync(
+                    release.Manifest,
+                    locations,
+                    release.AssetsBaseUrl,
+                    true,
+                    UpdatePolicy.InstallOrRepair,
+                    progress);
+                applied |= requiredResult.Applied;
+            }
+
+            if (optionalComponents.Count > 0)
+            {
+                release.Manifest.Components = optionalComponents;
+                var optionalResult = await engine.RunAsync(
+                    release.Manifest,
+                    locations,
+                    release.AssetsBaseUrl,
+                    true,
+                    UpdatePolicy.ExistingOnly,
+                    progress);
+                applied |= optionalResult.Applied;
+            }
+
+            LauncherVersionText.Text = applied
                 ? $"{normalVersionText}  ·  KSR MODS UPDATED"
                 : normalVersionText;
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource(
-                result.Applied ? "GreenBrush" : "MutedBrush");
+                applied ? "GreenBrush" : "MutedBrush");
             ModUpdateProgressBar.IsIndeterminate = false;
             ModUpdateProgressBar.Value = 100;
-            ModUpdatePhaseText.Text = result.Applied ? "UPDATE COMPLETED" : "KSR MODS UP TO DATE";
-            ModUpdateDetailText.Text = result.Applied
-                ? "Installed KSR components are ready."
-                : "No installed KSR component requires an update.";
+            ModUpdatePhaseText.Text = applied ? "UPDATE COMPLETED" : "KSR MODS UP TO DATE";
+            ModUpdateDetailText.Text = applied
+                ? "Required KSR components are installed and ready."
+                : "No KSR component requires an update.";
             await Task.Delay(700);
             RefreshLaunchAndLogsSetupState();
         }

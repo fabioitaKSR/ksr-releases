@@ -270,6 +270,19 @@ $definitions = @(
         RequiredPaths = @('Plugins/KSRParameterLogger.dll')
     },
     @{
+        Id = 'harmony'
+        AssetPrefix = 'KSP-Harmony'
+        SourceRoot = Join-Path $gameDataRoot '000_Harmony'
+        PackageRoot = 'GameData/000_Harmony'
+        Target = 'GameData/000_Harmony'
+        TargetKind = 'ksp'
+        ExplicitOnly = $true
+        ExplicitFiles = @('0Harmony.dll', 'Harmony.version', 'HarmonyInstallChecker.dll', 'ReadMe.txt')
+        ExcludePrefixes = @()
+        AllowedTopEntries = @()
+        RequiredPaths = @('0Harmony.dll', 'Harmony.version', 'HarmonyInstallChecker.dll', 'ReadMe.txt')
+    },
+    @{
         Id = 'achievements'
         AssetPrefix = 'KSP-Achievements'
         SourceRoot = Join-Path $gameDataRoot 'Achievements'
