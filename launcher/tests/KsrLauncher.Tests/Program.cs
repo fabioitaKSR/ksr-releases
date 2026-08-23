@@ -15,6 +15,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease),
     ("Launcher auto-update downloads a verified newer release", LauncherAutoUpdateDownloadsVerifiedRelease),
     ("Update ordinario ignora componente assente", ExistingOnlySkipsMissing),
+    ("Update ordinario ripara componente installato incompleto", ExistingOnlyRepairsIncompleteComponent),
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
     ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched),
     ("Support LOG package is safe and complete", SupportLogPackageIsSafe),
@@ -198,6 +199,32 @@ static async Task ExistingOnlySkipsMissing()
     False(result.Plan.Components[0].IsPresent, "Il componente e stato rilevato erroneamente come presente.");
     False(Directory.Exists(Path.Combine(ksp, "GameData", "TestMod")), "L'update ordinario ha installato una mod assente.");
     False(Directory.Exists(launcherData), "Un update senza componenti non deve creare dati del launcher.");
+}
+
+static async Task ExistingOnlyRepairsIncompleteComponent()
+{
+    using var scope = new TempScope();
+    var ksp = CreateKsp(scope.Root);
+    var launcherData = Path.Combine(scope.Root, "LauncherData");
+    var target = Path.Combine(ksp, "GameData", "TestMod");
+    Directory.CreateDirectory(target);
+    await File.WriteAllTextAsync(Path.Combine(target, "new.txt"), "installed");
+
+    var manifest = CreateManifest(new string('a', 64));
+    manifest.Version = "0.1.16";
+    manifest.Components[0].RequiredFiles = ["new.txt", "Flags/required.png"];
+    var state = new InstalledState();
+    state.Components[manifest.Components[0].Id] = new InstalledComponent
+    {
+        Version = manifest.Version,
+        Sha256 = manifest.Components[0].Sha256,
+        TargetKind = manifest.Components[0].TargetKind,
+        Target = manifest.Components[0].Target
+    };
+
+    var plan = UpdatePlanner.Create(manifest, state, new LauncherLocations(ksp, launcherData), UpdatePolicy.ExistingOnly);
+    True(plan.Components.Single().NeedsUpdate, "Un componente installato con file obbligatori mancanti deve essere riparato.");
+    Equal("installazione incompleta: file obbligatori mancanti", plan.Components.Single().Reason);
 }
 
 static async Task ExplicitInstallAddsMissing()

@@ -14,14 +14,21 @@ public static class UpdatePlanner
             var root = GetTargetRoot(component, locations);
             var target = SafePaths.Under(root, component.Target);
             var exists = Directory.Exists(target) || File.Exists(target);
+            var requiredFilesPresent = exists && component.RequiredFiles.All(required =>
+            {
+                var requiredPath = SafePaths.Under(target, required);
+                return File.Exists(requiredPath) || Directory.Exists(requiredPath);
+            });
             var differs = installed is null ||
                           !string.Equals(installed.Version, manifest.Version, StringComparison.OrdinalIgnoreCase) ||
-                          !string.Equals(installed.Sha256, component.Sha256, StringComparison.OrdinalIgnoreCase);
+                          !string.Equals(installed.Sha256, component.Sha256, StringComparison.OrdinalIgnoreCase) ||
+                          !requiredFilesPresent;
             var needsUpdate = exists ? differs : policy == UpdatePolicy.InstallOrRepair;
             var reason = (exists, needsUpdate, installed, policy) switch
             {
                 (false, false, _, UpdatePolicy.ExistingOnly) => "non installato: ignorato",
                 (false, true, _, UpdatePolicy.InstallOrRepair) => "mancante: installazione/riparazione richiesta",
+                (true, true, _, _) when !requiredFilesPresent => "installazione incompleta: file obbligatori mancanti",
                 (true, true, null, _) => "presente ma versione non registrata",
                 (true, true, _, _) => "versione o pacchetto differente",
                 _ => "aggiornato"
