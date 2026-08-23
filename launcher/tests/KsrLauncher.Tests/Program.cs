@@ -411,7 +411,7 @@ static async Task PlatformCampaignsUseBearerSession()
         Equal("https://ksr.example/api/v1/campaigns", request.RequestUri!.ToString());
         Equal("Bearer", request.Headers.Authorization!.Scheme);
         Equal("access-1", request.Headers.Authorization.Parameter!);
-        return "{\"ok\":true,\"campaigns\":[{\"campaignCode\":\"KSR-20260820-ABC\",\"name\":\"Lunar Race\",\"status\":\"active\",\"role\":\"admin\",\"nationId\":null,\"masterSaveSha256\":\"abc123\",\"masterSaveSize\":12345}]}";
+        return "{\"ok\":true,\"campaigns\":[{\"campaignCode\":\"KSR-20260820-ABC\",\"name\":\"Lunar Race\",\"status\":\"active\",\"role\":\"admin\",\"nationId\":null,\"masterSaveSha256\":\"abc123\",\"masterSaveSize\":12345,\"campaignStartUt\":null}]}";
     }));
 
     var campaigns = await new KsrPlatformClient(http).GetCampaignsAsync("https://ksr.example", "access-1");
@@ -420,6 +420,7 @@ static async Task PlatformCampaignsUseBearerSession()
     Equal("Lunar Race", campaigns[0].Name);
     Equal("admin", campaigns[0].Role);
     True(campaigns[0].MasterSaveSize == 12345, "Master Save metadata was not parsed.");
+    True(campaigns[0].CampaignStartUt is null, "A legacy campaign with no start UT must remain readable.");
 }
 
 static async Task PlatformCloseCampaignIsAuthenticated()

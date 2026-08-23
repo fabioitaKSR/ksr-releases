@@ -197,7 +197,7 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             RequiredString(root, "gameTicket"),
             OptionalString(root, "campaignCode") ?? campaignCode.Trim(),
             OptionalInt32(root, "expiresIn") ?? 43200,
-            root.TryGetProperty("expiresAt", out var expiresAt) && expiresAt.TryGetDouble(out var value) ? value : null);
+            OptionalDouble(root, "expiresAt"));
     }
 
     public async Task<KsrCampaign> CreateCampaignAsync(
@@ -422,7 +422,7 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         OptionalInt64(item, "masterSaveSize"),
         OptionalInt32(item, "baselineSchemaVersion"),
         OptionalString(item, "baselineSha256"),
-        item.TryGetProperty("campaignStartUt", out var startUt) && startUt.TryGetDouble(out var parsedStartUt) ? parsedStartUt : null);
+        OptionalDouble(item, "campaignStartUt"));
 
     private static HttpRequestMessage AuthorizedRequest(HttpMethod method, Uri uri, string accessToken)
     {
@@ -514,10 +514,19 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         OptionalInt64(element, name) ?? throw new InvalidDataException($"KSR response is missing '{name}'.");
 
     private static long? OptionalInt64(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.TryGetInt64(out var number) ? number : null;
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out var number)
+            ? number
+            : null;
 
     private static int? OptionalInt32(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.TryGetInt32(out var number) ? number : null;
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number)
+            ? number
+            : null;
+
+    private static double? OptionalDouble(JsonElement element, string name) =>
+        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out var number)
+            ? number
+            : null;
 }
 
 public sealed class KsrApiException(int statusCode, string? code, string message) : Exception(message)
