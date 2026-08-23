@@ -22,4 +22,11 @@ public static class CampaignSaveNaming
         return folderName.Equals(StartPrefix, StringComparison.OrdinalIgnoreCase) ||
                folderName.StartsWith(StartPrefix + "-", StringComparison.OrdinalIgnoreCase);
     }
+
+    public static string ResolveInstalledSavePath(string kspRoot, string? campaignName)
+    {
+        if (string.IsNullOrWhiteSpace(kspRoot))
+            throw new ArgumentException("The KSP root is required.", nameof(kspRoot));
+        return Path.Combine(Path.GetFullPath(kspRoot), "saves", CreateStartFolderName(campaignName));
+    }
 }

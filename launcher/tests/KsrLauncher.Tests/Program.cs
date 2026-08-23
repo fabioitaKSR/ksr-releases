@@ -474,6 +474,8 @@ static Task CampaignStartSaveUsesStableNaming()
     Equal("KSRstart-Race to Duna", CampaignSaveNaming.CreateStartFolderName("Race to Duna"));
     True(CampaignSaveNaming.IsStartFolder("KSRstart-Race to Duna"), "KSRstart prefix was not recognized.");
     True(!CampaignSaveNaming.IsStartFolder("KSRstarter-Race"), "An unrelated prefix was accepted.");
+    Equal(Path.Combine(Path.GetFullPath("C:\\KSP"), "saves", "KSRstart-Race to Duna"),
+        CampaignSaveNaming.ResolveInstalledSavePath("C:\\KSP", "Race to Duna"));
     return Task.CompletedTask;
 }
 

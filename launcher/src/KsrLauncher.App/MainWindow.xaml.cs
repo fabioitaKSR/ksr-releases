@@ -1119,15 +1119,19 @@ public partial class MainWindow : Window
         if (CampaignsList.SelectedItem is not CampaignListItem campaign ||
             !_localBaselines.TryGetValue(campaign.CampaignCode, out var package)) return;
         if (!EnsureKspRoot()) return;
-        var picker = new OpenFolderDialog
+        var savePath = CampaignSaveNaming.ResolveInstalledSavePath(_kspRoot!, campaign.Name);
+        if (!File.Exists(Path.Combine(savePath, "persistent.sfs")))
         {
-            Title = "Select the installed campaign save to verify",
-            InitialDirectory = Path.Combine(_kspRoot!, "saves"),
-            Multiselect = false
-        };
-        if (picker.ShowDialog(this) != true) return;
+            CampaignComplianceStatusText.Text = $"CAMPAIGN SAVE NOT FOUND — expected: {savePath}";
+            CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            LaunchKspButton.IsEnabled = false;
+            MessageBox.Show(
+                $"The selected campaign save was not found.\n\nExpected folder:\n{savePath}\n\nDownload the verified Master Save for this campaign first.",
+                "Check Campaign Installation", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
 
-        await RunInstallationCheckAsync(campaign, package, picker.FolderName);
+        await RunInstallationCheckAsync(campaign, package, savePath);
     }
 
     private async void DownloadMasterSave_Click(object sender, RoutedEventArgs e)
@@ -1262,7 +1266,9 @@ public partial class MainWindow : Window
         }
         finally
         {
-            CheckInstallationButton.IsEnabled = true;
+            CheckInstallationButton.IsEnabled =
+                CampaignsList.SelectedItem is CampaignListItem selected &&
+                _localBaselines.ContainsKey(selected.CampaignCode);
         }
     }
 
