@@ -382,19 +382,11 @@ public sealed class CampaignBaselineComparer
             differences.Add(new(BaselineDifferenceArea.GameData, BaselineDifferenceKind.ValueMismatch,
                 "KSP version", baseline.KspVersion, actualKspVersion, "KSP version"));
 
-        var actualSettings = new List<BaselineSetting>();
-        var persistent = Path.Combine(savePath, "persistent.sfs");
-        actualSettings.AddRange(KspConfigSnapshot.ReadValues(persistent, "persistent.sfs", true)
-            .Select(item => new BaselineSetting("persistent.sfs", item.Key, item.Value, KspConfigSnapshot.DisplayName(item.Key))));
-        foreach (var source in baseline.Settings.Select(item => item.Source).Distinct(StringComparer.OrdinalIgnoreCase)
-                     .Where(source => !source.Equals("persistent.sfs", StringComparison.OrdinalIgnoreCase)))
-        {
-            var path = Path.Combine(savePath, source);
-            if (!File.Exists(path)) continue;
-            actualSettings.AddRange(KspConfigSnapshot.ReadValues(path, source, false)
-                .Select(item => new BaselineSetting(source, item.Key, item.Value, KspConfigSnapshot.DisplayName(item.Key))));
-        }
-        differences.AddRange(CompareSettings(baseline.Settings, actualSettings));
+        // A campaign save is mutable gameplay data. Once the verified Master Save has
+        // been installed, Check Installation must not compare or realign anything in
+        // saves/<campaign>: persistent.sfs, mod save files, progress and KSR_Backups
+        // legitimately change while playing. Compatibility is determined only from
+        // the KSP installation and its GameData mod folder/version inventory.
         return new CampaignComplianceResult(differences);
     }
 
@@ -451,23 +443,6 @@ public sealed class CampaignBaselineComparer
         return differences;
     }
 
-    private static IEnumerable<BaselineDifference> CompareSettings(
-        IEnumerable<BaselineSetting> expected,
-        IEnumerable<BaselineSetting> actual)
-    {
-        static string Identity(BaselineSetting item) => $"{item.Source}|{item.Key}";
-        var expectedMap = expected.ToDictionary(Identity, StringComparer.OrdinalIgnoreCase);
-        var actualMap = actual.ToDictionary(Identity, StringComparer.OrdinalIgnoreCase);
-        foreach (var item in expectedMap.Values)
-        {
-            var area = item.Source.Equals("persistent.sfs", StringComparison.OrdinalIgnoreCase)
-                ? BaselineDifferenceArea.Difficulty : BaselineDifferenceArea.ModConfiguration;
-            if (!actualMap.TryGetValue(Identity(item), out var current))
-                yield return new(area, BaselineDifferenceKind.Missing, item.Source, item.Value, null, item.DisplayName);
-            else if (!string.Equals(item.Value, current.Value, StringComparison.Ordinal))
-                yield return new(area, BaselineDifferenceKind.ValueMismatch, item.Source, item.Value, current.Value, item.DisplayName);
-        }
-    }
 }
 
 public sealed record SettingsAlignmentResult(string BackupDirectory, int FilesUpdated);

@@ -40,10 +40,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Campaign baseline packages Career save safely", CampaignBaselinePackagesCareerSaveSafely),
     ("Campaign baseline reports GameData scanner activity", CampaignBaselineReportsScannerActivity),
     ("Campaign creation accepts Career and Science but rejects Sandbox", CampaignCreationAcceptsCareerAndScienceOnly),
-    ("Campaign baseline detects mod and setting differences", CampaignBaselineDetectsDifferences),
+    ("Campaign baseline detects mod differences and ignores save settings", CampaignBaselineDetectsDifferences),
     ("Campaign baseline ignores stock KSP folders and file content", CampaignBaselineIgnoresStockFoldersAndFileContent),
     ("Campaign baseline ignores KSP build id differences", CampaignBaselineIgnoresKspBuildIdDifferences),
-    ("Campaign settings alignment backs up and preserves progress", CampaignSettingsAlignmentPreservesProgress),
+    ("Campaign verification ignores the complete save folder", CampaignVerificationIgnoresSaveFolder),
     ("Campaign whitelist ignores exact GameData folder", CampaignWhitelistIgnoresExactFolder),
     ("Campaign whitelist rejects protected KSP and KSR folders", CampaignWhitelistRejectsProtectedFolders)
 };
@@ -813,7 +813,8 @@ static async Task CampaignBaselineDetectsDifferences()
     True(changed.Differences.Any(item => item.Area == BaselineDifferenceArea.GameData &&
         item.Kind == BaselineDifferenceKind.ValueMismatch && item.Path == "TestMod"),
         "The changed mod version was not detected.");
-    True(changed.Differences.Any(item => item.Area == BaselineDifferenceArea.ModConfiguration), "The modified KCT setting was not detected.");
+    False(changed.Differences.Any(item => item.Area != BaselineDifferenceArea.GameData),
+        "Save-scoped settings must not enter installation differences.");
 }
 
 static async Task CampaignBaselineIgnoresStockFoldersAndFileContent()
@@ -852,26 +853,23 @@ static async Task CampaignBaselineIgnoresKspBuildIdDifferences()
         "The internal KSP build id was incorrectly reported as an installation difference.");
 }
 
-static async Task CampaignSettingsAlignmentPreservesProgress()
+static async Task CampaignVerificationIgnoresSaveFolder()
 {
     using var scope = new TempScope();
-    var (ksp, save) = CreateCampaignKsp(scope.Root);
+    var (_, save) = CreateCampaignKsp(scope.Root);
     var package = await new CampaignBaselineBuilder().CreateAsync("Lunar Race", save, Path.Combine(scope.Root, "drafts"));
     var persistent = Path.Combine(save, "persistent.sfs");
     await File.WriteAllTextAsync(persistent, "GAME\n{\n mode = CAREER\n progressMarker = KEEP_ME\n PARAMETERS\n {\n  DIFFICULTY\n  {\n   ReentryHeatScale = 0.5\n  }\n }\n}");
     await File.WriteAllTextAsync(Path.Combine(save, "KCT_Settings.cfg"), "KCT_Preset\n{\n KCT_Preset_Time\n {\n  OverallMultiplier = 20\n }\n}");
-    var comparer = new CampaignBaselineComparer();
-    var mismatch = await comparer.CompareAsync(package.Manifest, save);
-    True(mismatch.ModsMatch && !mismatch.SettingsMatch, "The fixture should contain settings-only differences.");
+    Directory.CreateDirectory(Path.Combine(save, "KSR_Backups", "player-backup"));
+    await File.WriteAllTextAsync(Path.Combine(save, "KSR_Backups", "player-backup", "persistent.sfs"), "backup");
+    await File.WriteAllTextAsync(Path.Combine(save, "quicksave.sfs"), "player progress");
 
-    var aligned = await new CampaignSettingsAligner().AlignAsync(package, save, mismatch);
-    True(Directory.Exists(aligned.BackupDirectory), "The settings backup was not created.");
-    True(File.Exists(Path.Combine(aligned.BackupDirectory, "persistent.sfs")), "persistent.sfs was not backed up.");
-    var text = await File.ReadAllTextAsync(persistent);
-    True(text.Contains("progressMarker = KEEP_ME", StringComparison.Ordinal), "Save progress outside PARAMETERS was replaced.");
-    True(text.Contains("ReentryHeatScale = 1.2", StringComparison.Ordinal), "Campaign difficulty was not aligned.");
-    var result = await comparer.CompareAsync(package.Manifest, save);
-    True(result.ReadyToLaunch, "The aligned save should match the campaign baseline.");
+    var result = await new CampaignBaselineComparer().CompareAsync(package.Manifest, save);
+    True(result.ReadyToLaunch, "Changes anywhere in the campaign save folder must not block launch.");
+    True(result.Differences.Count == 0, "The save folder produced installation differences.");
+    True((await File.ReadAllTextAsync(persistent)).Contains("progressMarker = KEEP_ME", StringComparison.Ordinal),
+        "Installation verification modified persistent.sfs.");
 }
 
 static async Task CampaignWhitelistIgnoresExactFolder()

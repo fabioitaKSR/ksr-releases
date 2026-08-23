@@ -1259,32 +1259,17 @@ public partial class MainWindow : Window
             _kspRoot = KspCareerSaveLocator.Resolve(savePath).KspRoot;
             if (_lastCompliance.ReadyToLaunch)
             {
-                CampaignComplianceStatusText.Text = "READY TO LAUNCH — save settings and GameData match the campaign baseline.";
+                CampaignComplianceStatusText.Text = "READY TO LAUNCH — GameData mod folders and versions match. Campaign save files are ignored.";
                 CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
                 LaunchKspButton.IsEnabled = true;
             }
             else
             {
                 var modDifferences = _lastCompliance.Differences.Count(item => item.Area == BaselineDifferenceArea.GameData);
-                var settingDifferences = _lastCompliance.Differences.Count - modDifferences;
-                CampaignComplianceStatusText.Text = $"CAMPAIGN NOT READY — {modDifferences} mod/file differences, {settingDifferences} setting differences.";
+                CampaignComplianceStatusText.Text = $"CAMPAIGN NOT READY — {modDifferences} GameData mod folder/version differences.";
                 CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
                 LaunchKspButton.IsEnabled = false;
                 ShowComplianceDifferences(_lastCompliance);
-                if (modDifferences == 0 && settingDifferences > 0 && MessageBox.Show(
-                        "Campaign difficulty or mod settings differ. Align them with the official baseline?\n\nA backup will be created first. Your progress, vessels and contracts will not be replaced.",
-                        "Align Campaign Settings", MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK)
-                {
-                    var aligned = await new CampaignSettingsAligner().AlignAsync(package, savePath, _lastCompliance);
-                    _lastCompliance = await new CampaignBaselineComparer().CompareAsync(
-                        package.Manifest, savePath, progress);
-                    if (_lastCompliance.ReadyToLaunch)
-                    {
-                        CampaignComplianceStatusText.Text = $"READY TO LAUNCH — {aligned.FilesUpdated} setting file(s) aligned. Backup: {aligned.BackupDirectory}";
-                        CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
-                        LaunchKspButton.IsEnabled = true;
-                    }
-                }
             }
         }
         catch (Exception exception)
