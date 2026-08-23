@@ -756,6 +756,8 @@ static async Task CampaignBaselinePackagesCareerSaveSafely()
 
     True(File.Exists(package.ManifestPath), "The baseline manifest was not created.");
     True(File.Exists(package.MasterSavePath), "The Master Save was not created.");
+    True(Math.Abs(package.Manifest.CampaignStartUt - 12345.5) < 0.001,
+        "The campaign start UT was not read from the selected Master Save.");
     True(package.MasterSavePath.StartsWith(campaignData + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase),
         "The Master Save was not stored inside the selected KSP save.");
     True(package.Manifest.GameDataFiles.Count == 0, "New baselines must not contain file-by-file GameData hashes.");
@@ -930,7 +932,7 @@ static (string Ksp, string Save) CreateCampaignKsp(string root)
         "{\"NAME\":\"TestMod\",\"VERSION\":{\"MAJOR\":1,\"MINOR\":0,\"PATCH\":0}}");
     var save = Path.Combine(ksp, "saves", "Admin Career");
     Directory.CreateDirectory(save);
-    File.WriteAllText(Path.Combine(save, "persistent.sfs"), "GAME\n{\n mode = CAREER\n PARAMETERS\n {\n  DIFFICULTY\n  {\n   ReentryHeatScale = 1.2\n  }\n }\n}");
+    File.WriteAllText(Path.Combine(save, "persistent.sfs"), "GAME\n{\n mode = CAREER\n UT = 12345.5\n PARAMETERS\n {\n  DIFFICULTY\n  {\n   ReentryHeatScale = 1.2\n  }\n }\n}");
     File.WriteAllText(Path.Combine(save, "KCT_Settings.cfg"), "KCT_Preset\n{\n KCT_Preset_Time\n {\n  OverallMultiplier = 38.4\n }\n}");
     File.WriteAllText(Path.Combine(save, "KCT_Backup.sfs"), "temporary");
     return (ksp, save);

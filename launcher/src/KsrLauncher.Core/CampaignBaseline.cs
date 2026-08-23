@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Globalization;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -36,6 +37,7 @@ public sealed class CampaignBaselineManifest
     public int SchemaVersion { get; set; } = 1;
     public string CampaignName { get; set; } = "";
     public string SourceSaveName { get; set; } = "";
+    public double CampaignStartUt { get; set; }
     public string KspVersion { get; set; } = "unknown";
     public DateTimeOffset CreatedAtUtc { get; set; }
     public string MasterSaveFile { get; set; } = "master-save.zip";
@@ -116,6 +118,7 @@ public sealed class CampaignBaselineBuilder
             {
                 CampaignName = campaignName.Trim(),
                 SourceSaveName = selection.SaveName,
+                CampaignStartUt = ReadCampaignStartUt(Path.Combine(selection.SavePath, "persistent.sfs")),
                 KspVersion = ReadKspVersion(selection.KspRoot),
                 CreatedAtUtc = created,
                 MasterSaveSha256 = await PackageService.ComputeSha256Async(masterSavePath, cancellationToken),
@@ -137,6 +140,22 @@ public sealed class CampaignBaselineBuilder
             if (Directory.Exists(directory)) Directory.Delete(directory, true);
             throw;
         }
+    }
+
+    internal static double ReadCampaignStartUt(string persistentSavePath)
+    {
+        foreach (var rawLine in File.ReadLines(persistentSavePath))
+        {
+            var line = rawLine.Trim();
+            if (!line.StartsWith("UT", StringComparison.OrdinalIgnoreCase)) continue;
+            var separator = line.IndexOf('=');
+            if (separator < 0 || !string.Equals(line[..separator].Trim(), "UT", StringComparison.OrdinalIgnoreCase)) continue;
+            if (double.TryParse(line[(separator + 1)..].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var ut) &&
+                double.IsFinite(ut) && ut >= 0d)
+                return ut;
+        }
+
+        throw new InvalidDataException("The selected Master Save does not contain a valid KSP universal time (UT).");
     }
 
     public static async Task<CampaignBaselineManifest> LoadAsync(string manifestPath, CancellationToken cancellationToken = default)

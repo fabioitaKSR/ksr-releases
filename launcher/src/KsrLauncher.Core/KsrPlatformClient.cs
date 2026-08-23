@@ -26,7 +26,8 @@ public sealed record KsrCampaign(
     string? MasterSaveSha256,
     long? MasterSaveSize,
     int? BaselineSchemaVersion = null,
-    string? BaselineSha256 = null);
+    string? BaselineSha256 = null,
+    double? CampaignStartUt = null);
 
 public sealed record KsrGameTicket(string Token, string CampaignCode, int ExpiresIn, double? ExpiresAt);
 
@@ -420,7 +421,8 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         OptionalString(item, "masterSaveSha256"),
         OptionalInt64(item, "masterSaveSize"),
         OptionalInt32(item, "baselineSchemaVersion"),
-        OptionalString(item, "baselineSha256"));
+        OptionalString(item, "baselineSha256"),
+        item.TryGetProperty("campaignStartUt", out var startUt) && startUt.TryGetDouble(out var parsedStartUt) ? parsedStartUt : null);
 
     private static HttpRequestMessage AuthorizedRequest(HttpMethod method, Uri uri, string accessToken)
     {
