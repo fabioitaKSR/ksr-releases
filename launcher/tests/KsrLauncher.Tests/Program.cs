@@ -35,6 +35,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
     ("Platform password recovery uses V1 endpoints", PlatformPasswordRecoveryUsesV1Endpoints),
     ("Platform health uses production V1 contract", PlatformHealthUsesV1Contract),
+    ("Leaderboard link targets the selected campaign real table", LeaderboardLinkTargetsSelectedCampaign),
     ("Platform authentication preserves server error code", PlatformAuthenticationPreservesErrorCode),
     ("Only one non-terminal admin campaign is allowed", OnlyOneAdminCampaignIsAllowed),
     ("Campaign baseline packages Career save safely", CampaignBaselinePackagesCareerSaveSafely),
@@ -698,6 +699,18 @@ static async Task PlatformHealthUsesV1Contract()
     Equal("ksr-platform", health.Service);
     Equal("v1", health.Version!);
     True(health.Legacy, "Legacy compatibility flag was not parsed.");
+}
+
+static Task LeaderboardLinkTargetsSelectedCampaign()
+{
+    var uri = KsrPlatformClient.BuildLeaderboardUri(
+        "https://play.kerbalspacerace.net", "KSR-20260823-TEST 01");
+    Equal(
+        "https://play.kerbalspacerace.net/sheet-preview?campaign_id=KSR-20260823-TEST%2001",
+        uri.AbsoluteUri);
+    Throws<ArgumentException>(() =>
+        KsrPlatformClient.BuildLeaderboardUri("https://play.kerbalspacerace.net", "not-a-campaign"));
+    return Task.CompletedTask;
 }
 
 static async Task PlatformAuthenticationPreservesErrorCode()

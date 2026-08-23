@@ -36,6 +36,16 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 
     private readonly HttpClient _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
 
+    public static Uri BuildLeaderboardUri(string serverUrl, string campaignCode)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(campaignCode) ||
+            !campaignCode.Trim().StartsWith("KSR-", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Select a valid KSR campaign before opening its leaderboard.");
+        return new Uri(baseUri,
+            $"/sheet-preview?campaign_id={Uri.EscapeDataString(campaignCode.Trim())}");
+    }
+
     public async Task RegisterAsync(
         string serverUrl,
         string username,

@@ -1032,6 +1032,7 @@ public partial class MainWindow : Window
             : $"{campaign.Name}  ·  {campaign.Nation}  ·  {campaign.Role}";
         SelectedCampaignText.Foreground = (System.Windows.Media.Brush)FindResource(campaign is null ? "MutedBrush" : "ForegroundBrush");
         OpenCampaignButton.IsEnabled = campaign is not null;
+        LeaderboardButton.IsEnabled = campaign is not null;
         DownloadMasterSaveButton.IsEnabled = campaign?.MasterSaveAvailable == true;
         MasterSaveStatusText.Text = campaign is null
             ? "Select a campaign to check its Master Save."
@@ -1077,6 +1078,28 @@ public partial class MainWindow : Window
             return;
         }
         OpenSupportDialog(SupportReportType.Log, log, null);
+    }
+
+    private void Leaderboard_Click(object sender, RoutedEventArgs e)
+    {
+        if (CampaignsList.SelectedItem is not CampaignListItem campaign)
+        {
+            MessageBox.Show("Select a campaign before opening its leaderboard.",
+                "KSR Leaderboard", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        try
+        {
+            var uri = KsrPlatformClient.BuildLeaderboardUri(
+                LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured."),
+                campaign.CampaignCode);
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show($"The campaign leaderboard could not be opened.\n\n{exception.Message}",
+                "KSR Leaderboard", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void SendSave_Click(object sender, RoutedEventArgs e)

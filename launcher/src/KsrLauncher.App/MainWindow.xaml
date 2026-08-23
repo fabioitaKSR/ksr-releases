@@ -360,19 +360,6 @@
                     </StackPanel>
                 </Border>
 
-                <Border Grid.Row="4" Style="{StaticResource Card}" Padding="18">
-                    <Grid>
-                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
-                        <TextBlock Text="SUPPORT TOOLS" Style="{StaticResource SectionTitle}" />
-                        <TextBlock Grid.Row="1" Text="Send diagnostics only when you choose to. You can describe the problem before anything is packaged."
-                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,14" />
-                        <Grid Grid.Row="3">
-                            <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="10" /><ColumnDefinition /></Grid.ColumnDefinitions>
-                            <Button Content="SEND LOG" Click="SendLog_Click" />
-                            <Button Grid.Column="2" Content="SEND SAVE" Click="SendSave_Click" />
-                        </Grid>
-                    </Grid>
-                </Border>
             </Grid>
         </Grid>
 
@@ -597,9 +584,23 @@
         <!-- Persistent footer -->
         <Border Grid.Row="4" Background="#E6080B0D" BorderBrush="#FF2E3336" BorderThickness="0,1,0,0">
             <Grid Margin="18,0">
-                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                <Button Content="LEADERBOARD" Style="{StaticResource GhostButton}" MinWidth="160" VerticalAlignment="Center" />
-                <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button x:Name="LeaderboardButton" Content="LEADERBOARD" Style="{StaticResource GhostButton}"
+                        MinWidth="150" VerticalAlignment="Center" IsEnabled="False" Click="Leaderboard_Click" />
+                <Button x:Name="SendLogButton" Grid.Column="2" Content="SEND LOG" Style="{StaticResource GhostButton}"
+                        MinWidth="105" VerticalAlignment="Center" Click="SendLog_Click" />
+                <Button x:Name="SendSaveButton" Grid.Column="4" Content="SEND SAVE" Style="{StaticResource GhostButton}"
+                        MinWidth="105" VerticalAlignment="Center" Click="SendSave_Click"
+                        ToolTip="Choose the KSP save folder to include in the report" />
+                <StackPanel Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <TextBlock Text="YOUR MODS. YOUR RULES. YOUR SPACE RACE."
                                Foreground="{StaticResource MutedBrush}" FontSize="13"
                                HorizontalAlignment="Center" TextAlignment="Center" />
@@ -607,7 +608,7 @@
                                FontSize="9" Opacity="0.78" Margin="0,2,0,0"
                                HorizontalAlignment="Center" TextAlignment="Center" />
                 </StackPanel>
-                <Button x:Name="LaunchKspButton" Grid.Column="2" Content="LAUNCH KSP" Style="{StaticResource PrimaryButton}" MinWidth="260"
+                <Button x:Name="LaunchKspButton" Grid.Column="6" Content="LAUNCH KSP" Style="{StaticResource PrimaryButton}" MinWidth="260"
                         VerticalAlignment="Center" Click="LaunchKsp_Click" />
             </Grid>
         </Border>
