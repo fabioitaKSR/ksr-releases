@@ -22,6 +22,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Support SAVE package is safe and complete", SupportSavePackageIsSafe),
     ("Support report requires a useful description", SupportDescriptionIsRequired),
     ("Support upload uses authenticated HTTPS endpoint", SupportUploadIsAuthenticated),
+    ("Support upload refreshes an expired session and retries once", SupportUploadRefreshesExpiredSession),
     ("Platform login parses V1 session", PlatformLoginParsesSession),
     ("Platform refresh rotates remembered session", PlatformRefreshRotatesSession),
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
@@ -359,6 +360,54 @@ static async Task SupportUploadIsAuthenticated()
     Equal("KSR-RPT-000001", result.ReportId);
     await ThrowsAsync<ArgumentException>(() =>
         new SupportReportUploader(http).UploadAsync("http://ksr.example", "secret-token", package));
+}
+
+static async Task SupportUploadRefreshesExpiredSession()
+{
+    using var scope = new TempScope();
+    var packagePath = Path.Combine(scope.Root, "report.zip");
+    CreateZip(packagePath, new Dictionary<string, string> { ["report.txt"] = "test" });
+    var package = new SupportReportPackage(
+        packagePath, "report.zip", await PackageService.ComputeSha256Async(packagePath),
+        new FileInfo(packagePath).Length, DateTimeOffset.UtcNow, SupportReportType.Log, "KSR-42");
+    var requests = 0;
+    var refreshes = 0;
+    using var http = new HttpClient(new ResponseHttpHandler(request =>
+    {
+        requests++;
+        var token = request.Headers.Authorization?.Parameter;
+        if (requests == 1)
+        {
+            Equal("expired-token", token!);
+            return new HttpResponseMessage(HttpStatusCode.Unauthorized)
+            {
+                Content = new StringContent("{\"error\":{\"code\":\"unauthorized\"}}", Encoding.UTF8, "application/json")
+            };
+        }
+
+        Equal("renewed-token", token!);
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                "{\"reportId\":\"KSR-RPT-000002\",\"status\":\"received\",\"receivedAtUtc\":\"2026-09-18T13:50:00Z\"}",
+                Encoding.UTF8,
+                "application/json")
+        };
+    }));
+
+    var result = await new SupportReportUploader(http).UploadAsync(
+        "https://ksr.example",
+        "expired-token",
+        package,
+        _ =>
+        {
+            refreshes++;
+            return Task.FromResult("renewed-token");
+        });
+
+    True(requests == 2, "The support upload was not retried exactly once.");
+    True(refreshes == 1, "The expired session was not refreshed exactly once.");
+    Equal("KSR-RPT-000002", result.ReportId);
 }
 
 static async Task PlatformLoginParsesSession()

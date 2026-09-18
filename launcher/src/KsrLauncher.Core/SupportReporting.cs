@@ -198,30 +198,56 @@ public sealed class SupportReportUploader(HttpClient? httpClient = null)
         string serverUrl,
         string accessToken,
         SupportReportPackage package,
+        Func<CancellationToken, Task<string>>? refreshAccessToken = null,
         CancellationToken cancellationToken = default)
     {
         if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var baseUri) || baseUri.Scheme != Uri.UriSchemeHttps)
             throw new ArgumentException("A valid HTTPS KSR server URL is required.");
         if (string.IsNullOrWhiteSpace(accessToken)) throw new InvalidOperationException("Sign in before sending a support report.");
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "/api/v1/support/reports"));
+        var currentAccessToken = accessToken;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var request = CreateRequest(baseUri, currentAccessToken, package);
+            using var response = await _httpClient.SendAsync(
+                request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized &&
+                attempt == 0 && refreshAccessToken is not null)
+            {
+                currentAccessToken = await refreshAccessToken(cancellationToken);
+                if (string.IsNullOrWhiteSpace(currentAccessToken))
+                    throw new InvalidOperationException("The KSR session could not be renewed. Sign in again.");
+                continue;
+            }
+
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var result = await JsonSerializer.DeserializeAsync<SupportUploadResponse>(
+                stream, ManifestService.JsonOptions, cancellationToken)
+                ?? throw new InvalidDataException("The KSR server returned an empty support response.");
+            return new SupportUploadResult(result.ReportId, result.Status, result.ReceivedAtUtc);
+        }
+
+        throw new InvalidOperationException("The KSR session could not be renewed. Sign in again.");
+    }
+
+    private static HttpRequestMessage CreateRequest(
+        Uri baseUri,
+        string accessToken,
+        SupportReportPackage package)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "/api/v1/support/reports"));
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        using var form = new MultipartFormDataContent();
+        var form = new MultipartFormDataContent();
         form.Add(new StringContent(package.Type.ToString().ToLowerInvariant()), "reportType");
-        if (!string.IsNullOrWhiteSpace(package.CampaignCode)) form.Add(new StringContent(package.CampaignCode), "campaignCode");
+        if (!string.IsNullOrWhiteSpace(package.CampaignCode))
+            form.Add(new StringContent(package.CampaignCode), "campaignCode");
         form.Add(new StringContent(package.Sha256), "packageSha256");
-        await using var file = File.OpenRead(package.FilePath);
-        using var content = new StreamContent(file);
+        var content = new StreamContent(File.OpenRead(package.FilePath));
         content.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
         form.Add(content, "package", package.FileName);
         request.Content = form;
-
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var result = await JsonSerializer.DeserializeAsync<SupportUploadResponse>(stream, ManifestService.JsonOptions, cancellationToken)
-            ?? throw new InvalidDataException("The KSR server returned an empty support response.");
-        return new SupportUploadResult(result.ReportId, result.Status, result.ReceivedAtUtc);
+        return request;
     }
 
     private sealed class SupportUploadResponse

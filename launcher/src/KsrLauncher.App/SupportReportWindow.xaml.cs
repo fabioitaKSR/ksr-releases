@@ -80,10 +80,14 @@ public partial class SupportReportWindow : Window
             }
 
             SetBusy(true, "Uploading the support package to the KSR server…");
+            var accessToken = LauncherSession.AccessToken;
+            if (LauncherSession.AccessTokenExpiresAtUtc <= DateTimeOffset.UtcNow.AddMinutes(1))
+                accessToken = await RefreshAccessTokenAsync(CancellationToken.None);
             var result = await new SupportReportUploader().UploadAsync(
                 LauncherSession.ServerUrl,
-                LauncherSession.AccessToken,
-                package);
+                accessToken!,
+                package,
+                RefreshAccessTokenAsync);
             File.Delete(package.FilePath);
             MessageBox.Show(
                 $"Report received successfully.\n\nReport ID: {result.ReportId}",
@@ -100,6 +104,37 @@ public partial class SupportReportWindow : Window
                 "KSR Support", MessageBoxButton.OK, MessageBoxImage.Error);
             SetBusy(false, package is null ? "Correct the problem and try again." : "Package retained. You can try again.");
         }
+    }
+
+    private static async Task<string> RefreshAccessTokenAsync(CancellationToken cancellationToken)
+    {
+        var serverUrl = LauncherSession.ServerUrl;
+        var refreshToken = LauncherSession.RefreshToken;
+        if (string.IsNullOrWhiteSpace(serverUrl) || string.IsNullOrWhiteSpace(refreshToken))
+            throw new InvalidOperationException("Your KSR session has expired. Sign in again before sending the report.");
+
+        var session = await new KsrPlatformClient().RefreshAsync(serverUrl, refreshToken, cancellationToken);
+        LauncherSession.Username = session.User.Username;
+        LauncherSession.AccessToken = session.AccessToken;
+        LauncherSession.RefreshToken = session.RefreshToken;
+        LauncherSession.AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(session.ExpiresIn);
+
+        try
+        {
+            var remembered = LauncherCredentialStore.Load();
+            if (remembered is not null &&
+                string.Equals(remembered.ServerUrl.TrimEnd('/'), serverUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+            {
+                LauncherCredentialStore.Save(new RememberedSession(
+                    session.User.Username, serverUrl, session.RefreshToken));
+            }
+        }
+        catch
+        {
+            // The renewed in-memory session remains valid even if Windows Credential Manager is unavailable.
+        }
+
+        return session.AccessToken;
     }
 
     private void SetBusy(bool busy, string status)

@@ -30,7 +30,8 @@ KSR's Windows launcher and testable update engine for Kerbal Space Race. The CLI
 - private-email account notice with no advertising use;
 - explicit `SEND LOG` and `SEND SAVE` support reports with description and consent;
 - safe diagnostic ZIP creation with UTC/player filenames, `report.txt`, `manifest.json` and SHA-256;
-- authenticated HTTPS upload to the KSR server, with local queuing while server sign-in is unavailable.
+- authenticated HTTPS upload to the KSR server, with automatic session renewal and one safe retry after an expired-token response;
+- local support-package queuing while server sign-in is unavailable.
 
 ## Build and test
 
