@@ -31,6 +31,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform campaigns use bearer session data", PlatformCampaignsUseBearerSession),
     ("Platform game ticket is campaign scoped", PlatformGameTicketIsCampaignScoped),
     ("Game logger removes stale campaign ticket", GameLoggerRemovesStaleCampaignTicket),
+    ("Launcher settings preserve test installation and campaign data", LauncherSettingsPreserveTestInstallation),
     ("Platform campaign creation uploads baseline idempotently", PlatformCampaignCreationIsMultipartAndIdempotent),
     ("Platform joins campaign through authenticated endpoint", PlatformJoinCampaignIsAuthenticated),
     ("Platform downloads and verifies campaign artifacts", PlatformDownloadsVerifiedCampaignArtifacts),
@@ -865,6 +866,38 @@ static Task GameLoggerRemovesStaleCampaignTicket()
     True(GameLoggerConfiguration.Clear(scope.Root), "The stale campaign game configuration was not removed.");
     False(File.Exists(path), "The stale campaign ticket remains available to KSP.");
     False(GameLoggerConfiguration.Clear(scope.Root), "Clearing an already absent game ticket should be harmless.");
+    return Task.CompletedTask;
+}
+
+static Task LauncherSettingsPreserveTestInstallation()
+{
+    using var scope = new TempScope();
+    var settingsPath = Path.Combine(scope.Root, "settings.json");
+    var testRoot = Path.Combine(scope.Root, "test-game");
+    var raceRoot = Path.Combine(scope.Root, "race-game");
+    File.WriteAllText(settingsPath, JsonSerializer.Serialize(new
+    {
+        ServerUrl = "https://play.kerbalspacerace.net",
+        KspRoot = raceRoot,
+        TestKspRoot = testRoot,
+        CampaignLocations = new Dictionary<string, string> { ["KSR-EXISTING"] = "saved-location" }
+    }));
+
+    LauncherSettingsStore.SaveKspRoot(Path.Combine(scope.Root, "new-race-game"), settingsPath);
+    Equal(Path.GetFullPath(testRoot), LauncherSettingsStore.LoadTestKspRoot(settingsPath)!);
+    LauncherSettingsStore.SaveServerAndTestKspRoot("https://new.example", testRoot, settingsPath);
+
+    using var saved = JsonDocument.Parse(File.ReadAllText(settingsPath));
+    Equal("saved-location", saved.RootElement.GetProperty("CampaignLocations")
+        .GetProperty("KSR-EXISTING").GetString()!);
+    Equal(Path.GetFullPath(Path.Combine(scope.Root, "new-race-game")),
+        saved.RootElement.GetProperty("KspRoot").GetString()!);
+    Equal(Path.GetFullPath(testRoot), saved.RootElement.GetProperty("TestKspRoot").GetString()!);
+    Equal("https://new.example", LauncherSettingsStore.LoadServerUrl(settingsPath)!);
+
+    File.WriteAllText(settingsPath, "{broken-json");
+    Throws<JsonException>(() => LauncherSettingsStore.SaveKspRoot(raceRoot, settingsPath));
+    Equal("{broken-json", File.ReadAllText(settingsPath));
     return Task.CompletedTask;
 }
 
