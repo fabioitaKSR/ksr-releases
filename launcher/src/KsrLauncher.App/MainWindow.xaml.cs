@@ -1555,7 +1555,7 @@ public partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new ServerSettingsWindow(LauncherSession.ServerUrl, _kspRoot) { Owner = this };
+        var dialog = new ServerSettingsWindow(LauncherSession.ServerUrl) { Owner = this };
         if (dialog.ShowDialog() != true) return;
         LauncherSession.ServerUrl = dialog.ServerUrl;
         UpdateSessionVisuals();

@@ -895,6 +895,10 @@ static Task LauncherSettingsPreserveTestInstallation()
     Equal(Path.GetFullPath(testRoot), saved.RootElement.GetProperty("TestKspRoot").GetString()!);
     Equal("https://new.example", LauncherSettingsStore.LoadServerUrl(settingsPath)!);
 
+    var sharedRoot = Path.Combine(scope.Root, "new-race-game");
+    LauncherSettingsStore.SaveServerAndTestKspRoot("https://new.example", sharedRoot, settingsPath);
+    Equal(LauncherSettingsStore.LoadKspRoot(settingsPath)!, LauncherSettingsStore.LoadTestKspRoot(settingsPath)!);
+
     File.WriteAllText(settingsPath, "{broken-json");
     Throws<JsonException>(() => LauncherSettingsStore.SaveKspRoot(raceRoot, settingsPath));
     Equal("{broken-json", File.ReadAllText(settingsPath));

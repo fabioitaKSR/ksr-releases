@@ -8,14 +8,12 @@ namespace KsrLauncher.App;
 
 public partial class ServerSettingsWindow : Window
 {
-    private readonly string? _campaignKspRoot;
     private string? _testKspRoot;
     public string? ServerUrl { get; private set; }
 
-    public ServerSettingsWindow(string? currentServerUrl, string? campaignKspRoot)
+    public ServerSettingsWindow(string? currentServerUrl)
     {
         InitializeComponent();
-        _campaignKspRoot = campaignKspRoot;
         _testKspRoot = LauncherSettingsStore.LoadTestKspRoot();
         RefreshTestKspPath();
         ServerUrlTextBox.Text = currentServerUrl ?? string.Empty;
@@ -63,12 +61,6 @@ public partial class ServerSettingsWindow : Window
                 "KSR Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
-        if (string.Equals(selected, _campaignKspRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            MessageBox.Show("Choose a separate KSP installation for the test game.",
-                "KSR Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
         _testKspRoot = selected;
         RefreshTestKspPath();
     }
@@ -91,12 +83,6 @@ public partial class ServerSettingsWindow : Window
     private void LaunchTestKsp_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_testKspRoot) || !LaunchTestKspButton.IsEnabled) return;
-        if (string.Equals(_testKspRoot, _campaignKspRoot, StringComparison.OrdinalIgnoreCase))
-        {
-            MessageBox.Show("The test installation must be separate from the campaign installation.",
-                "KSR Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
         if (Process.GetProcessesByName("KSP_x64").Length > 0)
         {
             MessageBox.Show("Close the running KSP game before starting the test installation.",
