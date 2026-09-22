@@ -8,8 +8,11 @@ var tests = new (string Name, Func<Task> Run)[]
 {
     ("Manifest valido", ManifestValid),
     ("Manifest blocca path traversal", ManifestRejectsTraversal),
+    ("Manifest blocca installMode sconosciuto", ManifestRejectsUnknownInstallMode),
+    ("Manifest blocca assetUrl non sicuro", ManifestRejectsUnsafeAssetUrl),
     ("ZIP blocca path traversal", ZipRejectsTraversal),
     ("Aggiornamento, preserve e rollback", UpdatePreserveRollback),
+    ("Overlay conserva la mod e supporta rollback", OverlayPreservesModAndRollsBack),
     ("SHA errato non modifica installazione", WrongHashDoesNotModify),
     ("Errore nel gruppo ripristina componenti precedenti", GroupFailureRollsBack),
     ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease),
@@ -69,6 +72,22 @@ static Task ManifestRejectsTraversal()
     return Task.CompletedTask;
 }
 
+static Task ManifestRejectsUnknownInstallMode()
+{
+    var manifest = CreateManifest(new string('a', 64));
+    manifest.Components[0].InstallMode = "merge-senza-regole";
+    Throws<InvalidDataException>(() => ManifestService.Validate(manifest));
+    return Task.CompletedTask;
+}
+
+static Task ManifestRejectsUnsafeAssetUrl()
+{
+    var manifest = CreateManifest(new string('a', 64));
+    manifest.Components[0].AssetUrl = "http://example.test/pacchetto-diverso.zip";
+    Throws<InvalidDataException>(() => ManifestService.Validate(manifest));
+    return Task.CompletedTask;
+}
+
 static Task ZipRejectsTraversal()
 {
     using var scope = new TempScope();
@@ -106,6 +125,47 @@ static async Task UpdatePreserveRollback()
     await UpdateEngine.RollbackAsync(result.BackupDirectory!, new LauncherLocations(ksp, launcherData), true);
     Equal("old", await File.ReadAllTextAsync(Path.Combine(target, "old.txt")));
     False(File.Exists(Path.Combine(target, "new.txt")), "Il rollback non ha rimosso il file nuovo.");
+}
+
+static async Task OverlayPreservesModAndRollsBack()
+{
+    using var scope = new TempScope();
+    var ksp = CreateKsp(scope.Root);
+    var launcherData = Path.Combine(scope.Root, "LauncherData");
+    var assets = Path.Combine(scope.Root, "assets");
+    Directory.CreateDirectory(assets);
+    var target = Path.Combine(ksp, "GameData", "TarsierSpaceTech");
+    Directory.CreateDirectory(Path.Combine(target, "Plugins"));
+    Directory.CreateDirectory(Path.Combine(target, "Parts", "ChemCam"));
+    await File.WriteAllTextAsync(Path.Combine(target, "Plugins", "TarsierSpaceTech.dll"), "old-dll");
+    await File.WriteAllTextAsync(Path.Combine(target, "Parts", "ChemCam", "model.mu"), "chemcam-model");
+
+    var zip = Path.Combine(assets, "tarsier-patch.zip");
+    CreateZip(zip, new Dictionary<string, string>
+    {
+        ["GameData/TarsierSpaceTech/Plugins/TarsierSpaceTech.dll"] = "patched-dll"
+    });
+    var manifest = CreateManifest(await PackageService.ComputeSha256Async(zip));
+    manifest.Components[0].Asset = "tarsier-patch.zip";
+    manifest.Components[0].Source = "GameData/TarsierSpaceTech";
+    manifest.Components[0].Target = "GameData/TarsierSpaceTech";
+    manifest.Components[0].InstallMode = "overlay";
+    manifest.Components[0].RequiredFiles = ["Plugins/TarsierSpaceTech.dll"];
+
+    var result = await new UpdateEngine().RunAsync(
+        manifest,
+        new LauncherLocations(ksp, launcherData),
+        assets,
+        true,
+        UpdatePolicy.InstallOrRepair);
+
+    Equal("patched-dll", await File.ReadAllTextAsync(Path.Combine(target, "Plugins", "TarsierSpaceTech.dll")));
+    Equal("chemcam-model", await File.ReadAllTextAsync(Path.Combine(target, "Parts", "ChemCam", "model.mu")));
+    True(result.BackupDirectory is not null, "Backup overlay non creato.");
+
+    await UpdateEngine.RollbackAsync(result.BackupDirectory!, new LauncherLocations(ksp, launcherData), true);
+    Equal("old-dll", await File.ReadAllTextAsync(Path.Combine(target, "Plugins", "TarsierSpaceTech.dll")));
+    Equal("chemcam-model", await File.ReadAllTextAsync(Path.Combine(target, "Parts", "ChemCam", "model.mu")));
 }
 
 static async Task WrongHashDoesNotModify()

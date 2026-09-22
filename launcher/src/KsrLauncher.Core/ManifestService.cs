@@ -41,12 +41,20 @@ public static partial class ManifestService
             if (string.IsNullOrWhiteSpace(component.Id) || !ids.Add(component.Id)) errors.Add($"id componente vuoto o duplicato: '{component.Id}'");
             if (string.IsNullOrWhiteSpace(component.TransactionGroup)) errors.Add($"{component.Id}: transactionGroup mancante");
             if (Path.GetFileName(component.Asset) != component.Asset || !component.Asset.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) errors.Add($"{component.Id}: asset deve essere un solo nome file ZIP");
+            if (!string.IsNullOrWhiteSpace(component.AssetUrl) &&
+                (!Uri.TryCreate(component.AssetUrl, UriKind.Absolute, out var assetUri) ||
+                 assetUri.Scheme != Uri.UriSchemeHttps ||
+                 !Uri.UnescapeDataString(assetUri.AbsolutePath).EndsWith('/' + component.Asset, StringComparison.OrdinalIgnoreCase)))
+                errors.Add($"{component.Id}: assetUrl deve essere HTTPS e terminare con il nome dell'asset");
             if (!Sha256Regex().IsMatch(component.Sha256)) errors.Add($"{component.Id}: sha256 deve contenere 64 caratteri esadecimali");
             ValidateRelative(component.Source, $"{component.Id}: source", errors);
             ValidateRelative(component.Target, $"{component.Id}: target", errors);
             if (!string.Equals(component.TargetKind, "ksp", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(component.TargetKind, "launcherData", StringComparison.OrdinalIgnoreCase))
                 errors.Add($"{component.Id}: targetKind deve essere ksp o launcherData");
+            if (!string.Equals(component.InstallMode, "replace", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(component.InstallMode, "overlay", StringComparison.OrdinalIgnoreCase))
+                errors.Add($"{component.Id}: installMode deve essere replace o overlay");
             foreach (var required in component.RequiredFiles) ValidateRelative(required, $"{component.Id}: requiredFiles", errors);
         }
 

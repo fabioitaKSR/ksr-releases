@@ -29,7 +29,8 @@ public partial class MainWindow : Window
     private static readonly string[] LaunchAndLogsComponentIds =
     [
         "ksr-core", "nation-selector", "parameter-logger",
-        "achievements", "harmony", "click-through-blocker", "toolbar-controller", "spacetux-library"
+        "achievements", "harmony", "click-through-blocker", "toolbar-controller", "spacetux-library",
+        "tarsier-space-technology"
     ];
     private static readonly string[] LaunchAndLogsRequiredFiles =
     [
@@ -42,7 +43,8 @@ public partial class MainWindow : Window
         "GameData/000_Harmony/HarmonyInstallChecker.dll",
         "GameData/000_ClickThroughBlocker/Plugins/ClickThroughBlocker.dll",
         "GameData/001_ToolbarControl/Plugins/ToolbarControl.dll",
-        "GameData/SpaceTuxLibrary/Plugins/SpaceTuxUtility.dll"
+        "GameData/SpaceTuxLibrary/Plugins/SpaceTuxUtility.dll",
+        "GameData/TarsierSpaceTech/Plugins/TarsierSpaceTech.dll"
     ];
 
     public MainWindow()

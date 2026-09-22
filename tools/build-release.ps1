@@ -270,6 +270,20 @@ $definitions = @(
         RequiredPaths = @('Plugins/KSRParameterLogger.dll')
     },
     @{
+        Id = 'tarsier-space-technology'
+        AssetPrefix = 'KSP-TarsierSpaceTechnology-KSRPatch'
+        SourceRoot = Join-Path $gameDataRoot 'TarsierSpaceTech'
+        PackageRoot = 'GameData/TarsierSpaceTech'
+        Target = 'GameData/TarsierSpaceTech'
+        TargetKind = 'ksp'
+        InstallMode = 'overlay'
+        ExplicitOnly = $true
+        ExplicitFiles = @('Plugins/TarsierSpaceTech.dll')
+        ExcludePrefixes = @()
+        AllowedTopEntries = @()
+        RequiredPaths = @('Plugins/TarsierSpaceTech.dll')
+    },
+    @{
         Id = 'harmony'
         AssetPrefix = 'KSP-Harmony'
         SourceRoot = Join-Path $gameDataRoot '000_Harmony'
@@ -488,6 +502,9 @@ try {
             target = $definition.Target
             required = $true
             requiredFiles = @($definition.RequiredPaths)
+        }
+        if ($definition.ContainsKey('InstallMode')) {
+            $componentManifest.installMode = $definition.InstallMode
         }
         if ($definition.TargetKind -ne 'ksp') {
             $componentManifest.targetKind = $definition.TargetKind

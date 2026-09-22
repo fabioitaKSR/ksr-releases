@@ -14,6 +14,7 @@ The confirmed product boundary is recorded in [PLATFORM_V1_SCOPE.md](PLATFORM_V1
 - KSR Contract Pack
 - KSR Parameter Logger
 - KSR Disable DBS UI
+- Tarsier Space Technology KSR event-leak patch
 - KSR Remote Logger Server
 - KSR Launcher
 
@@ -25,7 +26,7 @@ The launcher reads the latest published GitHub Release, validates the manifest a
 
 Player-generated files and server data are preserved during updates.
 
-The ordinary update path only updates KSR-owned components that are already installed. Missing components are skipped unless the user explicitly requests install/repair, and third-party mods are never managed by the launcher.
+The ordinary update path only updates declared KSR components. Missing components are skipped unless the user explicitly requests install/repair. A narrowly scoped third-party compatibility patch may use `overlay` mode to replace only its declared files while preserving the rest of the mod; Tarsier Space Technology uses this mode so ChemCam assets and configuration remain untouched.
 
 The first tested implementation of the update engine is available in [`launcher/`](launcher/README.md). It currently provides the reusable .NET core, a safe command-line interface, persistent backups and automated rollback tests.
 

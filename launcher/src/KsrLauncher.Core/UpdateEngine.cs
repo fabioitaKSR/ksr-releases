@@ -136,11 +136,13 @@ public sealed class UpdateEngine(PackageService? packageService = null)
         var backupRelative = Path.Combine("components", component.Id);
         var backup = SafePaths.Under(backupRoot, backupRelative);
         var hadOriginal = Directory.Exists(target);
+        var overlay = string.Equals(component.InstallMode, "overlay", StringComparison.OrdinalIgnoreCase);
 
         try
         {
+            if (overlay && hadOriginal) FileTree.CopyDirectory(target, replacement);
             FileTree.CopyDirectory(prepared.SourcePath, replacement);
-            if (hadOriginal) CopyPreservedFiles(target, replacement, root, manifest);
+            if (hadOriginal && !overlay) CopyPreservedFiles(target, replacement, root, manifest);
             if (hadOriginal)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(backup)!);

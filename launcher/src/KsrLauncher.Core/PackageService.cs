@@ -16,9 +16,20 @@ public sealed class PackageService(HttpClient? httpClient = null)
     {
         Directory.CreateDirectory(downloadDirectory);
         var destination = Path.Combine(downloadDirectory, component.Asset);
-        if (Uri.TryCreate(assetsBase, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+        Uri? assetUri = null;
+        if (!string.IsNullOrWhiteSpace(component.AssetUrl))
         {
-            var assetUri = new Uri(uri.ToString().TrimEnd('/') + "/" + Uri.EscapeDataString(component.Asset));
+            if (!Uri.TryCreate(component.AssetUrl, UriKind.Absolute, out assetUri) || assetUri.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidDataException($"assetUrl non valido per {component.Id}.");
+        }
+        else if (Uri.TryCreate(assetsBase, UriKind.Absolute, out var baseUri) &&
+                 (baseUri.Scheme == Uri.UriSchemeHttp || baseUri.Scheme == Uri.UriSchemeHttps))
+        {
+            assetUri = new Uri(baseUri.ToString().TrimEnd('/') + "/" + Uri.EscapeDataString(component.Asset));
+        }
+
+        if (assetUri is not null)
+        {
             using var response = await _httpClient.GetAsync(assetUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             response.EnsureSuccessStatusCode();
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);

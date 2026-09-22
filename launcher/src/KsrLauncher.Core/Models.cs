@@ -21,11 +21,13 @@ public sealed class ComponentManifest
     public string Id { get; set; } = "";
     public string TransactionGroup { get; set; } = "ksp-client";
     public string Asset { get; set; } = "";
+    public string AssetUrl { get; set; } = "";
     public long Size { get; set; }
     public string Sha256 { get; set; } = "";
     public string Source { get; set; } = "";
     public string TargetKind { get; set; } = "ksp";
     public string Target { get; set; } = "";
+    public string InstallMode { get; set; } = "replace";
     public bool Required { get; set; }
     public List<string> RequiredFiles { get; set; } = [];
 }
