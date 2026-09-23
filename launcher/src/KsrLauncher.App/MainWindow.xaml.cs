@@ -1171,6 +1171,7 @@ public partial class MainWindow : Window
         try
         {
             GameLoggerConfiguration.Clear(_kspRoot!);
+            await LauncherSession.EnsureFreshAccessTokenAsync(LauncherSession.ServerUrl!);
             var ticket = await _platformClient.GetGameTicketAsync(
                 LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured."),
                 LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in before launching a campaign."),
@@ -1632,6 +1633,29 @@ internal static class LauncherSession
     public static string? CampaignCode { get; set; }
     public static string? CampaignName { get; set; }
     public static bool IsAuthenticated => !string.IsNullOrWhiteSpace(AccessToken);
+
+    public static async Task EnsureFreshAccessTokenAsync(string serverUrl)
+    {
+        if (!string.Equals(serverUrl.TrimEnd('/'), ServerUrl?.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Sign in to the selected KSR server first.");
+        if (!IsAuthenticated)
+            throw new InvalidOperationException("Sign in before launching KSP.");
+        if (AccessTokenExpiresAtUtc is null || AccessTokenExpiresAtUtc > DateTimeOffset.UtcNow.AddMinutes(2))
+            return;
+        if (string.IsNullOrWhiteSpace(RefreshToken))
+            throw new InvalidOperationException("Your session has expired. Sign in again.");
+
+        var oldRefreshToken = RefreshToken;
+        var refreshed = await new KsrPlatformClient().RefreshAsync(serverUrl, oldRefreshToken);
+        var remembered = LauncherCredentialStore.Load();
+        if (remembered is not null &&
+            string.Equals(remembered.ServerUrl.TrimEnd('/'), serverUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(remembered.RefreshToken, oldRefreshToken, StringComparison.Ordinal))
+            LauncherCredentialStore.Save(new RememberedSession(refreshed.User.Username, serverUrl, refreshed.RefreshToken));
+        AccessToken = refreshed.AccessToken;
+        RefreshToken = refreshed.RefreshToken;
+        AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(refreshed.ExpiresIn);
+    }
 }
 
 internal sealed record CampaignListItem(

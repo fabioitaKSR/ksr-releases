@@ -43,7 +43,7 @@
             <Button x:Name="BrowseTestKspButton" Grid.Column="2" Content="BROWSE" MinWidth="90" Click="BrowseTestKsp_Click" />
             <Button x:Name="ClearTestKspButton" Grid.Column="4" Content="CLEAR" MinWidth="70" Click="ClearTestKsp_Click" />
         </Grid>
-        <TextBlock Grid.Row="10" Text="Choose the KSP folder used for the existing test game. You can use the same installation as a campaign; test launch clears its campaign ticket."
+        <TextBlock Grid.Row="10" Text="Choose the KSP folder used for the existing test game. Test launch connects to the test1 campaign and replaces any previous campaign ticket."
                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,12,0,0" />
         <Grid Grid.Row="11" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>

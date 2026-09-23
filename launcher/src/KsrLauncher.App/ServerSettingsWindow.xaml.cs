@@ -181,7 +181,7 @@ public partial class ServerSettingsWindow : Window
         return Path.Combine(launcherData, "test-installations", identity);
     }
 
-    private void LaunchTestKsp_Click(object sender, RoutedEventArgs e)
+    private async void LaunchTestKsp_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_testKspRoot) || !LaunchTestKspButton.IsEnabled) return;
         if (Process.GetProcessesByName("KSP_x64").Length > 0)
@@ -191,9 +191,25 @@ public partial class ServerSettingsWindow : Window
             return;
         }
         if (!TrySaveSettings()) return;
+        if (!LauncherSession.IsAuthenticated || string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
+        {
+            MessageBox.Show("Sign in before launching the test game so it can connect to test1.",
+                "KSR Test Game", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        if (!string.Equals(ServerUrl, LauncherSession.ServerUrl?.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show("Sign in to the selected KSR server before launching the test game.",
+                "KSR Test Game", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
         try
         {
             GameLoggerConfiguration.Clear(_testKspRoot);
+            await LauncherSession.EnsureFreshAccessTokenAsync(ServerUrl!);
+            var ticket = await new KsrPlatformClient().GetGameTicketAsync(
+                ServerUrl!, LauncherSession.AccessToken, "test1");
+            GameLoggerConfiguration.Write(_testKspRoot, ServerUrl!, "test1", ticket.Token);
             var executable = Path.Combine(_testKspRoot, "KSP_x64.exe");
             Process.Start(new ProcessStartInfo(executable)
             {
@@ -202,8 +218,10 @@ public partial class ServerSettingsWindow : Window
             });
             DialogResult = true;
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+            System.ComponentModel.Win32Exception or HttpRequestException or KsrApiException or InvalidOperationException)
         {
+            GameLoggerConfiguration.Clear(_testKspRoot);
             MessageBox.Show($"The test game could not be launched.\n\n{exception.Message}",
                 "KSR Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
         }

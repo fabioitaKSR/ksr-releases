@@ -379,6 +379,9 @@ static Task TestGameSettingsControlsRemainAvailable()
             (string?)element.Attribute(x + "Name") == name &&
             (string?)element.Attribute("Click") == handler), $"Settings ha perso il comando {name}.");
     }
+    True(document.Descendants().Any(element => (string?)element.Attribute("Text") is string value &&
+        value.Contains("test1 campaign", StringComparison.Ordinal)),
+        "Settings deve indicare che la partita test resta collegata a test1.");
     return Task.CompletedTask;
 }
 
