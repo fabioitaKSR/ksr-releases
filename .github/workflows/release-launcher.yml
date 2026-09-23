@@ -1,0 +1,41 @@
+name: Release launcher
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Test launcher
+        run: dotnet run --project launcher/tests/KsrLauncher.Tests/KsrLauncher.Tests.csproj -c Release
+      - name: Build standalone launcher
+        shell: pwsh
+        run: |
+          $version = '${{ inputs.tag }}'.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Invalid release tag.' }
+          dotnet publish launcher/src/KsrLauncher.App/KsrLauncher.App.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o release-output
+          if ($LASTEXITCODE -ne 0) { throw 'Launcher publish failed.' }
+          $asset = "KSR-Launcher-v$version-win-x64.exe"
+          Move-Item -LiteralPath release-output/KsrLauncher.App.exe -Destination "release-output/$asset"
+          $hash = (Get-FileHash -LiteralPath "release-output/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath release-output/SHA256SUMS.txt -Value "$hash  $asset" -Encoding ascii
+      - name: Upload verified release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload '${{ inputs.tag }}' release-output/KSR-Launcher-*.exe release-output/SHA256SUMS.txt --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release upload failed.' }
