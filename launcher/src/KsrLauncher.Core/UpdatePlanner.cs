@@ -23,9 +23,16 @@ public static class UpdatePlanner
                           !string.Equals(installed.Version, manifest.Version, StringComparison.OrdinalIgnoreCase) ||
                           !string.Equals(installed.Sha256, component.Sha256, StringComparison.OrdinalIgnoreCase) ||
                           !requiredFilesPresent;
-            var needsUpdate = exists ? differs : policy == UpdatePolicy.InstallOrRepair;
+            var missingInventory = policy == UpdatePolicy.VerifyAllFiles && exists &&
+                (installed?.ExpectedFiles is not { Count: > 0 } ||
+                 installed.ExpectedFiles.Any(path => !File.Exists(SafePaths.Under(target, path))));
+            var needsUpdate = policy == UpdatePolicy.ReinstallAll ||
+                              (exists ? differs || missingInventory : policy is UpdatePolicy.InstallOrRepair or UpdatePolicy.VerifyAllFiles);
             var reason = (exists, needsUpdate, installed, policy) switch
             {
+                (_, true, _, UpdatePolicy.ReinstallAll) => "reinstallazione completa richiesta",
+                (true, true, _, UpdatePolicy.VerifyAllFiles) when missingInventory => "inventario assente o file del pacchetto mancanti",
+                (false, true, _, UpdatePolicy.VerifyAllFiles) => "componente mancante",
                 (false, false, _, UpdatePolicy.ExistingOnly) => "non installato: ignorato",
                 (false, true, _, UpdatePolicy.InstallOrRepair) => "mancante: installazione/riparazione richiesta",
                 (true, true, _, _) when !requiredFilesPresent => "installazione incompleta: file obbligatori mancanti",

@@ -52,6 +52,7 @@ public sealed class InstalledComponent
     public string Sha256 { get; set; } = "";
     public string TargetKind { get; set; } = "ksp";
     public string Target { get; set; } = "";
+    public List<string> ExpectedFiles { get; set; } = [];
 }
 
 public sealed record LauncherLocations(string KspRoot, string LauncherDataRoot);
@@ -59,7 +60,9 @@ public sealed record LauncherLocations(string KspRoot, string LauncherDataRoot);
 public enum UpdatePolicy
 {
     ExistingOnly,
-    InstallOrRepair
+    InstallOrRepair,
+    ReinstallAll,
+    VerifyAllFiles
 }
 
 public sealed record ComponentPlan(

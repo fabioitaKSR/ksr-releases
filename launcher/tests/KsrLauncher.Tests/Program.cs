@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
@@ -20,6 +21,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Update ordinario ignora componente assente", ExistingOnlySkipsMissing),
     ("Update ordinario ripara componente installato incompleto", ExistingOnlyRepairsIncompleteComponent),
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
+    ("Upgrade rileva ogni file mancante, Repair reinstalla tutto", UpgradeAndRepairPolicies),
+    ("Settings conserva i comandi della partita test", TestGameSettingsControlsRemainAvailable),
     ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched),
     ("Support LOG package is safe and complete", SupportLogPackageIsSafe),
     ("Support SAVE package is safe and complete", SupportSavePackageIsSafe),
@@ -311,6 +314,72 @@ static async Task ExplicitInstallAddsMissing()
 
     True(result.Applied, "L'installazione esplicita non e stata applicata.");
     Equal("installed", await File.ReadAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "new.txt")));
+}
+
+static async Task UpgradeAndRepairPolicies()
+{
+    using var scope = new TempScope();
+    var ksp = CreateKsp(scope.Root);
+    var launcherData = Path.Combine(scope.Root, "LauncherData");
+    var assets = Path.Combine(scope.Root, "assets");
+    Directory.CreateDirectory(assets);
+    var zip = Path.Combine(assets, "component.zip");
+    CreateZip(zip, new Dictionary<string, string>
+    {
+        ["GameData/TestMod/new.txt"] = "installed",
+        ["GameData/TestMod/optional.txt"] = "optional"
+    });
+    var manifest = CreateManifest(await PackageService.ComputeSha256Async(zip));
+    var locations = new LauncherLocations(ksp, launcherData);
+    var engine = new UpdateEngine();
+
+    var first = await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.InstallOrRepair);
+    True(first.Applied, "La prima installazione non e stata applicata.");
+    var upgrade = await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.VerifyAllFiles);
+    False(upgrade.Applied, "Upgrade non deve reinstallare un componente gia aggiornato.");
+
+    File.Delete(Path.Combine(ksp, "GameData", "TestMod", "optional.txt"));
+    var restoreOptionalFile = await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.VerifyAllFiles);
+    True(restoreOptionalFile.Applied, "Upgrade deve rilevare anche un file non obbligatorio mancante.");
+    Equal("optional", await File.ReadAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "optional.txt")));
+
+    File.Delete(Path.Combine(ksp, "GameData", "TestMod", "new.txt"));
+    var restoreMissingFile = await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.VerifyAllFiles);
+    True(restoreMissingFile.Applied, "Upgrade deve reinstallare un file obbligatorio mancante.");
+    Equal("installed", await File.ReadAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "new.txt")));
+
+    Directory.Delete(Path.Combine(ksp, "GameData", "TestMod"), true);
+    var restoreMissingComponent = await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.VerifyAllFiles);
+    True(restoreMissingComponent.Applied, "Upgrade deve installare un componente mancante.");
+
+    var oldState = await StateStore.LoadAsync(launcherData);
+    oldState.Components[manifest.Components[0].Id].ExpectedFiles.Clear();
+    await StateStore.SaveAsync(launcherData, oldState);
+    var establishInventory = await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.VerifyAllFiles);
+    True(establishInventory.Applied, "Upgrade deve creare l'inventario mancante delle vecchie installazioni.");
+
+    var repair = await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.ReinstallAll);
+    True(repair.Applied, "Repair deve reinstallare anche un componente gia aggiornato.");
+    True(repair.Plan.Components.All(item => item.NeedsUpdate), "Repair deve includere ogni componente del manifest.");
+    Equal("installed", await File.ReadAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "new.txt")));
+}
+
+static Task TestGameSettingsControlsRemainAvailable()
+{
+    var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "ServerSettingsWindow.xaml"));
+    XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+    foreach (var (name, handler) in new[]
+    {
+        ("UpgradeTestKspButton", "UpgradeTestKsp_Click"),
+        ("RepairTestKspButton", "RepairTestKsp_Click"),
+        ("LaunchTestKspButton", "LaunchTestKsp_Click")
+    })
+    {
+        True(document.Descendants().Any(element => element.Name.LocalName == "Button" &&
+            (string?)element.Attribute(x + "Name") == name &&
+            (string?)element.Attribute("Click") == handler), $"Settings ha perso il comando {name}.");
+    }
+    return Task.CompletedTask;
 }
 
 static async Task ThirdPartyModIsUntouched()

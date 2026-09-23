@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\KsrLauncher.Core\KsrLauncher.Core.csproj" />
+    <None Include="..\..\src\KsrLauncher.App\ServerSettingsWindow.xaml" Link="ServerSettingsWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

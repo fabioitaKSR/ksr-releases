@@ -59,13 +59,17 @@ public sealed class UpdateEngine(PackageService? packageService = null)
             state.Product = manifest.Product;
             state.UpdatedAtUtc = DateTimeOffset.UtcNow;
             foreach (var item in plan.Components.Where(item => item.NeedsUpdate))
+            {
+                var installedFiles = prepared.First(preparedItem => preparedItem.Plan == item).ExpectedFiles;
                 state.Components[item.Component.Id] = new InstalledComponent
                 {
                     Version = manifest.Version,
                     Sha256 = item.Component.Sha256.ToLowerInvariant(),
                     TargetKind = item.Component.TargetKind,
-                    Target = item.Component.Target
+                    Target = item.Component.Target,
+                    ExpectedFiles = installedFiles
                 };
+            }
             await StateStore.SaveAsync(locations.LauncherDataRoot, state, cancellationToken);
             await WriteJournalAsync(backupRoot, journal, cancellationToken);
             return new UpdateResult(plan, true, backupRoot);
@@ -121,7 +125,11 @@ public sealed class UpdateEngine(PackageService? packageService = null)
                 if (!File.Exists(requiredPath) && !Directory.Exists(requiredPath))
                     throw new InvalidDataException($"{item.Component.Id}: file obbligatorio assente: {required}");
             }
-            result.Add(new PreparedComponent(item, source));
+            var expectedFiles = Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories)
+                .Select(path => SafePaths.ManifestPath(Path.GetRelativePath(source, path)))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            result.Add(new PreparedComponent(item, source, expectedFiles));
         }
         return result;
     }
@@ -235,5 +243,5 @@ public sealed class UpdateEngine(PackageService? packageService = null)
             throw new InvalidDataException("Il backup appartiene a un'altra installazione.");
     }
 
-    private sealed record PreparedComponent(ComponentPlan Plan, string SourcePath);
+    private sealed record PreparedComponent(ComponentPlan Plan, string SourcePath, List<string> ExpectedFiles);
 }
