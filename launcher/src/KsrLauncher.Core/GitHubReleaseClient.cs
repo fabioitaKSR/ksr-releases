@@ -29,13 +29,15 @@ public sealed class GitHubReleaseClient
         response.EnsureSuccessStatusCode();
         await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var releases = await JsonSerializer.DeserializeAsync<List<GitHubRelease>>(responseStream, ManifestService.JsonOptions, cancellationToken) ?? [];
+        static bool HasManifest(GitHubRelease item) =>
+            item.Assets.Any(asset => string.Equals(asset.Name, "ksr-release.json", StringComparison.OrdinalIgnoreCase));
         var release = channel == "stable"
-            ? releases.FirstOrDefault(item => !item.Draft && !item.Prerelease)
-            : releases.FirstOrDefault(item => !item.Draft && item.Prerelease) ?? releases.FirstOrDefault(item => !item.Draft);
-        if (release is null) throw new InvalidOperationException($"Nessuna release {channel} pubblicata in {repository}.");
+            ? releases.FirstOrDefault(item => !item.Draft && !item.Prerelease && HasManifest(item))
+            : releases.FirstOrDefault(item => !item.Draft && item.Prerelease && HasManifest(item))
+              ?? releases.FirstOrDefault(item => !item.Draft && HasManifest(item));
+        if (release is null) throw new InvalidOperationException($"Nessuna release {channel} con ksr-release.json pubblicata in {repository}.");
 
-        var manifestAsset = release.Assets.FirstOrDefault(item => string.Equals(item.Name, "ksr-release.json", StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidDataException($"La release {release.TagName} non contiene ksr-release.json.");
+        var manifestAsset = release.Assets.First(item => string.Equals(item.Name, "ksr-release.json", StringComparison.OrdinalIgnoreCase));
         using var manifestResponse = await _httpClient.GetAsync(manifestAsset.BrowserDownloadUrl, cancellationToken);
         manifestResponse.EnsureSuccessStatusCode();
         await using var manifestStream = await manifestResponse.Content.ReadAsStreamAsync(cancellationToken);

@@ -49,7 +49,9 @@ public sealed class LauncherUpdateService
                 asset.Name.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
             var checksums = release.Release.Assets.FirstOrDefault(asset =>
                 asset.Name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase));
-            if (executable is null || checksums is null) continue;
+            var manifest = release.Release.Assets.FirstOrDefault(asset =>
+                asset.Name.Equals("ksr-release.json", StringComparison.OrdinalIgnoreCase));
+            if (executable is null || checksums is null || manifest is null) continue;
 
             var checksumText = await _httpClient.GetStringAsync(checksums.BrowserDownloadUrl, cancellationToken);
             var sha256 = ParseChecksum(checksumText, executable.Name);

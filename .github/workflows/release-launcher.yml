@@ -7,6 +7,10 @@ on:
         description: Existing release tag
         required: true
         type: string
+      manifest_source_tag:
+        description: Published release with the approved mod manifest
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -32,10 +36,41 @@ jobs:
           Move-Item -LiteralPath release-output/KsrLauncher.App.exe -Destination "release-output/$asset"
           $hash = (Get-FileHash -LiteralPath "release-output/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content -LiteralPath release-output/SHA256SUMS.txt -Value "$hash  $asset" -Encoding ascii
+      - name: Validate complete draft release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ inputs.tag }}'
+          $sourceTag = '${{ inputs.manifest_source_tag }}'
+          if ($tag -eq $sourceTag) { throw 'Manifest source must be a previous approved release.' }
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" | ConvertFrom-Json
+          if (-not $release.draft) { throw 'Target release must remain a draft until verification.' }
+          gh release download $sourceTag --pattern ksr-release.json --dir release-output
+          if ($LASTEXITCODE -ne 0) { throw 'Approved manifest download failed.' }
+          dotnet run --project launcher/src/KsrLauncher.Cli/KsrLauncher.Cli.csproj -c Release -- validate-manifest --manifest release-output/ksr-release.json
+          if ($LASTEXITCODE -ne 0) { throw 'Approved manifest is invalid.' }
+          $manifest = Get-Content release-output/ksr-release.json -Raw | ConvertFrom-Json
+          if ($manifest.channel -ne 'stable' -or @($manifest.components).Count -eq 0) { throw 'Manifest must contain stable mod components.' }
+          foreach ($component in $manifest.components) {
+            if (-not $component.assetUrl -or -not $component.assetUrl.StartsWith('https://')) {
+              throw "Component $($component.id) has no immutable HTTPS asset URL."
+            }
+          }
       - name: Upload verified release assets
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload '${{ inputs.tag }}' release-output/KSR-Launcher-*.exe release-output/SHA256SUMS.txt --clobber
+          $tag = '${{ inputs.tag }}'
+          gh release upload $tag release-output/KSR-Launcher-*.exe release-output/SHA256SUMS.txt release-output/ksr-release.json --clobber
           if ($LASTEXITCODE -ne 0) { throw 'GitHub release upload failed.' }
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" | ConvertFrom-Json
+          foreach ($path in @((Get-ChildItem release-output/KSR-Launcher-*.exe).FullName, 'release-output/SHA256SUMS.txt', 'release-output/ksr-release.json')) {
+            $file = Get-Item -LiteralPath $path
+            $asset = $release.assets | Where-Object name -eq $file.Name | Select-Object -First 1
+            if (-not $asset -or $asset.state -ne 'uploaded' -or $asset.size -ne $file.Length) {
+              throw "Release asset $($file.Name) is missing or incomplete."
+            }
+          }
+          if (-not $release.draft) { throw 'Release became public before verification.' }

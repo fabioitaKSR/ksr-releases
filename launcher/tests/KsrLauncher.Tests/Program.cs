@@ -17,6 +17,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("SHA errato non modifica installazione", WrongHashDoesNotModify),
     ("Errore nel gruppo ripristina componenti precedenti", GroupFailureRollsBack),
     ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease),
+    ("Release launcher richiede manifest e bozza", LauncherReleaseRequiresManifestAndDraft),
     ("Launcher auto-update downloads a verified newer release", LauncherAutoUpdateDownloadsVerifiedRelease),
     ("Update ordinario ignora componente assente", ExistingOnlySkipsMissing),
     ("Update ordinario ripara componente installato incompleto", ExistingOnlyRepairsIncompleteComponent),
@@ -235,6 +236,9 @@ static async Task GitHubSelectsStableRelease()
     var releasesJson = """
         [
           {"tag_name":"v1.1.0-beta","draft":false,"prerelease":true,"assets":[]},
+          {"tag_name":"v1.0.1","draft":false,"prerelease":false,"assets":[
+            {"name":"KSR-Launcher-v1.0.1-win-x64.exe","browser_download_url":"https://downloads.example/launcher.exe"}
+          ]},
           {"tag_name":"v1.0.0","draft":false,"prerelease":false,"assets":[
             {"name":"ksr-release.json","browser_download_url":"https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0/ksr-release.json"}
           ]}
@@ -246,6 +250,16 @@ static async Task GitHubSelectsStableRelease()
     Equal("v1.0.0", release.Tag);
     Equal("1.0.0", release.Manifest.Version);
     Equal("https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0", release.AssetsBaseUrl);
+}
+
+static Task LauncherReleaseRequiresManifestAndDraft()
+{
+    var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "release-launcher.yml"));
+    True(workflow.Contains("manifest_source_tag:", StringComparison.Ordinal), "La release richiede un manifest approvato.");
+    True(workflow.Contains("validate-manifest", StringComparison.Ordinal), "Il manifest deve essere validato.");
+    True(workflow.Contains("if (-not $release.draft)", StringComparison.Ordinal), "La release deve restare in bozza.");
+    True(workflow.Contains("release-output/ksr-release.json --clobber", StringComparison.Ordinal), "Il manifest deve essere caricato con il launcher.");
+    return Task.CompletedTask;
 }
 
 static async Task ExistingOnlySkipsMissing()
@@ -694,8 +708,12 @@ static async Task LauncherAutoUpdateDownloadsVerifiedRelease()
         var path = request.RequestUri!.AbsoluteUri;
         if (path.Contains("/releases?", StringComparison.Ordinal))
         {
-            var json = "[{\"tag_name\":\"v0.1.2\",\"draft\":false,\"prerelease\":false,\"assets\":[" +
+            var json = "[{\"tag_name\":\"v0.1.3\",\"draft\":false,\"prerelease\":false,\"assets\":[" +
+                       "{\"name\":\"KSR-Launcher-v0.1.3-win-x64.exe\",\"browser_download_url\":\"https://downloads.example/new-launcher.exe\"}," +
+                       "{\"name\":\"SHA256SUMS.txt\",\"browser_download_url\":\"https://downloads.example/SHA256SUMS.txt\"}]}," +
+                       "{\"tag_name\":\"v0.1.2\",\"draft\":false,\"prerelease\":false,\"assets\":[" +
                        "{\"name\":\"KSR-Launcher-v0.1.2-win-x64.exe\",\"browser_download_url\":\"https://downloads.example/launcher.exe\"}," +
+                       "{\"name\":\"ksr-release.json\",\"browser_download_url\":\"https://downloads.example/ksr-release.json\"}," +
                        "{\"name\":\"SHA256SUMS.txt\",\"browser_download_url\":\"https://downloads.example/SHA256SUMS.txt\"}]}]";
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
