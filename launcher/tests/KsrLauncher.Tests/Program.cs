@@ -255,10 +255,14 @@ static async Task GitHubSelectsStableRelease()
 static Task LauncherReleaseRequiresManifestAndDraft()
 {
     var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "release-launcher.yml"));
+    var publisher = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "publish-github-release.ps1"));
     True(workflow.Contains("manifest_source_tag:", StringComparison.Ordinal), "La release richiede un manifest approvato.");
     True(workflow.Contains("validate-manifest", StringComparison.Ordinal), "Il manifest deve essere validato.");
     True(workflow.Contains("if (-not $release.draft)", StringComparison.Ordinal), "La release deve restare in bozza.");
-    True(workflow.Contains("release-output/ksr-release.json --clobber", StringComparison.Ordinal), "Il manifest deve essere caricato con il launcher.");
+    True(workflow.Contains("release-output/ksr-release.json", StringComparison.Ordinal), "Il manifest deve essere caricato con il launcher.");
+    True(workflow.Contains("$release.upload_url", StringComparison.Ordinal), "L'upload della bozza deve usare l'ID della release.");
+    True(publisher.Contains("[switch]$CreateDraft", StringComparison.Ordinal), "La creazione di una release deve essere esplicita.");
+    True(publisher.Contains("draft = $true", StringComparison.Ordinal), "Una nuova release deve iniziare in bozza.");
     return Task.CompletedTask;
 }
 

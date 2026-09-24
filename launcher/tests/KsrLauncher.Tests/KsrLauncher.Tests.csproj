@@ -4,6 +4,7 @@
     <ProjectReference Include="..\..\src\KsrLauncher.Core\KsrLauncher.Core.csproj" />
     <None Include="..\..\src\KsrLauncher.App\ServerSettingsWindow.xaml" Link="ServerSettingsWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\..\.github\workflows\release-launcher.yml" Link="release-launcher.yml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\tools\publish-github-release.ps1" Link="publish-github-release.ps1" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

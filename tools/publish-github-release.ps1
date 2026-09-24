@@ -4,7 +4,9 @@ param(
     [Parameter(Mandatory = $true)][string]$Tag,
     [Parameter(Mandatory = $true)][string]$AssetsDirectory,
     [string]$Title = $Tag,
-    [string]$Notes = ''
+    [string]$Notes = '',
+    [switch]$CreateDraft,
+    [switch]$AllowPublished
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,18 +24,29 @@ $headers = @{
 }
 
 $apiRoot = "https://api.github.com/repos/$Repository"
-try {
-    $release = Invoke-RestMethod -Method Get -Uri "$apiRoot/releases/tags/$Tag" -Headers $headers
-} catch {
-    if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
+$matches = @()
+foreach ($page in 1..10) {
+    $batch = @(Invoke-RestMethod -Method Get -Uri "$apiRoot/releases?per_page=100&page=$page" -Headers $headers)
+    $matches += @($batch | Where-Object { $_.tag_name -eq $Tag })
+    if ($batch.Count -lt 100) { break }
+}
+if ($matches.Count -gt 1) { throw "Multiple releases use tag '$Tag'; resolve duplicates by release ID first." }
+if ($matches.Count -eq 1) {
+    $release = $matches[0]
+} elseif ($CreateDraft) {
     $body = @{
         tag_name = $Tag
         name = $Title
         body = $Notes
-        draft = $false
+        draft = $true
         prerelease = $false
     } | ConvertTo-Json
     $release = Invoke-RestMethod -Method Post -Uri "$apiRoot/releases" -Headers $headers -ContentType 'application/json' -Body $body
+} else {
+    throw "Release '$Tag' not found. Use -CreateDraft only when creating a new draft."
+}
+if (-not $release.draft -and -not $AllowPublished) {
+    throw "Release '$Tag' is public. Pass -AllowPublished only after explicit release review."
 }
 
 $uploadRoot = ($release.upload_url -replace '\{\?name,label\}$', '')
@@ -48,4 +61,4 @@ foreach ($asset in Get-ChildItem -LiteralPath $AssetsDirectory -File | Sort-Obje
     Invoke-RestMethod -Method Post -Uri "${uploadRoot}?name=$escapedName" -Headers $headers -ContentType 'application/octet-stream' -InFile $asset.FullName | Out-Null
 }
 
-Write-Host $release.html_url
+Write-Host "Release ID $($release.id) (draft=$($release.draft)): $($release.html_url)"
