@@ -24,6 +24,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
     ("Upgrade rileva ogni file mancante, Repair reinstalla tutto", UpgradeAndRepairPolicies),
     ("Settings conserva i comandi della partita test", TestGameSettingsControlsRemainAvailable),
+    ("Launch & Logs riconosce il logger nella cartella KSRLite", LaunchAndLogsRecognizesInstalledFiles),
     ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched),
     ("Support LOG package is safe and complete", SupportLogPackageIsSafe),
     ("Support SAVE package is safe and complete", SupportSavePackageIsSafe),
@@ -400,6 +401,25 @@ static Task TestGameSettingsControlsRemainAvailable()
     True(document.Descendants().Any(element => (string?)element.Attribute("Text") is string value &&
         value.Contains("test1 campaign", StringComparison.Ordinal)),
         "Settings deve indicare che la partita test resta collegata a test1.");
+    return Task.CompletedTask;
+}
+
+static Task LaunchAndLogsRecognizesInstalledFiles()
+{
+    using var scope = new TempScope();
+    var ksp = CreateKsp(scope.Root);
+    foreach (var path in LaunchAndLogsReadiness.RequiredFiles)
+    {
+        var fullPath = Path.Combine(ksp, path.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        File.WriteAllText(fullPath, "installed");
+    }
+    True(LaunchAndLogsReadiness.IsInstalled(ksp), "Un'installazione completa in KSRLite deve risultare pronta.");
+    var loggerPath = Path.Combine(ksp, "GameData", "KSRLite", "Plugins", "KSRRemoteLogger.dll");
+    File.Delete(loggerPath);
+    True(!LaunchAndLogsReadiness.IsInstalled(ksp), "Il logger mancante deve essere rilevato.");
+    True(LaunchAndLogsReadiness.MissingFiles(ksp).Contains("GameData/KSRLite/Plugins/KSRRemoteLogger.dll"),
+        "La diagnostica deve indicare il percorso del pacchetto attuale.");
     return Task.CompletedTask;
 }
 

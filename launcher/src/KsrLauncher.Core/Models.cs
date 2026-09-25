@@ -19,6 +19,7 @@ public sealed class ReleaseManifest
 public sealed class ComponentManifest
 {
     public string Id { get; set; } = "";
+    public string Version { get; set; } = "";
     public string TransactionGroup { get; set; } = "ksp-client";
     public string Asset { get; set; } = "";
     public string AssetUrl { get; set; } = "";

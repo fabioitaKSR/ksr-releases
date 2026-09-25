@@ -68,7 +68,7 @@
                 BorderThickness="1" CornerRadius="7">
             <Grid Margin="22,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="225" />
+                    <ColumnDefinition Width="265" />
                     <ColumnDefinition Width="1" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="1" />
@@ -76,11 +76,22 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="KSR" Foreground="{StaticResource OrangeBrush}" FontSize="42" FontWeight="Black" />
-                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                    <TextBlock Text="KSR" Foreground="{StaticResource OrangeBrush}" FontSize="32" FontWeight="Black" />
+                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="KERBAL SPACE RACE" FontSize="11" FontWeight="Bold" />
-                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER  ·  v0.1.10"
-                                   Style="{StaticResource SmallLabel}" FontSize="10" Margin="0,3,0,0" />
+                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER"
+                                   Style="{StaticResource SmallLabel}" FontSize="10" Margin="0,3,0,0"
+                                   MaxWidth="185" TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <TextBlock x:Name="LoggerVersionText" Text="LOGGER --" FontSize="10"
+                                       Foreground="{StaticResource MutedBrush}" ToolTip="Latest official Parameter Logger release" />
+                            <TextBlock Text="  ·  " FontSize="10" Foreground="{StaticResource MutedBrush}" />
+                            <TextBlock x:Name="LaunchAndLogsVersionText" Text="L&amp;L --" FontSize="10"
+                                       Foreground="{StaticResource MutedBrush}" ToolTip="Latest official Launch &amp; Logs core release" />
+                        </StackPanel>
+                        <TextBlock Text="LAYER 2 --  ·  L3 ASK --" FontSize="9" Margin="0,2,0,0"
+                                   Foreground="{StaticResource MutedBrush}" ToolTip="ASK: Are Still Kerbal" />
                     </StackPanel>
                 </StackPanel>
                 <Border Grid.Column="1" Background="#FF303538" Margin="0,16" />

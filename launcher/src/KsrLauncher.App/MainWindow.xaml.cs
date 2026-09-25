@@ -32,21 +32,6 @@ public partial class MainWindow : Window
         "achievements", "harmony", "click-through-blocker", "toolbar-controller", "spacetux-library",
         "tarsier-space-technology"
     ];
-    private static readonly string[] LaunchAndLogsRequiredFiles =
-    [
-        "GameData/KerbalSpaceRace/Plugins/KSRRemoteLogger.dll",
-        "GameData/KerbalSpaceRaceNationSelector/Plugins/KerbalSpaceRace.NationSelector.dll",
-        "GameData/KSRParameterLogger/Plugins/KSRParameterLogger.dll",
-        "GameData/Achievements/Plugins/Achievements.dll",
-        "GameData/000_Harmony/0Harmony.dll",
-        "GameData/000_Harmony/Harmony.version",
-        "GameData/000_Harmony/HarmonyInstallChecker.dll",
-        "GameData/000_ClickThroughBlocker/Plugins/ClickThroughBlocker.dll",
-        "GameData/001_ToolbarControl/Plugins/ToolbarControl.dll",
-        "GameData/SpaceTuxLibrary/Plugins/SpaceTuxUtility.dll",
-        "GameData/TarsierSpaceTech/Plugins/TarsierSpaceTech.dll"
-    ];
-
     public MainWindow()
     {
         InitializeComponent();
@@ -94,7 +79,22 @@ public partial class MainWindow : Window
         await RefreshServerStatusAsync();
         await TryRestoreSessionAsync();
         await UpdateInstalledKsrModsAsync();
+        if (LoggerVersionText.Text == "LOGGER --" || LaunchAndLogsVersionText.Text == "L&L --")
+            await RefreshReleaseComponentVersionsAsync();
         await CheckForLauncherUpdateAsync();
+    }
+
+    private async Task RefreshReleaseComponentVersionsAsync()
+    {
+        try
+        {
+            var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            ShowReleaseComponentVersions(release.Manifest);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException)
+        {
+            // Keep the unknown-version placeholders while the release is unreachable.
+        }
     }
 
     private bool _installedKsrModsUpdateInProgress;
@@ -125,6 +125,7 @@ public partial class MainWindow : Window
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
 
             var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            ShowReleaseComponentVersions(release.Manifest);
             var releaseComponents = release.Manifest.Components.ToList();
             var requiredComponents = releaseComponents
                 .Where(component => LaunchAndLogsComponentIds.Contains(component.Id, StringComparer.OrdinalIgnoreCase))
@@ -373,6 +374,7 @@ public partial class MainWindow : Window
         try
         {
             var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            ShowReleaseComponentVersions(release.Manifest);
             var selected = release.Manifest.Components
                 .Where(component => LaunchAndLogsComponentIds.Contains(component.Id, StringComparer.OrdinalIgnoreCase))
                 .ToList();
@@ -402,8 +404,9 @@ public partial class MainWindow : Window
             await new UpdateEngine().RunAsync(
                 release.Manifest, new LauncherLocations(_kspRoot!, launcherData), release.AssetsBaseUrl,
                 true, UpdatePolicy.InstallOrRepair, progress);
-            if (!AreLaunchAndLogsInstalled(_kspRoot!))
-                throw new InvalidDataException("Installation completed, but one or more required files are still missing.");
+            var missingFiles = LaunchAndLogsReadiness.MissingFiles(_kspRoot!);
+            if (missingFiles.Count > 0)
+                throw new InvalidDataException($"Installation completed, but required files are missing: {string.Join(", ", missingFiles)}.");
             LaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY — all required components are installed and verified.";
             LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
             PlayerLaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY — required race mods are installed.";
@@ -439,8 +442,17 @@ public partial class MainWindow : Window
         }
     }
 
-    private static bool AreLaunchAndLogsInstalled(string kspRoot) =>
-        LaunchAndLogsRequiredFiles.All(path => File.Exists(Path.Combine(kspRoot, path.Replace('/', Path.DirectorySeparatorChar))));
+    private static bool AreLaunchAndLogsInstalled(string kspRoot) => LaunchAndLogsReadiness.IsInstalled(kspRoot);
+
+    private void ShowReleaseComponentVersions(ReleaseManifest manifest)
+    {
+        var logger = manifest.Components.FirstOrDefault(component => component.Id == "parameter-logger");
+        var launchAndLogs = manifest.Components.FirstOrDefault(component => component.Id == "ksr-core");
+        LoggerVersionText.Text = logger is null || string.IsNullOrWhiteSpace(logger.Version)
+            ? "LOGGER --" : $"LOGGER v{logger.Version}";
+        LaunchAndLogsVersionText.Text = launchAndLogs is null || string.IsNullOrWhiteSpace(launchAndLogs.Version)
+            ? "L&L --" : $"L&L v{launchAndLogs.Version}";
+    }
 
     private static bool IsValidKspRoot(string? root) =>
         !string.IsNullOrWhiteSpace(root) && File.Exists(Path.Combine(root, "KSP_x64.exe")) && Directory.Exists(Path.Combine(root, "GameData"));
