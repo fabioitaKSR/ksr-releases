@@ -34,6 +34,7 @@ jobs:
           Copy-Item -LiteralPath "$inputs/ksr-release.json" -Destination release-output/ksr-release.json
           $manifest = Get-Content release-output/ksr-release.json -Raw | ConvertFrom-Json
           if ($manifest.channel -ne 'stable' -or @($manifest.components).Count -eq 0) { throw 'Invalid release manifest.' }
+          $packageNames = @()
           foreach ($id in @('ksr-core', 'nation-selector')) {
             $component = @($manifest.components | Where-Object id -eq $id)
             if ($component.Count -ne 1) { throw "Expected one $id component." }
@@ -45,13 +46,15 @@ jobs:
               throw "Invalid package hash or size: $asset"
             }
             Copy-Item -LiteralPath $source -Destination "release-output/$asset"
+            $packageNames += $asset
           }
           dotnet run --project launcher/src/KsrLauncher.Cli/KsrLauncher.Cli.csproj -c Release -- validate-manifest --manifest release-output/ksr-release.json
           if ($LASTEXITCODE -ne 0) { throw 'Manifest validation failed.' }
           dotnet publish launcher/src/KsrLauncher.App/KsrLauncher.App.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o release-output
           if ($LASTEXITCODE -ne 0) { throw 'Launcher publish failed.' }
           Move-Item -LiteralPath release-output/KsrLauncher.App.exe -Destination "release-output/KSR-Launcher-$env:RELEASE_TAG-win-x64.exe"
-          $lines = foreach ($file in Get-ChildItem release-output -File | Where-Object Name -in @('ksr-release.json', 'KSR-Lite-v1.0.14.zip', 'KSR-NationSelector-v0.3.3.zip', "KSR-Launcher-$env:RELEASE_TAG-win-x64.exe")) {
+          $assetNames = @('ksr-release.json', "KSR-Launcher-$env:RELEASE_TAG-win-x64.exe") + $packageNames
+          $lines = foreach ($file in Get-ChildItem release-output -File | Where-Object Name -in $assetNames) {
             '{0}  {1}' -f (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $file.Name
           }
           if ($lines.Count -ne 4) { throw 'A required release asset is missing.' }
@@ -65,13 +68,16 @@ jobs:
           $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
           $matches = @($releases | Where-Object tag_name -eq $env:RELEASE_TAG)
           if ($matches.Count -ne 1 -or -not $matches[0].draft) { throw 'Target must be exactly one draft release.' }
-          foreach ($file in Get-ChildItem release-output -File | Where-Object Name -in @('ksr-release.json', 'SHA256SUMS.txt', 'KSR-Lite-v1.0.14.zip', 'KSR-NationSelector-v0.3.3.zip', "KSR-Launcher-$env:RELEASE_TAG-win-x64.exe")) {
+          $manifest = Get-Content release-output/ksr-release.json -Raw | ConvertFrom-Json
+          $packageNames = @($manifest.components | Where-Object id -in @('ksr-core', 'nation-selector') | ForEach-Object asset)
+          $assetNames = @('ksr-release.json', 'SHA256SUMS.txt', "KSR-Launcher-$env:RELEASE_TAG-win-x64.exe") + $packageNames
+          foreach ($file in Get-ChildItem release-output -File | Where-Object Name -in $assetNames) {
             gh release upload $env:RELEASE_TAG $file.FullName --clobber
             if ($LASTEXITCODE -ne 0) { throw "Upload failed: $($file.Name)" }
           }
           $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/$($matches[0].id)" | ConvertFrom-Json
           if (-not $release.draft) { throw 'Release became public before verification.' }
-          foreach ($file in Get-ChildItem release-output -File | Where-Object Name -in @('ksr-release.json', 'SHA256SUMS.txt', 'KSR-Lite-v1.0.14.zip', 'KSR-NationSelector-v0.3.3.zip', "KSR-Launcher-$env:RELEASE_TAG-win-x64.exe")) {
+          foreach ($file in Get-ChildItem release-output -File | Where-Object Name -in $assetNames) {
             $asset = @($release.assets | Where-Object name -eq $file.Name)
             $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($asset.Count -ne 1 -or $asset[0].state -ne 'uploaded' -or $asset[0].size -ne $file.Length -or $asset[0].digest -ne "sha256:$hash") {

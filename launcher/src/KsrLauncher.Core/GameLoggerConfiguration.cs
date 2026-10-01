@@ -88,7 +88,10 @@ public static class GameLoggerConfiguration
 
         var lines = new List<string> {
             "KSR_GAME_TICKETS", "{", "    schemaVersion = 1", $"    userId = {userId}",
-            $"    serverUrl = {server.GetLeftPart(UriPartial.Authority)}"
+            $"    serverUrl = {server.GetLeftPart(UriPartial.Authority)}",
+            $"    serverScheme = {server.Scheme}",
+            $"    serverHost = {server.Host}",
+            $"    serverPort = {server.Port}"
         };
         foreach (var ticket in entries)
         {

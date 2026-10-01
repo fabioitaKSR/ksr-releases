@@ -1007,6 +1007,10 @@ static Task GameLoggerRemovesStaleCampaignTicket()
     var ticketsText = File.ReadAllText(ticketsPath);
     True(ticketsText.Contains("campaignId = KSR-ONE", StringComparison.Ordinal) &&
          ticketsText.Contains("campaignId = KSR-TWO", StringComparison.Ordinal), "The catalog must include both campaigns.");
+    True(ticketsText.Contains("serverScheme = https", StringComparison.Ordinal) &&
+         ticketsText.Contains("serverHost = play.kerbalspacerace.net", StringComparison.Ordinal) &&
+         ticketsText.Contains("serverPort = 443", StringComparison.Ordinal),
+        "KSP treats // as a comment, so game tickets need separate server connection fields.");
     True(ticketsText.Contains($"saveFolderBase64 = {Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("KSRstart-One Campaign"))}", StringComparison.Ordinal),
         "The initial save must map to its campaign before nation selection.");
     True(GameLoggerConfiguration.Clear(scope.Root), "The stale campaign game configuration was not removed.");
