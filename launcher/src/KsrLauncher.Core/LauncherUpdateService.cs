@@ -9,7 +9,8 @@ public sealed record LauncherUpdateRelease(
     string Tag,
     string AssetName,
     string AssetUrl,
-    string Sha256);
+    string Sha256,
+    long Size);
 
 public sealed class LauncherUpdateService
 {
@@ -57,7 +58,8 @@ public sealed class LauncherUpdateService
             var sha256 = ParseChecksum(checksumText, executable.Name);
             if (sha256 is null) continue;
             return new LauncherUpdateRelease(
-                release.Version, release.Release.TagName, executable.Name, executable.BrowserDownloadUrl, sha256);
+                release.Version, release.Release.TagName, executable.Name, executable.BrowserDownloadUrl, sha256,
+                executable.Size);
         }
         return null;
     }
@@ -133,6 +135,7 @@ public sealed class LauncherUpdateService
     private sealed class GitHubLauncherAsset
     {
         public string Name { get; set; } = "";
+        public long Size { get; set; }
         [JsonPropertyName("browser_download_url")] public string BrowserDownloadUrl { get; set; } = "";
     }
 }

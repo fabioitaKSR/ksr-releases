@@ -19,6 +19,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease),
     ("Release launcher richiede manifest e bozza", LauncherReleaseRequiresManifestAndDraft),
     ("Launcher auto-update downloads a verified newer release", LauncherAutoUpdateDownloadsVerifiedRelease),
+    ("Download mostra tempo rimanente e blocca la finestra", DownloadOverlayAndEstimate),
     ("Update ordinario ignora componente assente", ExistingOnlySkipsMissing),
     ("Update ordinario ripara componente installato incompleto", ExistingOnlyRepairsIncompleteComponent),
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
@@ -736,7 +737,7 @@ static async Task LauncherAutoUpdateDownloadsVerifiedRelease()
                        "{\"name\":\"KSR-Launcher-v0.1.3-win-x64.exe\",\"browser_download_url\":\"https://downloads.example/new-launcher.exe\"}," +
                        "{\"name\":\"SHA256SUMS.txt\",\"browser_download_url\":\"https://downloads.example/SHA256SUMS.txt\"}]}," +
                        "{\"tag_name\":\"v0.1.2\",\"draft\":false,\"prerelease\":false,\"assets\":[" +
-                       "{\"name\":\"KSR-Launcher-v0.1.2-win-x64.exe\",\"browser_download_url\":\"https://downloads.example/launcher.exe\"}," +
+                       $"{{\"name\":\"KSR-Launcher-v0.1.2-win-x64.exe\",\"size\":{executable.Length},\"browser_download_url\":\"https://downloads.example/launcher.exe\"}}," +
                        "{\"name\":\"ksr-release.json\",\"browser_download_url\":\"https://downloads.example/ksr-release.json\"}," +
                        "{\"name\":\"SHA256SUMS.txt\",\"browser_download_url\":\"https://downloads.example/SHA256SUMS.txt\"}]}]";
             return new HttpResponseMessage(HttpStatusCode.OK)
@@ -757,8 +758,29 @@ static async Task LauncherAutoUpdateDownloadsVerifiedRelease()
     var update = await service.CheckAsync("fabioitaKSR/ksr-releases", new Version(0, 1, 1));
     True(update is not null, "The newer launcher release was not detected.");
     Equal("v0.1.2", update!.Tag);
+    True(update.Size == executable.Length, "La dimensione dell'asset serve per la percentuale e il tempo stimato.");
     var downloaded = await service.DownloadAsync(update, Path.Combine(scope.Root, "updates"));
     Equal(sha256, await PackageService.ComputeSha256Async(downloaded));
+}
+
+static Task DownloadOverlayAndEstimate()
+{
+    var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml"));
+    XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+    var overlay = document.Descendants().Single(element =>
+        (string?)element.Attribute(x + "Name") == "ModUpdateOverlay");
+    True((string?)overlay.Attribute("Grid.Row") == "0" && (string?)overlay.Attribute("Grid.RowSpan") == "5",
+        "L'overlay deve coprire anche la barra superiore e il resto della finestra.");
+    True((string?)overlay.Attribute("Focusable") == "True", "L'overlay deve ricevere il focus durante il blocco.");
+    True(overlay.Descendants().Any(element => (string?)element.Attribute(x + "Name") == "ModUpdateRemainingText"),
+        "Manca il tempo rimanente nell'overlay.");
+    True(DownloadTimeEstimate.Remaining(0, 100, TimeSpan.FromSeconds(10)) is null,
+        "Non va mostrata una stima senza velocita misurata.");
+    True(DownloadTimeEstimate.Remaining(50, 100, TimeSpan.FromSeconds(10)) == TimeSpan.FromSeconds(10),
+        "La stima deve seguire byte scaricati e tempo trascorso.");
+    True(DownloadTimeEstimate.Remaining(100, 100, TimeSpan.FromSeconds(10)) == TimeSpan.Zero,
+        "Il download completo deve mostrare zero tempo rimanente.");
+    return Task.CompletedTask;
 }
 
 static async Task PlatformDownloadsVerifiedCampaignArtifacts()
@@ -977,9 +999,28 @@ static Task GameLoggerRemovesStaleCampaignTicket()
     var path = GameLoggerConfiguration.Write(
         scope.Root, "https://play.kerbalspacerace.net", "KSR-20260824-ACTIVE", "temporary-game-ticket");
     True(File.Exists(path), "The campaign game configuration was not written.");
+    True(path.Contains("KSRLite", StringComparison.Ordinal), "The normal logger must use the KSRLite config path.");
+    var ticketsPath = GameLoggerConfiguration.WriteTickets(scope.Root, "https://play.kerbalspacerace.net", 42,
+        new[] { new KsrGameTicket("ticket-one", "KSR-ONE", 43200, null),
+                new KsrGameTicket("ticket-two", "KSR-TWO", 43200, null) },
+        new Dictionary<string, string> { ["KSR-ONE"] = "KSRstart-One Campaign" });
+    var ticketsText = File.ReadAllText(ticketsPath);
+    True(ticketsText.Contains("campaignId = KSR-ONE", StringComparison.Ordinal) &&
+         ticketsText.Contains("campaignId = KSR-TWO", StringComparison.Ordinal), "The catalog must include both campaigns.");
+    True(ticketsText.Contains($"saveFolderBase64 = {Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("KSRstart-One Campaign"))}", StringComparison.Ordinal),
+        "The initial save must map to its campaign before nation selection.");
     True(GameLoggerConfiguration.Clear(scope.Root), "The stale campaign game configuration was not removed.");
     False(File.Exists(path), "The stale campaign ticket remains available to KSP.");
     False(GameLoggerConfiguration.Clear(scope.Root), "Clearing an already absent game ticket should be harmless.");
+    True(File.Exists(ticketsPath), "Clearing the selected ticket must not remove other campaign tickets.");
+    GameLoggerConfiguration.ClearTickets(scope.Root);
+    False(File.Exists(ticketsPath), "Signing out must remove the ticket catalog.");
+
+    var legacyPath = Path.Combine(scope.Root, "GameData", "KerbalSpaceRace", "PluginData", "LegacyCampaign.cfg");
+    Directory.CreateDirectory(Path.GetDirectoryName(legacyPath)!);
+    File.WriteAllText(legacyPath, "KSR_LEGACY_CAMPAIGN\n{\n    enabled = true\n}\n");
+    var legacyTicket = GameLoggerConfiguration.Write(scope.Root, "https://play.kerbalspacerace.net", "test1", "legacy-ticket");
+    True(legacyTicket.Contains("KerbalSpaceRace", StringComparison.Ordinal), "Legacy mode must use the legacy config path.");
     return Task.CompletedTask;
 }
 

@@ -205,10 +205,24 @@ public partial class ServerSettingsWindow : Window
         }
         try
         {
+            var launchingUserId = LauncherSession.UserId;
             GameLoggerConfiguration.Clear(_testKspRoot);
             await LauncherSession.EnsureFreshAccessTokenAsync(ServerUrl!);
             var ticket = await new KsrPlatformClient().GetGameTicketAsync(
                 ServerUrl!, LauncherSession.AccessToken, "test1");
+            var client = new KsrPlatformClient();
+            var tickets = new List<KsrGameTicket> { ticket };
+            var saveFolders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var campaigns = await client.GetCampaignsAsync(ServerUrl!, LauncherSession.AccessToken);
+            foreach (var campaign in campaigns.Where(c => string.Equals(c.Status, "active", StringComparison.OrdinalIgnoreCase) &&
+                                                          !string.Equals(c.CampaignCode, "test1", StringComparison.OrdinalIgnoreCase)))
+            {
+                tickets.Add(await client.GetGameTicketAsync(ServerUrl!, LauncherSession.AccessToken, campaign.CampaignCode));
+                saveFolders[campaign.CampaignCode] = CampaignSaveNaming.CreateStartFolderName(campaign.Name);
+            }
+            if (!LauncherSession.IsAuthenticated || launchingUserId <= 0 || LauncherSession.UserId != launchingUserId)
+                throw new InvalidOperationException("Sign in again before launching the test game.");
+            GameLoggerConfiguration.WriteTickets(_testKspRoot, ServerUrl!, LauncherSession.UserId, tickets, saveFolders);
             GameLoggerConfiguration.Write(_testKspRoot, ServerUrl!, "test1", ticket.Token);
             var executable = Path.Combine(_testKspRoot, "KSP_x64.exe");
             Process.Start(new ProcessStartInfo(executable)
@@ -222,6 +236,7 @@ public partial class ServerSettingsWindow : Window
             System.ComponentModel.Win32Exception or HttpRequestException or KsrApiException or InvalidOperationException)
         {
             GameLoggerConfiguration.Clear(_testKspRoot);
+            GameLoggerConfiguration.ClearTickets(_testKspRoot);
             MessageBox.Show($"The test game could not be launched.\n\n{exception.Message}",
                 "KSR Settings", MessageBoxButton.OK, MessageBoxImage.Warning);
         }

@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using KsrLauncher.Core;
 
@@ -22,6 +23,17 @@ public partial class MainWindow : Window
     private bool _campaignCloseInProgress;
     private bool _campaignUploadInProgress;
     private bool _launchAndLogsInstallInProgress;
+    private readonly DispatcherTimer _downloadCountdownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _ticketRefreshTimer = new() { Interval = TimeSpan.FromHours(4) };
+    private readonly SemaphoreSlim _gameTicketUpdateGate = new(1, 1);
+    private int _authGeneration;
+    private bool _ticketRefreshInProgress;
+    private readonly Stopwatch _downloadStopwatch = new();
+    private bool _blockingOperationInProgress;
+    private int _blockingOperationGeneration;
+    private bool _downloadPhase;
+    private long _downloadBytes;
+    private long _downloadTotal;
     private static readonly string[] OptionalInstalledOnlyComponentIds =
     [
         "contract-pack", "disable-dbs-ui"
@@ -61,6 +73,73 @@ public partial class MainWindow : Window
         RefreshIgnoredFolderControls();
         Loaded += MainWindow_Loaded;
         Activated += MainWindow_Activated;
+        Closing += (_, args) => { if (_blockingOperationInProgress) args.Cancel = true; };
+        PreviewKeyDown += (_, args) => { if (_blockingOperationInProgress) args.Handled = true; };
+        _downloadCountdownTimer.Tick += (_, _) => RefreshDownloadCountdown();
+        _ticketRefreshTimer.Tick += RenewGameTickets_Tick;
+    }
+
+    private int ShowBlockingOperation(string title, string detail)
+    {
+        var generation = ++_blockingOperationGeneration;
+        _blockingOperationInProgress = true;
+        _downloadPhase = false;
+        _downloadBytes = 0;
+        _downloadTotal = 0;
+        _downloadStopwatch.Reset();
+        ModUpdatePhaseText.Text = title;
+        ModUpdatePhaseText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+        ModUpdateDetailText.Text = detail;
+        ModUpdateProgressBar.IsIndeterminate = true;
+        ModUpdateProgressBar.Value = 0;
+        ModUpdateRemainingText.Text = "Preparing download...";
+        ModUpdateOverlay.Visibility = Visibility.Visible;
+        ModUpdateOverlay.Focus();
+        _downloadCountdownTimer.Start();
+        return generation;
+    }
+
+    private void ShowBlockingProgress(int generation, string phase, string detail, long bytes, long total, double percent)
+    {
+        if (!_blockingOperationInProgress || generation != _blockingOperationGeneration) return;
+        ModUpdatePhaseText.Text = phase;
+        ModUpdateDetailText.Text = detail;
+        ModUpdateProgressBar.IsIndeterminate = total <= 0 && phase == "DOWNLOADING";
+        if (!ModUpdateProgressBar.IsIndeterminate)
+            ModUpdateProgressBar.Value = Math.Clamp(percent, 0, 100);
+        _downloadPhase = phase == "DOWNLOADING";
+        if (_downloadPhase)
+        {
+            if (total != _downloadTotal || bytes < _downloadBytes)
+                _downloadStopwatch.Restart();
+            _downloadBytes = bytes;
+            _downloadTotal = total;
+            RefreshDownloadCountdown();
+        }
+        else
+        {
+            ModUpdateRemainingText.Text = phase == "INSTALLING"
+                ? "Installing verified files..."
+                : "Verifying downloaded files...";
+        }
+    }
+
+    private void RefreshDownloadCountdown()
+    {
+        if (!_downloadPhase) return;
+        var remaining = DownloadTimeEstimate.Remaining(_downloadBytes, _downloadTotal, _downloadStopwatch.Elapsed);
+        ModUpdateRemainingText.Text = remaining is null
+            ? "Estimating time remaining..."
+            : $"Estimated time remaining  {(int)remaining.Value.TotalHours:00}:{remaining.Value.Minutes:00}:{remaining.Value.Seconds:00}";
+    }
+
+    private void HideBlockingOperation()
+    {
+        ++_blockingOperationGeneration;
+        _downloadCountdownTimer.Stop();
+        _downloadPhase = false;
+        ModUpdateOverlay.Visibility = Visibility.Collapsed;
+        _blockingOperationInProgress = false;
     }
 
     private DateTimeOffset _lastActivationCampaignRefreshUtc = DateTimeOffset.MinValue;
@@ -116,11 +195,8 @@ public partial class MainWindow : Window
         {
 			_installedKsrModsUpdateInProgress = true;
 			LaunchKspButton.IsEnabled = false;
-            ModUpdateOverlay.Visibility = Visibility.Visible;
-            ModUpdatePhaseText.Text = "CHECKING INSTALLED KSR MODS";
-            ModUpdateDetailText.Text = "Reading the local installation and release manifest...";
-            ModUpdateProgressBar.IsIndeterminate = true;
-            ModUpdateProgressBar.Value = 0;
+            var overlayGeneration = ShowBlockingOperation("CHECKING INSTALLED KSR MODS",
+                "Reading the local installation and release manifest...");
             LauncherVersionText.Text = $"{normalVersionText}  ·  CHECKING KSR MODS";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
 
@@ -144,16 +220,15 @@ public partial class MainWindow : Window
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
             var progress = new Progress<UpdateProgress>(value =>
             {
+                if (overlayGeneration != _blockingOperationGeneration) return;
                 var percent = value.Phase == "INSTALLING"
                     ? Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100)
                     : value.TotalBytes > 0
                     ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
                     : Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100);
                 var component = value.ComponentId.ToUpperInvariant();
-                ModUpdateProgressBar.IsIndeterminate = false;
-                ModUpdateProgressBar.Value = percent;
-                ModUpdatePhaseText.Text = $"{value.Phase} {component}";
-                ModUpdateDetailText.Text = $"{value.ComponentsCompleted}/{value.TotalComponents} components · {percent:0}%";
+                ShowBlockingProgress(overlayGeneration, value.Phase, $"{component} · {value.ComponentsCompleted}/{value.TotalComponents} components · {percent:0}%",
+                    value.BytesDownloaded, value.TotalBytes, percent);
                 LauncherVersionText.Text = $"{normalVersionText}  ·  {value.Phase} {component} {percent:0}%";
             });
             var locations = new LauncherLocations(_kspRoot!, launcherData);
@@ -213,7 +288,7 @@ public partial class MainWindow : Window
 		finally
 		{
 			_installedKsrModsUpdateInProgress = false;
-			ModUpdateOverlay.Visibility = Visibility.Collapsed;
+			HideBlockingOperation();
 			ModUpdatePhaseText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
 			RefreshCampaignState();
 		}
@@ -229,14 +304,22 @@ public partial class MainWindow : Window
             var update = await service.CheckAsync("fabioitaKSR/ksr-releases", current);
             if (update is null) return;
 
+            var overlayGeneration = ShowBlockingOperation("UPDATING KSR LAUNCHER", $"Preparing {update.Tag}...");
             LauncherVersionText.Text = $"LAUNCHER  ·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}  ·  UPDATING";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
             var updateDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "KSRLauncher", "Updates", update.Tag);
             var progress = new Progress<long>(bytes =>
-                LauncherVersionText.Text = $"LAUNCHER  ·  DOWNLOADING {update.Tag}  ·  {bytes / 1048576d:0.0} MB");
+            {
+                if (overlayGeneration != _blockingOperationGeneration) return;
+                var percent = update.Size > 0 ? bytes * 100d / update.Size : 0;
+                ShowBlockingProgress(overlayGeneration, "DOWNLOADING", $"KSR Launcher {update.Tag} · {bytes / 1048576d:0.0} / {update.Size / 1048576d:0.0} MB",
+                    bytes, update.Size, percent);
+                LauncherVersionText.Text = $"LAUNCHER  ·  DOWNLOADING {update.Tag}  ·  {percent:0}%";
+            });
             var downloaded = await service.DownloadAsync(update, updateDirectory, progress);
+            HideBlockingOperation();
             LauncherVersionText.Text = $"LAUNCHER  ·  {update.Tag} READY";
             var restart = MessageBox.Show(
                 $"KSR Launcher {update.Tag} has been downloaded and verified.\n\nRestart now to install the update?",
@@ -253,6 +336,7 @@ public partial class MainWindow : Window
         }
         catch
         {
+            if (_blockingOperationInProgress) HideBlockingOperation();
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
             LauncherVersionText.Text = $"LAUNCHER  ·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}";
         }
@@ -354,6 +438,7 @@ public partial class MainWindow : Window
         }
 
         _launchAndLogsInstallInProgress = true;
+        var overlayGeneration = ShowBlockingOperation("INSTALLING LAUNCH & LOGS", "Checking the official KSR release...");
         DownloadLaunchAndLogsButton.IsEnabled = false;
         DownloadLaunchAndLogsButton.Content = "DOWNLOADING & VERIFYING…";
         PlayerDownloadLaunchAndLogsButton.IsEnabled = false;
@@ -386,6 +471,7 @@ public partial class MainWindow : Window
             release.Manifest.Components = selected;
             var progress = new Progress<UpdateProgress>(value =>
             {
+                if (overlayGeneration != _blockingOperationGeneration) return;
                 var percent = value.Phase == "INSTALLING"
                     ? Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100)
                     : value.TotalBytes > 0
@@ -395,6 +481,9 @@ public partial class MainWindow : Window
                 PlayerLaunchAndLogsProgressBar.Value = percent;
                 var downloadedMb = value.BytesDownloaded / 1048576d;
                 var totalMb = value.TotalBytes / 1048576d;
+                ShowBlockingProgress(overlayGeneration, value.Phase,
+                    $"{value.ComponentId} · {downloadedMb:0.0} / {totalMb:0.0} MB · {percent:0}%",
+                    value.BytesDownloaded, value.TotalBytes, percent);
                 LaunchAndLogsStatusText.Text = value.Phase == "DOWNLOADING" && value.TotalBytes > 0
                     ? $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} — {percent:0}%  ·  {downloadedMb:0.0} / {totalMb:0.0} MB"
                     : $"{value.Phase} {value.ComponentId.ToUpperInvariant()} — component {value.ComponentsCompleted + 1} of {value.TotalComponents}";
@@ -426,6 +515,7 @@ public partial class MainWindow : Window
         }
         finally
         {
+            HideBlockingOperation();
             _launchAndLogsInstallInProgress = false;
             LaunchAndLogsProgressBar.IsIndeterminate = false;
             var ready = AreLaunchAndLogsInstalled(_kspRoot!);
@@ -959,12 +1049,14 @@ public partial class MainWindow : Window
         try
         {
             var selectedCode = (CampaignsList.SelectedItem as CampaignListItem)?.CampaignCode;
+            await LauncherSession.EnsureFreshAccessTokenAsync(LauncherSession.ServerUrl);
             var campaigns = await _platformClient.GetCampaignsAsync(
                 LauncherSession.ServerUrl, LauncherSession.AccessToken);
             ReplaceCampaigns(campaigns.Select(ToCampaignListItem));
             if (selectedCode is not null)
                 CampaignsList.SelectedItem = _campaigns.FirstOrDefault(item =>
                     item.CampaignCode.Equals(selectedCode, StringComparison.OrdinalIgnoreCase));
+            await RefreshGameTicketsAsync(LauncherSession.AccessToken);
         }
         catch (KsrApiException exception)
         {
@@ -1180,19 +1272,23 @@ public partial class MainWindow : Window
             return;
         }
         if (!EnsureKspRoot()) return;
+        var launchGeneration = _authGeneration;
         try
         {
             GameLoggerConfiguration.Clear(_kspRoot!);
             await LauncherSession.EnsureFreshAccessTokenAsync(LauncherSession.ServerUrl!);
+            await RefreshGameTicketsAsync(LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in before launching a campaign."));
             var ticket = await _platformClient.GetGameTicketAsync(
                 LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured."),
                 LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in before launching a campaign."),
                 selectedCampaign.CampaignCode);
+            if (launchGeneration != _authGeneration || !LauncherSession.IsAuthenticated)
+                throw new InvalidOperationException("The signed-in user changed while preparing the game.");
             GameLoggerConfiguration.Write(_kspRoot!, LauncherSession.ServerUrl!, selectedCampaign.CampaignCode, ticket.Token);
         }
         catch (Exception exception)
         {
-            GameLoggerConfiguration.Clear(_kspRoot!);
+            if (launchGeneration == _authGeneration) GameLoggerConfiguration.Clear(_kspRoot!);
             MessageBox.Show($"KSP was not launched because the campaign logger could not be configured.\n\n{exception.Message}",
                 "KSR Game Logger", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
@@ -1474,6 +1570,7 @@ public partial class MainWindow : Window
 
     private async Task ApplySessionAsync(KsrLoginSession session)
     {
+        _authGeneration++;
         var serverUrl = LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server has not been configured.");
         var campaigns = await _platformClient.GetCampaignsAsync(serverUrl, session.AccessToken);
         LauncherSession.Username = session.User.Username;
@@ -1481,8 +1578,91 @@ public partial class MainWindow : Window
         LauncherSession.RefreshToken = session.RefreshToken;
         LauncherSession.AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(session.ExpiresIn);
         ReplaceCampaigns(campaigns.Select(ToCampaignListItem));
+        LauncherSession.UserId = session.User.Id;
+        if (IsValidKspRoot(_kspRoot))
+        {
+            GameLoggerConfiguration.ClearTickets(_kspRoot!);
+            GameLoggerConfiguration.Clear(_kspRoot!);
+        }
+        var testRoot = LauncherSettingsStore.LoadTestKspRoot();
+        if (IsValidKspRoot(testRoot) && !string.Equals(testRoot, _kspRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            GameLoggerConfiguration.ClearTickets(testRoot!);
+            GameLoggerConfiguration.Clear(testRoot!);
+        }
+        try { await RefreshGameTicketsAsync(session.AccessToken, session.User.Id); }
+        catch (Exception exception) { ShowAuthFeedback($"Signed in, but game tickets could not be refreshed: {exception.Message}"); }
+        _ticketRefreshTimer.Start();
         UpdateSessionVisuals();
         await RefreshServerStatusAsync();
+    }
+
+    private async Task RefreshGameTicketsAsync(string accessToken, long? userId = null)
+    {
+        var generation = _authGeneration;
+        await _gameTicketUpdateGate.WaitAsync();
+        try
+        {
+            var id = userId ?? LauncherSession.UserId;
+            if (id <= 0) throw new InvalidOperationException("Sign in before refreshing game tickets.");
+            var testRoot = LauncherSettingsStore.LoadTestKspRoot();
+            var mainReady = IsValidKspRoot(_kspRoot);
+            var testReady = IsValidKspRoot(testRoot);
+            if (!mainReady && !testReady) return;
+            var tickets = new List<KsrGameTicket>();
+            var saveFolders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var campaign in _campaigns.Where(c => string.Equals(c.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) &&
+                                                           !string.Equals(c.CampaignCode, "test1", StringComparison.OrdinalIgnoreCase)))
+            {
+                var ticket = await _platformClient.GetGameTicketAsync(LauncherSession.ServerUrl!, accessToken, campaign.CampaignCode);
+                if (!string.Equals(ticket.CampaignCode, campaign.CampaignCode, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException("The server returned a ticket for another campaign.");
+                tickets.Add(ticket);
+                saveFolders[campaign.CampaignCode] = CampaignSaveNaming.CreateStartFolderName(campaign.Name);
+            }
+            KsrGameTicket? testTicket = null;
+            if (testReady)
+            {
+                try { testTicket = await _platformClient.GetGameTicketAsync(LauncherSession.ServerUrl!, accessToken, "test1"); }
+                catch (KsrApiException exception) { Debug.WriteLine($"KSR test ticket refresh failed: {exception.Message}"); }
+            }
+            if (generation != _authGeneration || !LauncherSession.IsAuthenticated) return;
+            if (mainReady)
+            {
+                var mainTickets = new List<KsrGameTicket>(tickets);
+                if (testTicket is not null && string.Equals(Path.GetFullPath(_kspRoot!), Path.GetFullPath(testRoot!), StringComparison.OrdinalIgnoreCase))
+                    mainTickets.Add(testTicket);
+                GameLoggerConfiguration.WriteTickets(_kspRoot!, LauncherSession.ServerUrl!, id, mainTickets, saveFolders);
+            }
+            if (testReady && (!mainReady || !string.Equals(Path.GetFullPath(_kspRoot!), Path.GetFullPath(testRoot!), StringComparison.OrdinalIgnoreCase)))
+            {
+                var testTickets = new List<KsrGameTicket>(tickets);
+                if (testTicket is not null) testTickets.Add(testTicket);
+                GameLoggerConfiguration.WriteTickets(testRoot!, LauncherSession.ServerUrl!, id, testTickets, saveFolders);
+            }
+            LauncherSession.UserId = id;
+        }
+        finally { _gameTicketUpdateGate.Release(); }
+    }
+
+    private async void RenewGameTickets_Tick(object? sender, EventArgs e)
+    {
+        if (_ticketRefreshInProgress || !LauncherSession.IsAuthenticated || string.IsNullOrWhiteSpace(LauncherSession.ServerUrl)) return;
+        _ticketRefreshInProgress = true;
+        var generation = _authGeneration;
+        try
+        {
+            await LauncherSession.EnsureFreshAccessTokenAsync(LauncherSession.ServerUrl);
+            var campaigns = await _platformClient.GetCampaignsAsync(LauncherSession.ServerUrl, LauncherSession.AccessToken!);
+            if (generation != _authGeneration || !LauncherSession.IsAuthenticated) return;
+            var selectedCode = (CampaignsList.SelectedItem as CampaignListItem)?.CampaignCode;
+            ReplaceCampaigns(campaigns.Select(ToCampaignListItem));
+            if (selectedCode is not null)
+                CampaignsList.SelectedItem = _campaigns.FirstOrDefault(item => item.CampaignCode.Equals(selectedCode, StringComparison.OrdinalIgnoreCase));
+            await RefreshGameTicketsAsync(LauncherSession.AccessToken!);
+        }
+        catch (Exception exception) { Debug.WriteLine($"KSR ticket refresh failed: {exception.Message}"); }
+        finally { _ticketRefreshInProgress = false; }
     }
 
     private static CampaignListItem ToCampaignListItem(KsrCampaign campaign) => new(
@@ -1520,6 +1700,20 @@ public partial class MainWindow : Window
 
     private void SignOut_Click(object sender, RoutedEventArgs e)
     {
+        _authGeneration++;
+        _ticketRefreshTimer.Stop();
+        if (IsValidKspRoot(_kspRoot))
+        {
+            GameLoggerConfiguration.ClearTickets(_kspRoot!);
+            GameLoggerConfiguration.Clear(_kspRoot!);
+        }
+        var testRoot = LauncherSettingsStore.LoadTestKspRoot();
+        if (IsValidKspRoot(testRoot) && !string.Equals(testRoot, _kspRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            GameLoggerConfiguration.ClearTickets(testRoot!);
+            GameLoggerConfiguration.Clear(testRoot!);
+        }
+        LauncherSession.UserId = 0;
         _rememberedSession = null;
         RememberMeCheckBox.IsChecked = false;
         TryClearRememberedSession();
@@ -1637,6 +1831,7 @@ public partial class MainWindow : Window
 internal static class LauncherSession
 {
     public static string Username { get; set; } = "PLAYER";
+    public static long UserId { get; set; }
     public static string? ServerUrl { get; set; } =
         Environment.GetEnvironmentVariable("KSR_SERVER_URL") ?? KsrPlatformClient.ProductionServerUrl;
     public static string? AccessToken { get; set; }
