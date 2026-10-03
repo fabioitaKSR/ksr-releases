@@ -25,10 +25,12 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
     ("Upgrade rileva ogni file mancante, Repair reinstalla tutto", UpgradeAndRepairPolicies),
     ("Settings conserva i comandi della partita test", TestGameSettingsControlsRemainAvailable),
+    ("Settings limita log e save alla partita test", TestGameSupportFilesStayInSelectedInstallation),
     ("Launch & Logs riconosce il logger nella cartella KSRLite", LaunchAndLogsRecognizesInstalledFiles),
     ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched),
     ("Support LOG package is safe and complete", SupportLogPackageIsSafe),
     ("Support SAVE package is safe and complete", SupportSavePackageIsSafe),
+    ("Test SAVE package contains persistent only", TestSavePackageContainsPersistentOnly),
     ("Support report requires a useful description", SupportDescriptionIsRequired),
     ("Support upload uses authenticated HTTPS endpoint", SupportUploadIsAuthenticated),
     ("Support upload refreshes an expired session and retries once", SupportUploadRefreshesExpiredSession),
@@ -392,6 +394,8 @@ static Task TestGameSettingsControlsRemainAvailable()
     {
         ("UpgradeTestKspButton", "UpgradeTestKsp_Click"),
         ("RepairTestKspButton", "RepairTestKsp_Click"),
+        ("SendTestSaveButton", "SendTestSave_Click"),
+        ("SendTestLogButton", "SendTestLog_Click"),
         ("LaunchTestKspButton", "LaunchTestKsp_Click")
     })
     {
@@ -402,6 +406,27 @@ static Task TestGameSettingsControlsRemainAvailable()
     True(document.Descendants().Any(element => (string?)element.Attribute("Text") is string value &&
         value.Contains("test1 campaign", StringComparison.Ordinal)),
         "Settings deve indicare che la partita test resta collegata a test1.");
+    return Task.CompletedTask;
+}
+
+static Task TestGameSupportFilesStayInSelectedInstallation()
+{
+    using var scope = new TempScope();
+    var testKsp = CreateKsp(Path.Combine(scope.Root, "test"));
+    var otherKsp = CreateKsp(Path.Combine(scope.Root, "other"));
+    var selectedSave = Path.Combine(testKsp, "saves", "Selected");
+    var otherSave = Path.Combine(otherKsp, "saves", "Other");
+    Directory.CreateDirectory(selectedSave);
+    Directory.CreateDirectory(otherSave);
+    File.WriteAllText(Path.Combine(selectedSave, "persistent.sfs"), "selected");
+    File.WriteAllText(Path.Combine(otherSave, "persistent.sfs"), "other");
+    File.WriteAllText(Path.Combine(testKsp, "KSP.log"), "test log");
+    Equal(selectedSave, TestGameSupportPaths.SaveFolder(testKsp, selectedSave));
+    Equal(Path.Combine(testKsp, "KSP.log"), TestGameSupportPaths.LogFile(testKsp));
+    Throws<InvalidDataException>(() => TestGameSupportPaths.SaveFolder(testKsp, otherSave));
+    Throws<FileNotFoundException>(() => TestGameSupportPaths.LogFile(otherKsp));
+    File.Delete(Path.Combine(selectedSave, "persistent.sfs"));
+    Throws<InvalidDataException>(() => TestGameSupportPaths.SaveFolder(testKsp, selectedSave));
     return Task.CompletedTask;
 }
 
@@ -494,6 +519,25 @@ static async Task SupportSavePackageIsSafe()
     using var archive = ZipFile.OpenRead(package.FilePath);
     True(archive.GetEntry("save/persistent.sfs") is not null, "persistent.sfs is missing from the support package.");
     True(archive.GetEntry("save/Ships/VAB/Rocket.craft") is not null, "The craft file is missing from the support package.");
+}
+
+static async Task TestSavePackageContainsPersistentOnly()
+{
+    using var scope = new TempScope();
+    var save = Path.Combine(scope.Root, "saves", "Test");
+    Directory.CreateDirectory(Path.Combine(save, "Ships"));
+    await File.WriteAllTextAsync(Path.Combine(save, "persistent.sfs"), "test-save");
+    await File.WriteAllTextAsync(Path.Combine(save, "Ships", "Other.craft"), "private craft");
+    var request = new SupportReportRequest(
+        SupportReportType.Save, save, "Testing a problem in this save.", "Fabio", null,
+        null, "Test", "1.0.0", "1.12.5", PersistentOnly: true);
+
+    var package = await new SupportReportPackager().CreateAsync(request, Path.Combine(scope.Root, "queue"));
+    using var archive = ZipFile.OpenRead(package.FilePath);
+    True(archive.GetEntry("save/persistent.sfs") is not null, "The test save's persistent.sfs is missing.");
+    True(archive.GetEntry("save/Ships/Other.craft") is null, "The test support package included another save file.");
+    True(archive.Entries.Count(entry => entry.FullName.StartsWith("save/", StringComparison.Ordinal)) == 1,
+        "The test support package must contain only persistent.sfs from the save.");
 }
 
 static async Task SupportDescriptionIsRequired()

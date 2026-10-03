@@ -86,6 +86,52 @@ public partial class ServerSettingsWindow : Window
             Directory.Exists(Path.Combine(_testKspRoot, "GameData"));
         UpgradeTestKspButton.IsEnabled = LaunchTestKspButton.IsEnabled;
         RepairTestKspButton.IsEnabled = LaunchTestKspButton.IsEnabled;
+        SendTestSaveButton.IsEnabled = LaunchTestKspButton.IsEnabled;
+        SendTestLogButton.IsEnabled = LaunchTestKspButton.IsEnabled;
+    }
+
+    private void SendTestSave_Click(object sender, RoutedEventArgs e)
+    {
+        if (_maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
+        try
+        {
+            var picker = new OpenFolderDialog
+            {
+                Title = "Select a save from the test installation",
+                InitialDirectory = TestGameSupportPaths.SavesRoot(_testKspRoot),
+                Multiselect = false
+            };
+            if (picker.ShowDialog(this) != true) return;
+            var save = TestGameSupportPaths.SaveFolder(_testKspRoot, picker.FolderName);
+            OpenTestSupportDialog(SupportReportType.Save, save, Path.GetFileName(save), true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            MessageBox.Show(exception.Message, "KSR Support", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void SendTestLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (_maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
+        try
+        {
+            var log = TestGameSupportPaths.LogFile(_testKspRoot);
+            OpenTestSupportDialog(SupportReportType.Log, log, null, false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            MessageBox.Show(exception.Message, "KSR Support", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void OpenTestSupportDialog(SupportReportType type, string sourcePath, string? saveName, bool persistentOnly)
+    {
+        var dialog = new SupportReportWindow(type, sourcePath, saveName, persistentOnly, useSelectedCampaign: false)
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
     }
 
     private async void UpgradeTestKsp_Click(object sender, RoutedEventArgs e) =>
@@ -114,6 +160,8 @@ public partial class ServerSettingsWindow : Window
         UpgradeTestKspButton.IsEnabled = false;
         RepairTestKspButton.IsEnabled = false;
         LaunchTestKspButton.IsEnabled = false;
+        SendTestSaveButton.IsEnabled = false;
+        SendTestLogButton.IsEnabled = false;
         SaveButton.IsEnabled = false;
         CancelButton.IsEnabled = false;
         TestKspMaintenanceProgress.Visibility = Visibility.Visible;

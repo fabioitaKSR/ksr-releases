@@ -21,7 +21,8 @@ public sealed record SupportReportRequest(
     string? CampaignName,
     string? LocalSaveName,
     string LauncherVersion,
-    string KspVersion);
+    string KspVersion,
+    bool PersistentOnly = false);
 
 public sealed record SupportReportPackage(
     string FilePath,
@@ -64,7 +65,18 @@ public sealed class SupportReportPackager
             else
             {
                 var saveDestination = Path.Combine(work, "save");
-                CopySaveSafely(Path.GetFullPath(request.SourcePath), saveDestination);
+                if (request.PersistentOnly)
+                {
+                    var source = Path.GetFullPath(request.SourcePath);
+                    var persistent = SafePaths.Under(source, "persistent.sfs");
+                    SafePaths.RejectReparsePoints(source, persistent);
+                    Directory.CreateDirectory(saveDestination);
+                    File.Copy(persistent, Path.Combine(saveDestination, "persistent.sfs"));
+                }
+                else
+                {
+                    CopySaveSafely(Path.GetFullPath(request.SourcePath), saveDestination);
+                }
                 foreach (var path in Directory.EnumerateFiles(saveDestination, "*", SearchOption.AllDirectories))
                     includedFiles.Add(await DescribeAsync(path, SafePaths.ManifestPath(Path.GetRelativePath(work, path)), cancellationToken));
             }

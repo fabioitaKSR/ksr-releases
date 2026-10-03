@@ -11,24 +11,31 @@ public partial class SupportReportWindow : Window
     private readonly SupportReportType _type;
     private readonly string _sourcePath;
     private readonly string? _saveName;
+    private readonly bool _persistentOnly;
+    private readonly bool _useSelectedCampaign;
     private bool _busy;
 
-    public SupportReportWindow(SupportReportType type, string sourcePath, string? saveName)
+    public SupportReportWindow(SupportReportType type, string sourcePath, string? saveName,
+        bool persistentOnly = false, bool useSelectedCampaign = true)
     {
         InitializeComponent();
         _type = type;
         _sourcePath = sourcePath;
         _saveName = saveName;
+        _persistentOnly = persistentOnly;
+        _useSelectedCampaign = useSelectedCampaign;
 
         ReportTypeText.Text = type == SupportReportType.Log ? "SEND KSP LOG" : "SEND KSP SAVE";
         PlayerText.Text = LauncherSession.Username;
-        CampaignText.Text = string.IsNullOrWhiteSpace(LauncherSession.CampaignCode)
+        CampaignText.Text = !useSelectedCampaign || string.IsNullOrWhiteSpace(LauncherSession.CampaignCode)
             ? "No campaign selected"
             : $"{LauncherSession.CampaignName ?? "Unnamed campaign"} · {LauncherSession.CampaignCode}";
         SourceText.Text = sourcePath;
         IncludedFilesText.Text = type == SupportReportType.Log
             ? "KSP.log · report.txt · manifest.json"
-            : $"save/ (selected save: {saveName ?? "unnamed"}) · report.txt · manifest.json";
+            : persistentOnly
+                ? $"save/persistent.sfs (selected save: {saveName ?? "unnamed"}) · report.txt · manifest.json"
+                : $"save/ (selected save: {saveName ?? "unnamed"}) · report.txt · manifest.json";
         SaveWarningText.Visibility = type == SupportReportType.Save ? Visibility.Visible : Visibility.Collapsed;
         DescriptionTextBox.Focus();
     }
@@ -63,11 +70,12 @@ public partial class SupportReportWindow : Window
                 _sourcePath,
                 DescriptionTextBox.Text,
                 LauncherSession.Username,
-                LauncherSession.CampaignCode,
-                LauncherSession.CampaignName,
+                _useSelectedCampaign ? LauncherSession.CampaignCode : null,
+                _useSelectedCampaign ? LauncherSession.CampaignName : null,
                 _saveName,
                 GetLauncherVersion(),
-                DetectKspVersion(_sourcePath));
+                DetectKspVersion(_sourcePath),
+                _persistentOnly);
 
             package = await new SupportReportPackager().CreateAsync(request, queue);
             if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) || string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
