@@ -1,0 +1,312 @@
+{
+  "schemaVersion": 1,
+  "product": "KerbalSpaceRace",
+  "version": "1.0.15",
+  "channel": "stable",
+  "minimumLauncherVersion": "0.4.0",
+  "components": [
+    {
+      "id": "ksr-core",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-Lite-v1.0.15.zip",
+      "size": 65715,
+      "sha256": "d93119d28daccc933177b0da65f1a1dae899bd7db76e5f467350745cd420ad74",
+      "source": "GameData/KSRLite",
+      "target": "GameData/KSRLite",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/KSRRemoteLogger.dll",
+        "Plugins/KerbalSpaceRace.MenuEditionOverlay.dll",
+        "Plugins/KerbalSpaceRace.MenuKerbalSuits.dll",
+        "Plugins/KerbalSpaceRace.RoverTools.dll"
+      ],
+      "version": "1.0.15",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.7.2/KSR-Lite-v1.0.15.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "ksr-full-pack-existing",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-FullPack-v0.3.9.zip",
+      "size": 343506070,
+      "sha256": "4b6dadeb51c3d7f3de1fe19a2ca703b75ca3c3a5fe2ecf6f17fc856810c82c3f",
+      "source": "GameData/KerbalSpaceRace",
+      "target": "GameData/KerbalSpaceRace",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/KerbalSpaceRace.MenuEditionOverlay.dll",
+        "Plugins/KerbalSpaceRace.MenuKerbalSuits.dll",
+        "Plugins/KerbalSpaceRace.RoverTools.dll",
+        "PluginData/KSRDifficultyReference.cfg",
+        "KSPedia/KSR_KSPedia_Manuale.pdf",
+        "LoadingScreens/KSR_LoadingScreens.cfg"
+      ],
+      "version": "0.3.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.4.0/KSR-FullPack-v0.3.9.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "nation-selector",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-NationSelector-v0.3.4.zip",
+      "size": 102433,
+      "sha256": "d1f0ec0f70df2f970c32a759837e92f4191abf72fc5b315090ec926a09aa5980",
+      "source": "GameData/KerbalSpaceRaceNationSelector",
+      "target": "GameData/KerbalSpaceRaceNationSelector",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/KerbalSpaceRace.NationSelector.dll",
+        "KerbalNames/KSR_KerbalNameSets.cfg",
+        "Flags/KSR_AfricanUnion.png",
+        "Flags/KSR_China.png",
+        "Flags/KSR_ESA.png",
+        "Flags/KSR_India.png",
+        "Flags/KSR_Italy.png",
+        "Flags/KSR_Japan.png",
+        "Flags/KSR_Russia.png",
+        "Flags/KSR_UK.png",
+        "Flags/KSR_USA.png",
+        "Flags/KSR_USSR.png"
+      ],
+      "version": "0.3.4",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.7.2/KSR-NationSelector-v0.3.4.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "contract-pack",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-ContractPack-v0.3.2.zip",
+      "size": 1766231,
+      "sha256": "1b7bf1ec6b9352d8a7572fe49f3e24527abbeab0e319ac6cb14f3fa4b08403df",
+      "source": "GameData/ContractPacks/KerbalSpaceRace",
+      "target": "GameData/ContractPacks/KerbalSpaceRace",
+      "required": true,
+      "requiredFiles": [
+        "KerbalSpaceRace_Agency.cfg",
+        "KerbalSpaceRace_Group.cfg",
+        "KSR_ContractDependencies.cfg"
+      ],
+      "version": "0.3.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.4.0/KSR-ContractPack-v0.3.2.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "parameter-logger",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-ParameterLogger-v1.0.16.zip",
+      "size": 44775,
+      "sha256": "ffe1c430c64c3b5cef17f12c14f98cb1f77d18e4ce5dfa5dac1a9b4bc0943a80",
+      "source": "GameData/KSRParameterLogger",
+      "target": "GameData/KSRParameterLogger",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/KSRParameterLogger.dll",
+        "Plugins/KerbalSpaceRace.LoggerPerformance.dll"
+      ],
+      "version": "1.0.16",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/mods-v1.0.16/KSR-ParameterLogger-v1.0.16.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "harmony",
+      "transactionGroup": "ksp-client",
+      "asset": "KSP-Harmony-v0.3.2.zip",
+      "size": 375709,
+      "sha256": "4734a497f70b7ba3b340c6dc254a1257a4d7184e1cc9282bb306f0b7fd2c80c6",
+      "source": "GameData/000_Harmony",
+      "target": "GameData/000_Harmony",
+      "required": true,
+      "requiredFiles": [
+        "0Harmony.dll",
+        "Harmony.version",
+        "HarmonyInstallChecker.dll",
+        "ReadMe.txt"
+      ],
+      "version": "0.3.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.4.0/KSP-Harmony-v0.3.2.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "achievements",
+      "transactionGroup": "ksp-client",
+      "asset": "KSP-Achievements-v0.3.2.zip",
+      "size": 3317294,
+      "sha256": "e42466c544a641e57de7ce5538aeb6faf84fe18aaec520812de56609c1b40609",
+      "source": "GameData/Achievements",
+      "target": "GameData/Achievements",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/Achievements.dll",
+        "Achievements.version",
+        "LICENSE.txt"
+      ],
+      "version": "0.3.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.4.0/KSP-Achievements-v0.3.2.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "click-through-blocker",
+      "transactionGroup": "ksp-client",
+      "asset": "KSP-ClickThroughBlocker-v0.3.2.zip",
+      "size": 113142,
+      "sha256": "c865ac7348c109e610c5b415c949911296a955180e31bbfe4ead57dfff3a33a6",
+      "source": "GameData/000_ClickThroughBlocker",
+      "target": "GameData/000_ClickThroughBlocker",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/ClickThroughBlocker.dll"
+      ],
+      "version": "0.3.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.4.0/KSP-ClickThroughBlocker-v0.3.2.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "toolbar-controller",
+      "transactionGroup": "ksp-client",
+      "asset": "KSP-ToolbarController-v0.3.2.zip",
+      "size": 81827,
+      "sha256": "b721c560701918adb072a0aecfe47d4da9690864807fe42921e1dfaf09642d67",
+      "source": "GameData/001_ToolbarControl",
+      "target": "GameData/001_ToolbarControl",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/ToolbarControl.dll"
+      ],
+      "version": "0.3.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.4.0/KSP-ToolbarController-v0.3.2.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "spacetux-library",
+      "transactionGroup": "ksp-client",
+      "asset": "KSP-SpaceTuxLibrary-v0.3.2.zip",
+      "size": 498174,
+      "sha256": "10fc78dde76a6be9df9f29bfbe229b0bfef3554d913f8b1144850e7b21c13925",
+      "source": "GameData/SpaceTuxLibrary",
+      "target": "GameData/SpaceTuxLibrary",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/SpaceTuxUtility.dll"
+      ],
+      "version": "0.3.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.4.0/KSP-SpaceTuxLibrary-v0.3.2.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "space-age",
+      "transactionGroup": "ksp-client",
+      "asset": "KSP-SpaceAge-v0.3.2.zip",
+      "size": 48809,
+      "sha256": "a14f340a445cb04424ffb566f98e48a74b6610decfcc2efc1174009358117fd5",
+      "source": "GameData/SpaceAge",
+      "target": "GameData/SpaceAge",
+      "required": true,
+      "requiredFiles": [
+        "SpaceAge.dll",
+        "SpaceAge.version",
+        "achievements.cfg",
+        "LICENSE"
+      ],
+      "version": "0.3.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.4.0/KSP-SpaceAge-v0.3.2.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "final-frontier",
+      "transactionGroup": "ksp-client",
+      "asset": "KSP-FinalFrontier-v0.3.2.zip",
+      "size": 3381740,
+      "sha256": "de74491565500ef59ddebca3aa2014154cf8ea422d9554abb471f80646b61a97",
+      "source": "GameData/Nereid/FinalFrontier",
+      "target": "GameData/Nereid/FinalFrontier",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/FinalFrontier.dll",
+        "FinalFrontier.version",
+        "LICENSE.txt"
+      ],
+      "version": "0.3.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.4.0/KSP-FinalFrontier-v0.3.2.zip",
+      "installMode": "replace"
+    },
+    {
+      "id": "ksr-full-pack-patch-1-0-2",
+      "version": "1.0.2",
+      "transactionGroup": "ksp-client",
+      "asset": "KSR-FullPack-LegacyMode-v1.0.2.zip",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/mods-v1.0.2/KSR-FullPack-LegacyMode-v1.0.2.zip",
+      "size": 1091,
+      "sha256": "a5c12904be880389c308332a52f1808bd1446f879b3af279130b0484a09c0118",
+      "source": "GameData/KerbalSpaceRace",
+      "targetKind": "ksp",
+      "target": "GameData/KerbalSpaceRace",
+      "installMode": "overlay",
+      "required": true,
+      "requiredFiles": [
+        "PluginData/LegacyCampaign.cfg",
+        "PluginData/RemoteLogger.cfg.example",
+        "LEGACY_CAMPAIGN_README.txt"
+      ]
+    },
+    {
+      "id": "tarsier-space-technology",
+      "transactionGroup": "ksp-client",
+      "asset": "KSP-TarsierSpaceTechnology-KSRPatch-v7.13.0-ksr.2.zip",
+      "size": 165540,
+      "sha256": "fb3e71472dff050f859b1b7c736c0bed9038495b22f1bf61657cb5efd1886d7e",
+      "source": "GameData/TarsierSpaceTech",
+      "target": "GameData/TarsierSpaceTech",
+      "required": true,
+      "requiredFiles": [
+        "Plugins/TarsierSpaceTech.dll"
+      ],
+      "version": "7.13.0-ksr.2",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/v0.6.8/KSP-TarsierSpaceTechnology-KSRPatch-v7.13.0-ksr.2.zip",
+      "installMode": "overlay"
+    },
+    {
+      "id": "scansat-height-cache",
+      "transactionGroup": "ksp-client",
+      "asset": "KSP-SCANsat-KSRHeightCache-v21.1.0-ksr.1.zip",
+      "size": 179250,
+      "sha256": "47cc2206cff83d2d5fa72ba771573ef0e22997849e17348cc94dbaaa593a753e",
+      "source": "GameData/SCANsat",
+      "target": "GameData/SCANsat",
+      "required": false,
+      "requiredFiles": [
+        "Plugins/SCANsat.dll"
+      ],
+      "version": "21.1.0-ksr.1",
+      "assetUrl": "https://github.com/fabioitaKSR/ksr-releases/releases/download/mods-v1.0.17/KSP-SCANsat-KSRHeightCache-v21.1.0-ksr.1.zip",
+      "installMode": "overlay"
+    }
+  ],
+  "preserve": [
+    "GameData/KSRLite/PluginData/**",
+    "GameData/KerbalSpaceRace/PluginData/**",
+    "GameData/KerbalSpaceRaceNationSelector/PluginData/**",
+    "GameData/KerbalSpaceRaceNationSelector/Patches/Generated/**",
+    "GameData/KSRParameterLogger/PluginData/**",
+    "GameData/Achievements/PluginData/**",
+    "GameData/000_ClickThroughBlocker/PluginData/**",
+    "GameData/001_ToolbarControl/PluginData/**",
+    "GameData/SpaceTuxLibrary/PluginData/**",
+    "GameData/SpaceAge/PluginData/**",
+    "GameData/Nereid/FinalFrontier/PluginData/**",
+    "LauncherData/RemoteLoggerServer/remote_logger.sqlite3",
+    "LauncherData/RemoteLoggerServer/remote_logger_paths.json",
+    "LauncherData/RemoteLoggerServer/*.cfg",
+    "LauncherData/RemoteLoggerServer/*.log",
+    "GameData/SCANsat/PluginData/**"
+  ],
+  "managedFilesInsidePreservedPaths": [
+    "GameData/KerbalSpaceRace/PluginData/KSRDifficultyReference.cfg"
+  ],
+  "delete": [
+    "GameData/KerbalSpaceRace/Plugins/KSRRemoteLogger.dll"
+  ],
+  "ksp": {
+    "minimumVersion": "1.12.0",
+    "maximumVersion": "1.12.99"
+  }
+}

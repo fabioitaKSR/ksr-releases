@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <RootNamespace>SCANsat</RootNamespace>
+    <AssemblyName>SCANsat</AssemblyName>
+    <TargetFramework>net4.8</TargetFramework>
+  </PropertyGroup>
+  <PropertyGroup>
+    <GenerateKSPAssemblyAttribute>true</GenerateKSPAssemblyAttribute>
+    <GenerateKSPAssemblyDependencyAttributes>true</GenerateKSPAssemblyDependencyAttributes>
+  </PropertyGroup>
+  <ItemGroup>
+    <KSPVersionFile Include="$(RepoRootPath)\GameData\SCANsat\SCANsat.version">
+      <Destination>$(RepoRootPath)\GameData\SCANsat\SCANsat.version</Destination>
+      <KSP_Version_Min>1.12.3</KSP_Version_Min>
+    </KSPVersionFile>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="KSPBuildTools" Version="0.0.4" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SCANsat.Unity\SCANsat.Unity.csproj" />
+  </ItemGroup>
+</Project>
