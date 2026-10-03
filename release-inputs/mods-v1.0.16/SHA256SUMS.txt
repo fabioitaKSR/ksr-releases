@@ -1,0 +1,2 @@
+ffe1c430c64c3b5cef17f12c14f98cb1f77d18e4ce5dfa5dac1a9b4bc0943a80  KSR-ParameterLogger-v1.0.16.zip
+a42ed5bfc682ea6149ea759ffdeff0fa89ccb1e882a65c048162e7ff0fcfaac1  ksr-release.json
