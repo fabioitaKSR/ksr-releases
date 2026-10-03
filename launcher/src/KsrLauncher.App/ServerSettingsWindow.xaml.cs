@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Security.Cryptography;
-using System.Text;
 using System.Windows;
 using System.Windows.Media;
 using Microsoft.Win32;
@@ -219,14 +217,7 @@ public partial class ServerSettingsWindow : Window
     private static string GetTestLauncherDataRoot(string testKspRoot)
     {
         var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
-        var campaignRoot = LauncherSettingsStore.LoadKspRoot();
-        var normalizedTestRoot = Path.GetFullPath(testKspRoot).TrimEnd(Path.DirectorySeparatorChar);
-        if (!string.IsNullOrWhiteSpace(campaignRoot) &&
-            string.Equals(normalizedTestRoot, Path.GetFullPath(campaignRoot).TrimEnd(Path.DirectorySeparatorChar),
-                StringComparison.OrdinalIgnoreCase)) return launcherData;
-
-        var identity = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedTestRoot.ToUpperInvariant())));
-        return Path.Combine(launcherData, "test-installations", identity);
+        return TestInstallationPaths.GetLauncherDataRoot(testKspRoot, LauncherSettingsStore.LoadKspRoot(), launcherData);
     }
 
     private async void LaunchTestKsp_Click(object sender, RoutedEventArgs e)

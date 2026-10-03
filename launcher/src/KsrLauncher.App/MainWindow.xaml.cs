@@ -158,7 +158,9 @@ public partial class MainWindow : Window
     {
         await RefreshServerStatusAsync();
         await TryRestoreSessionAsync();
-        await UpdateInstalledKsrModsAsync();
+        if (!TestInstallationPaths.IsSameKspRoot(_kspRoot, LauncherSettingsStore.LoadTestKspRoot()))
+            await UpdateInstalledKsrModsAsync();
+        await UpdateTestKspAsync();
         if (LoggerVersionText.Text == "LOGGER --" || LaunchAndLogsVersionText.Text == "L&L --")
             await RefreshReleaseComponentVersionsAsync();
         await CheckForLauncherUpdateAsync();
@@ -293,6 +295,67 @@ public partial class MainWindow : Window
 			ModUpdatePhaseText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
 			RefreshCampaignState();
 		}
+    }
+
+    private async Task UpdateTestKspAsync()
+    {
+        var testRoot = LauncherSettingsStore.LoadTestKspRoot();
+        if (!IsValidKspRoot(testRoot) || Process.GetProcessesByName("KSP_x64").Length > 0) return;
+
+        _installedKsrModsUpdateInProgress = true;
+        LaunchKspButton.IsEnabled = false;
+        var overlayGeneration = ShowBlockingOperation("CHECKING TEST GAME", "Checking the selected test installation...");
+        try
+        {
+            var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            ShowReleaseComponentVersions(release.Manifest);
+            release.Manifest.Components = release.Manifest.Components
+                .Where(component => string.Equals(component.TargetKind, "ksp", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (release.Manifest.Components.Count == 0)
+                throw new InvalidDataException("The official release has no KSP game components.");
+
+            var progress = new Progress<UpdateProgress>(value =>
+            {
+                if (overlayGeneration != _blockingOperationGeneration) return;
+                var percent = value.Phase == "INSTALLING"
+                    ? Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100)
+                    : value.TotalBytes > 0
+                    ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
+                    : 0;
+                ShowBlockingProgress(overlayGeneration, value.Phase,
+                    $"TEST GAME · {value.ComponentId} · {percent:0}%",
+                    value.BytesDownloaded, value.TotalBytes, percent);
+            });
+            var launcherData = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
+            var dataRoot = TestInstallationPaths.GetLauncherDataRoot(
+                testRoot!, LauncherSettingsStore.LoadKspRoot(), launcherData);
+            var result = await new UpdateEngine().RunAsync(release.Manifest,
+                new LauncherLocations(testRoot!, dataRoot), release.AssetsBaseUrl,
+                true, UpdatePolicy.VerifyAllFiles, progress);
+            ModUpdateProgressBar.IsIndeterminate = false;
+            ModUpdateProgressBar.Value = 100;
+            ModUpdatePhaseText.Text = result.Applied ? "TEST GAME UPDATED" : "TEST GAME UP TO DATE";
+            ModUpdateDetailText.Text = result.Applied
+                ? "The selected test installation is ready."
+                : "No test game component requires an update.";
+            await Task.Delay(700);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            ModUpdateProgressBar.IsIndeterminate = false;
+            ModUpdatePhaseText.Text = "TEST GAME UPDATE FAILED";
+            ModUpdatePhaseText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
+            ModUpdateDetailText.Text = exception.Message;
+            await Task.Delay(1400);
+        }
+        finally
+        {
+            _installedKsrModsUpdateInProgress = false;
+            HideBlockingOperation();
+            RefreshCampaignState();
+        }
     }
 
     private async Task CheckForLauncherUpdateAsync()

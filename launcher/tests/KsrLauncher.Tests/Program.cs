@@ -24,6 +24,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Update ordinario ripara componente installato incompleto", ExistingOnlyRepairsIncompleteComponent),
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
     ("Upgrade rileva ogni file mancante, Repair reinstalla tutto", UpgradeAndRepairPolicies),
+    ("Avvio aggiorna la test installazione senza toccare quella principale", StartupUpdatesTestInstallationSeparately),
     ("Settings conserva i comandi della partita test", TestGameSettingsControlsRemainAvailable),
     ("Creazione gara conserva l'opzione Discord", CampaignDiscordOptionIsAvailable),
     ("Settings limita log e save alla partita test", TestGameSupportFilesStayInSelectedInstallation),
@@ -385,6 +386,49 @@ static async Task UpgradeAndRepairPolicies()
     True(repair.Applied, "Repair deve reinstallare anche un componente gia aggiornato.");
     True(repair.Plan.Components.All(item => item.NeedsUpdate), "Repair deve includere ogni componente del manifest.");
     Equal("installed", await File.ReadAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "new.txt")));
+}
+
+static async Task StartupUpdatesTestInstallationSeparately()
+{
+    var startup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml.cs"));
+    True(startup.Contains("await UpdateTestKspAsync();", StringComparison.Ordinal) &&
+        startup.Contains("true, UpdatePolicy.VerifyAllFiles, progress", StringComparison.Ordinal),
+        "Startup must check every file in the selected test installation.");
+
+    using var scope = new TempScope();
+    var mainKsp = CreateKsp(Path.Combine(scope.Root, "main"));
+    var testKsp = CreateKsp(Path.Combine(scope.Root, "test"));
+    var persistent = Path.Combine(testKsp, "saves", "Test", "persistent.sfs");
+    Directory.CreateDirectory(Path.GetDirectoryName(persistent)!);
+    await File.WriteAllTextAsync(persistent, "test-save-untouched");
+    var launcherData = Path.Combine(scope.Root, "LauncherData");
+    var testData = TestInstallationPaths.GetLauncherDataRoot(testKsp, mainKsp, launcherData);
+    True(!TestInstallationPaths.IsSameKspRoot(mainKsp, testKsp), "Separate KSP folders must not be deduplicated.");
+    True(!string.Equals(testData, launcherData, StringComparison.OrdinalIgnoreCase),
+        "The test installation must keep its own update state.");
+    Equal(testData, TestInstallationPaths.GetLauncherDataRoot(testKsp + Path.DirectorySeparatorChar, mainKsp, launcherData));
+    Equal(Path.GetFullPath(launcherData), TestInstallationPaths.GetLauncherDataRoot(mainKsp, mainKsp, launcherData));
+
+    var assets = Path.Combine(scope.Root, "assets");
+    Directory.CreateDirectory(assets);
+    var zip = Path.Combine(assets, "component.zip");
+    CreateZip(zip, new Dictionary<string, string>
+    {
+        ["GameData/TestMod/new.txt"] = "required",
+        ["GameData/TestMod/optional.txt"] = "optional"
+    });
+    var manifest = CreateManifest(await PackageService.ComputeSha256Async(zip));
+    var locations = new LauncherLocations(testKsp, testData);
+    var engine = new UpdateEngine();
+    True((await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.VerifyAllFiles)).Applied,
+        "Startup must install missing test game components.");
+    False(File.Exists(Path.Combine(mainKsp, "GameData", "TestMod", "new.txt")),
+        "Updating the test installation must not modify the main installation.");
+    File.Delete(Path.Combine(testKsp, "GameData", "TestMod", "optional.txt"));
+    True((await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.VerifyAllFiles)).Applied,
+        "Startup must restore missing files from installed test components.");
+    Equal("optional", await File.ReadAllTextAsync(Path.Combine(testKsp, "GameData", "TestMod", "optional.txt")));
+    Equal("test-save-untouched", await File.ReadAllTextAsync(persistent));
 }
 
 static Task TestGameSettingsControlsRemainAvailable()
