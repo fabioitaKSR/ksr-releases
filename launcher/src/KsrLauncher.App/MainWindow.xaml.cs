@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<string> _ignoredGameDataFolders = [];
     private readonly KsrPlatformClient _platformClient = new();
     private readonly Dictionary<string, CampaignBaselinePackage> _localBaselines = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _localDiscordAreaRequests = new(StringComparer.OrdinalIgnoreCase);
     private CampaignComplianceResult? _lastCompliance;
     private RememberedSession? _rememberedSession;
     private bool _campaignCloseInProgress;
@@ -711,6 +712,7 @@ public partial class MainWindow : Window
             blockingCampaign.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase) &&
             _localBaselines.ContainsKey(blockingCampaign.CampaignCode);
         CampaignNameTextBox.IsEnabled = campaignCreationAvailable;
+        CreateDiscordAreaCheckBox.IsEnabled = campaignCreationAvailable;
         BrowseReferenceSaveButton.IsEnabled = campaignCreationAvailable;
         CreateRaceButton.Visibility = blockingCampaign is null ? Visibility.Visible : Visibility.Collapsed;
         RetryCampaignUploadButton.Visibility = retryableDraft ? Visibility.Visible : Visibility.Collapsed;
@@ -752,6 +754,7 @@ public partial class MainWindow : Window
                 "Discard KSR Draft", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
             if (confirmDraft != MessageBoxResult.Yes) return;
             _localBaselines.Remove(campaign.CampaignCode);
+            _localDiscordAreaRequests.Remove(campaign.CampaignCode);
             _campaigns.Remove(campaign);
             RefreshCampaignState();
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
@@ -816,8 +819,10 @@ public partial class MainWindow : Window
             UpdateCreateRaceState();
             return;
         }
+        var createDiscordArea = CreateDiscordAreaCheckBox.IsChecked == true;
         CreateRaceButton.IsEnabled = false;
         CampaignNameTextBox.IsEnabled = false;
+        CreateDiscordAreaCheckBox.IsEnabled = false;
         CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
         CampaignCreationStatusText.Text = "Baseline scan in progress. Follow the scanner activity above.";
         SetBaselineActivity("> INITIALIZING BASELINE SCAN", "Preparing the campaign workspace...", isIndeterminate: true);
@@ -833,6 +838,7 @@ public partial class MainWindow : Window
                 progress);
             var draftCode = $"DRAFT-{package.Manifest.CreatedAtUtc:yyyyMMdd-HHmmss}";
             _localBaselines[draftCode] = package;
+            _localDiscordAreaRequests[draftCode] = createDiscordArea;
             var item = new CampaignListItem(
                 draftCode, package.Manifest.CampaignName, "ADMIN", "NOT SELECTED", "DRAFT", true,
                 package.Manifest.MasterSaveSha256, package.Manifest.MasterSaveSize,
@@ -886,8 +892,9 @@ public partial class MainWindow : Window
         UpdateCreateRaceState();
         try
         {
+            var createDiscordArea = _localDiscordAreaRequests.GetValueOrDefault(draft.CampaignCode);
             var created = await _platformClient.CreateCampaignAsync(
-                LauncherSession.ServerUrl, LauncherSession.AccessToken, package);
+                LauncherSession.ServerUrl, LauncherSession.AccessToken, package, createDiscordArea);
             var active = new CampaignListItem(
                 created.CampaignCode,
                 created.Name,
@@ -901,13 +908,16 @@ public partial class MainWindow : Window
                 created.BaselineSha256);
             ReplaceCampaignItem(uploading, active);
             _localBaselines.Remove(draft.CampaignCode);
+            _localDiscordAreaRequests.Remove(draft.CampaignCode);
+            CreateDiscordAreaCheckBox.IsChecked = false;
             _localBaselines[active.CampaignCode] = package;
             CampaignsList.SelectedItem = active;
             CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
             CampaignCreationStatusText.Text = $"Campaign created: {active.CampaignCode}. The Master Save and baseline are active on the server.";
             SetBaselineActivity("> CAMPAIGN ACTIVE", $"SERVER CAMPAIGN ID: {active.CampaignCode}", "TerminalGreenBrush", 1, 1);
             MessageBox.Show(
-                $"The campaign is active.\n\nCampaign ID: {active.CampaignCode}\nName: {active.Name}\n\nPlayers can use this Campaign ID to join.",
+                $"The campaign is active.\n\nCampaign ID: {active.CampaignCode}\nName: {active.Name}\n\nPlayers can use this Campaign ID to join." +
+                (createDiscordArea ? "\n\nThe KSR bot is creating this campaign's Discord area." : string.Empty),
                 "KSR Campaign Created", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (KsrApiException exception)

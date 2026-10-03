@@ -25,6 +25,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
     ("Upgrade rileva ogni file mancante, Repair reinstalla tutto", UpgradeAndRepairPolicies),
     ("Settings conserva i comandi della partita test", TestGameSettingsControlsRemainAvailable),
+    ("Creazione gara conserva l'opzione Discord", CampaignDiscordOptionIsAvailable),
     ("Settings limita log e save alla partita test", TestGameSupportFilesStayInSelectedInstallation),
     ("Launch & Logs riconosce il logger nella cartella KSRLite", LaunchAndLogsRecognizesInstalledFiles),
     ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched),
@@ -406,6 +407,27 @@ static Task TestGameSettingsControlsRemainAvailable()
     True(document.Descendants().Any(element => (string?)element.Attribute("Text") is string value &&
         value.Contains("test1 campaign", StringComparison.Ordinal)),
         "Settings deve indicare che la partita test resta collegata a test1.");
+    return Task.CompletedTask;
+}
+
+static Task CampaignDiscordOptionIsAvailable()
+{
+    var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml"));
+    XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+    var checkbox = document.Descendants().Single(element =>
+        element.Name.LocalName == "CheckBox" &&
+        (string?)element.Attribute(x + "Name") == "CreateDiscordAreaCheckBox");
+    True((string?)checkbox.Attribute("IsChecked") == "False",
+        "The campaign Discord area must be opt-in.");
+    True((string?)checkbox.Attribute("ToolTip") is string tooltip &&
+        tooltip.Contains("Closing the race", StringComparison.Ordinal),
+        "The Discord option must explain what happens when the race closes.");
+    var scroller = checkbox.Ancestors().SingleOrDefault(element =>
+        element.Name.LocalName == "ScrollViewer" &&
+        (string?)element.Attribute(x + "Name") == "AdminCampaignScrollViewer");
+    True(scroller is not null &&
+        (string?)scroller.Attribute("VerticalScrollBarVisibility") == "Auto",
+        "The campaign controls must scroll instead of overlapping the footer on short windows.");
     return Task.CompletedTask;
 }
 
@@ -913,9 +935,13 @@ static async Task PlatformCampaignCreationIsMultipartAndIdempotent()
             throw new Exception("Campaign creation is not multipart/form-data.");
         var key = request.Headers.GetValues("Idempotency-Key").Single();
         if (firstIdempotencyKey is null) firstIdempotencyKey = key;
-        else Equal(firstIdempotencyKey, key);
+        else if (calls < 2) Equal(firstIdempotencyKey, key);
+        else True(firstIdempotencyKey != key, "Changing the Discord choice must change the idempotency key.");
         var parts = multipart.ToList();
         True(parts.Any(part => part.Headers.ContentDisposition?.Name?.Trim('"') == "name"), "Campaign name part is missing.");
+        var discordPart = parts.SingleOrDefault(part => part.Headers.ContentDisposition?.Name?.Trim('"') == "createDiscordArea");
+        True(discordPart is not null, "Discord area preference part is missing.");
+        Equal(calls < 2 ? "false" : "true", discordPart!.ReadAsStringAsync().GetAwaiter().GetResult());
         True(parts.Any(part => part.Headers.ContentDisposition?.Name?.Trim('"') == "masterSave" && part.Headers.ContentType?.MediaType == "application/zip"), "Master Save part is missing.");
         True(parts.Any(part => part.Headers.ContentDisposition?.Name?.Trim('"') == "baseline" && part.Headers.ContentType?.MediaType == "application/json"), "Baseline part is missing.");
         calls++;
@@ -925,11 +951,13 @@ static async Task PlatformCampaignCreationIsMultipartAndIdempotent()
 
     var first = await client.CreateCampaignAsync("https://ksr.example", "access-1", package);
     var retry = await client.CreateCampaignAsync("https://ksr.example", "access-1", package);
+    var withDiscord = await client.CreateCampaignAsync("https://ksr.example", "access-1", package, createDiscordArea: true);
 
     Equal("KSR-20260821-ABC123", first.CampaignCode);
     Equal(first.CampaignCode, retry.CampaignCode);
+    Equal(first.CampaignCode, withDiscord.CampaignCode);
     True(first.BaselineSchemaVersion == 1, "Baseline schema metadata was not parsed.");
-    True(calls == 2, "The retry request was not sent.");
+    True(calls == 3, "The retry and Discord requests were not both sent.");
 }
 
 static async Task PlatformRegistrationSendsEmail()

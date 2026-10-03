@@ -204,6 +204,7 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         string serverUrl,
         string accessToken,
         CampaignBaselinePackage package,
+        bool createDiscordArea = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(package);
@@ -219,7 +220,8 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         if (!string.Equals(masterSaveSha256, package.Manifest.MasterSaveSha256, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("The Master Save changed after the campaign baseline was created. Build the baseline again.");
         var baselineSha256 = await PackageService.ComputeSha256Async(package.ManifestPath, cancellationToken);
-        var idempotencyKey = BuildCampaignIdempotencyKey(package.Manifest.CampaignName, masterSaveSha256, baselineSha256);
+        var idempotencyKey = BuildCampaignIdempotencyKey(
+            package.Manifest.CampaignName, masterSaveSha256, baselineSha256, createDiscordArea);
 
         await using var masterSaveStream = new FileStream(
             package.MasterSavePath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
@@ -227,6 +229,7 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             package.ManifestPath, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
         using var form = new MultipartFormDataContent();
         form.Add(new StringContent(package.Manifest.CampaignName, Encoding.UTF8), "name");
+        form.Add(new StringContent(createDiscordArea ? "true" : "false", Encoding.UTF8), "createDiscordArea");
         var masterSaveContent = new StreamContent(masterSaveStream);
         masterSaveContent.Headers.ContentType = new MediaTypeHeaderValue("application/zip");
         form.Add(masterSaveContent, "masterSave", "master-save.zip");
@@ -368,9 +371,11 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             throw new InvalidDataException("The downloaded artifact failed SHA-256 verification.");
     }
 
-    public static string BuildCampaignIdempotencyKey(string campaignName, string masterSaveSha256, string baselineSha256)
+    public static string BuildCampaignIdempotencyKey(string campaignName, string masterSaveSha256, string baselineSha256,
+        bool createDiscordArea = false)
     {
         var material = $"ksr-campaign-v1\n{campaignName.Trim()}\n{masterSaveSha256.ToLowerInvariant()}\n{baselineSha256.ToLowerInvariant()}";
+        if (createDiscordArea) material += "\ndiscord:true";
         return "ksr-v1-" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(material))).ToLowerInvariant();
     }
 
