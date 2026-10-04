@@ -1267,7 +1267,7 @@ public partial class MainWindow : Window
         OpenSupportDialog(SupportReportType.Log, log, null);
     }
 
-    private void Leaderboard_Click(object sender, RoutedEventArgs e)
+    private async void Leaderboard_Click(object sender, RoutedEventArgs e)
     {
         if (CampaignsList.SelectedItem is not CampaignListItem campaign)
         {
@@ -1277,8 +1277,11 @@ public partial class MainWindow : Window
         }
         try
         {
-            var uri = KsrPlatformClient.BuildLeaderboardUri(
-                LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured."),
+            var serverUrl = LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured.");
+            await LauncherSession.EnsureFreshAccessTokenAsync(serverUrl);
+            var uri = await _platformClient.GetLeaderboardUriAsync(
+                serverUrl,
+                LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in before opening the leaderboard."),
                 campaign.CampaignCode);
             Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
         }

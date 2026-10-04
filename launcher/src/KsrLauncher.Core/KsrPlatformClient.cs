@@ -37,14 +37,33 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 
     private readonly HttpClient _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
 
-    public static Uri BuildLeaderboardUri(string serverUrl, string campaignCode)
+    public static Uri BuildLeaderboardUri(string serverUrl, string campaignCode, string viewToken)
     {
         var baseUri = ValidateServerUri(serverUrl);
         if (string.IsNullOrWhiteSpace(campaignCode) ||
             !campaignCode.Trim().StartsWith("KSR-", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Select a valid KSR campaign before opening its leaderboard.");
+        if (string.IsNullOrWhiteSpace(viewToken) ||
+            viewToken.Length > 80 ||
+            viewToken.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '-' && character != '_'))
+            throw new ArgumentException("The campaign leaderboard link is invalid.");
         return new Uri(baseUri,
-            $"/sheet-preview?campaign_id={Uri.EscapeDataString(campaignCode.Trim())}");
+            $"/sheet-preview?campaign_id={Uri.EscapeDataString(campaignCode.Trim())}&view={Uri.EscapeDataString(viewToken)}");
+    }
+
+    public async Task<Uri> GetLeaderboardUriAsync(
+        string serverUrl,
+        string accessToken,
+        string campaignCode,
+        CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(campaignCode)) throw new ArgumentException("A campaign code is required.");
+        using var request = AuthorizedRequest(HttpMethod.Get,
+            new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(campaignCode.Trim())}/leaderboard-link"), accessToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        return BuildLeaderboardUri(serverUrl, campaignCode, RequiredString(Unwrap(document.RootElement), "viewToken"));
     }
 
     public async Task RegisterAsync(

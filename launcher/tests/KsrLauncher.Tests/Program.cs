@@ -1070,16 +1070,24 @@ static async Task PlatformHealthUsesV1Contract()
     True(health.Legacy, "Legacy compatibility flag was not parsed.");
 }
 
-static Task LeaderboardLinkTargetsSelectedCampaign()
+static async Task LeaderboardLinkTargetsSelectedCampaign()
 {
-    var uri = KsrPlatformClient.BuildLeaderboardUri(
-        "https://play.kerbalspacerace.net", "KSR-20260823-TEST 01");
-    Equal(
-        "https://play.kerbalspacerace.net/sheet-preview?campaign_id=KSR-20260823-TEST%2001",
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("https://play.kerbalspacerace.net/api/v1/campaigns/KSR-20260823-TEST%2001/leaderboard-link",
+            request.RequestUri!.AbsoluteUri);
+        Equal("Bearer", request.Headers.Authorization!.Scheme);
+        Equal("access-token", request.Headers.Authorization.Parameter!);
+        return "{\"ok\":true,\"viewToken\":\"private-view-token\"}";
+    }));
+    var uri = await new KsrPlatformClient(http).GetLeaderboardUriAsync(
+        "https://play.kerbalspacerace.net", "access-token", "KSR-20260823-TEST 01");
+    Equal("https://play.kerbalspacerace.net/sheet-preview?campaign_id=KSR-20260823-TEST%2001&view=private-view-token",
         uri.AbsoluteUri);
     Throws<ArgumentException>(() =>
-        KsrPlatformClient.BuildLeaderboardUri("https://play.kerbalspacerace.net", "not-a-campaign"));
-    return Task.CompletedTask;
+        KsrPlatformClient.BuildLeaderboardUri("https://play.kerbalspacerace.net", "not-a-campaign", "private-view-token"));
+    Throws<ArgumentException>(() =>
+        KsrPlatformClient.BuildLeaderboardUri("https://play.kerbalspacerace.net", "KSR-20260823-TEST 01", "invalid?view"));
 }
 
 static async Task PlatformAuthenticationPreservesErrorCode()
