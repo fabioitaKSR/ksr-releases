@@ -178,6 +178,7 @@
 
                 <Border Grid.Column="3" Background="#FF303538" Margin="0,16" />
                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center" Margin="22,0,0,0">
+                    <Button Content="DATA" Style="{StaticResource GhostButton}" Margin="0,0,10,0" Click="Data_Click" />
                     <Button Content="SETTINGS" Style="{StaticResource GhostButton}" Margin="0,0,10,0" Click="Settings_Click" />
                     <Button x:Name="CreateAccountButton" Content="CREATE ACCOUNT" Style="{StaticResource GhostButton}"
                             Visibility="Collapsed" Click="CreateAccount_Click" />

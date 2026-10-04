@@ -1833,6 +1833,11 @@ public partial class MainWindow : Window
         return false;
     }
 
+    private void Data_Click(object sender, RoutedEventArgs e)
+    {
+        new CampaignDataWindow { Owner = this }.ShowDialog();
+    }
+
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new ServerSettingsWindow(LauncherSession.ServerUrl) { Owner = this };
