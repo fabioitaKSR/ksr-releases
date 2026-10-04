@@ -466,6 +466,11 @@ static Task CampaignDiscordOptionIsAvailable()
     True((string?)checkbox.Attribute("ToolTip") is string tooltip &&
         tooltip.Contains("Closing the race", StringComparison.Ordinal),
         "The Discord option must explain what happens when the race closes.");
+    True(document.Descendants().Any(element =>
+        (string?)element.Attribute(x + "Name") == "DiscordAreaDescriptionText" &&
+        (string?)element.Attribute("Text") is string text &&
+        text.Contains("leaderboard update in real time", StringComparison.Ordinal)),
+        "The Discord option must visibly explain that the leaderboard updates live.");
     var scroller = checkbox.Ancestors().SingleOrDefault(element =>
         element.Name.LocalName == "ScrollViewer" &&
         (string?)element.Attribute(x + "Name") == "AdminCampaignScrollViewer");

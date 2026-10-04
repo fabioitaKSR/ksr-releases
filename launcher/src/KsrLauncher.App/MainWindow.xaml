@@ -582,8 +582,11 @@
                             </Grid>
                             <StackPanel Grid.Row="4">
                                 <CheckBox x:Name="CreateDiscordAreaCheckBox" Content="CREATE CAMPAIGN DISCORD AREA"
-                                          IsChecked="False" Margin="0,0,0,12"
+                                          IsChecked="False" Margin="0,0,0,4"
                                           ToolTip="The KSR bot creates a public category for this race with a live leaderboard and a voice channel. Closing the race deletes its Discord area." />
+                                <TextBlock x:Name="DiscordAreaDescriptionText"
+                                           Text="Create a Discord area to see this race's leaderboard update in real time."
+                                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,12" />
                                 <TextBlock x:Name="CampaignCreationStatusText" Text="Select a Career or Science save to continue."
                                            Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,10" />
                                 <Button x:Name="CreateRaceButton" Content="CREATE RACE" Style="{StaticResource PrimaryButton}"
