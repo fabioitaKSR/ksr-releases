@@ -602,6 +602,59 @@
                 </Grid>
                 </ScrollViewer>
             </Border>
+            <Border x:Name="AdminMembersPanel" Style="{StaticResource Card}" Visibility="Collapsed">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="RACE PARTICIPANTS" Style="{StaticResource SectionTitle}" />
+                            <TextBlock x:Name="AdminMembersCampaignText" Foreground="{StaticResource MutedBrush}"
+                                       Margin="0,6,0,0" TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                        <Button x:Name="RefreshAdminMembersButton" Grid.Column="1" Content="REFRESH"
+                                Style="{StaticResource GhostButton}" Click="RefreshAdminMembers_Click" />
+                    </Grid>
+                    <TextBlock x:Name="AdminMembersStatusText" Grid.Row="1" Margin="0,18,0,12"
+                               Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+                    <ListBox x:Name="AdminMembersList" Grid.Row="2" Background="#CC0B0F12" BorderBrush="#FF3B3E40"
+                             BorderThickness="1" HorizontalContentAlignment="Stretch"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="12,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="2*" />
+                                        <ColumnDefinition Width="1.2*" />
+                                        <ColumnDefinition Width="1.6*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Username}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding Role}" Foreground="{StaticResource MutedBrush}" FontSize="11" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding Nation}" VerticalAlignment="Center" />
+                                    <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                        <TextBlock Text="LAST CONNECTION" Style="{StaticResource SmallLabel}" />
+                                        <TextBlock Text="{Binding LastSeenText}" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <Button Grid.Column="3" Content="REMOVE" Style="{StaticResource DangerButton}"
+                                            IsEnabled="{Binding CanKick}" VerticalAlignment="Center" Margin="14,0,0,0"
+                                            ToolTip="Remove this player from the race. Existing records are retained."
+                                            Click="KickAdminMember_Click" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <Button Grid.Row="3" Content="CLOSE CAMPAIGN" Style="{StaticResource DangerButton}"
+                            HorizontalAlignment="Right" Margin="0,14,0,0" Click="CloseCampaign_Click" />
+                </Grid>
+            </Border>
         </Grid>
 
         <!-- Persistent footer -->

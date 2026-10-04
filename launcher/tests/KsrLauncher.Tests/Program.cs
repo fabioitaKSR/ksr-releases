@@ -27,6 +27,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Avvio aggiorna la test installazione senza toccare quella principale", StartupUpdatesTestInstallationSeparately),
     ("Settings conserva i comandi della partita test", TestGameSettingsControlsRemainAvailable),
     ("Creazione gara conserva l'opzione Discord", CampaignDiscordOptionIsAvailable),
+    ("Admin area conserva creazione gara e gestione partecipanti", AdminMemberControlsRemainAvailable),
     ("Settings limita log e save alla partita test", TestGameSupportFilesStayInSelectedInstallation),
     ("Launch & Logs riconosce il logger nella cartella KSRLite", LaunchAndLogsRecognizesInstalledFiles),
     ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched),
@@ -46,6 +47,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Platform joins campaign through authenticated endpoint", PlatformJoinCampaignIsAuthenticated),
     ("Platform downloads and verifies campaign artifacts", PlatformDownloadsVerifiedCampaignArtifacts),
     ("Platform closes campaign through authenticated endpoint", PlatformCloseCampaignIsAuthenticated),
+    ("Platform lists and removes campaign members with retained records", PlatformCampaignMembersAndKick),
     ("Platform dismisses closed campaign through authenticated endpoint", PlatformDismissClosedCampaignIsAuthenticated),
     ("Campaign start save uses stable KSRstart naming", CampaignStartSaveUsesStableNaming),
     ("Platform registration sends private email payload", PlatformRegistrationSendsEmail),
@@ -480,6 +482,19 @@ static Task CampaignDiscordOptionIsAvailable()
     return Task.CompletedTask;
 }
 
+static Task AdminMemberControlsRemainAvailable()
+{
+    var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml"));
+    XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+    foreach (var name in new[] { "AdminCampaignPanel", "AdminMembersPanel", "AdminMembersList",
+                                  "CreateRaceButton", "RetryCampaignUploadButton", "CloseCampaignButton" })
+        True(document.Descendants().Any(element => (string?)element.Attribute(x + "Name") == name),
+            $"Admin area lost {name}.");
+    True(document.Descendants().Any(element => (string?)element.Attribute("Click") == "KickAdminMember_Click"),
+        "Admin area must offer player removal.");
+    return Task.CompletedTask;
+}
+
 static Task TestGameSupportFilesStayInSelectedInstallation()
 {
     using var scope = new TempScope();
@@ -776,6 +791,37 @@ static async Task PlatformCloseCampaignIsAuthenticated()
     await new KsrPlatformClient(http).CloseCampaignAsync(
         "https://ksr.example", "access-1", "KSR-20260821-ABC");
     True(requestChecked, "The campaign close endpoint was not called.");
+}
+
+static async Task PlatformCampaignMembersAndKick()
+{
+    var requests = 0;
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        Equal("Bearer", request.Headers.Authorization?.Scheme!);
+        Equal("access-1", request.Headers.Authorization?.Parameter!);
+        requests++;
+        if (request.Method == HttpMethod.Get)
+        {
+            Equal("https://ksr.example/api/v1/campaigns/KSR-20260821-ABC/members", request.RequestUri!.ToString());
+            return "{\"ok\":true,\"members\":[{\"user\":{\"id\":12,\"username\":\"Player\"},\"role\":\"player\",\"nationId\":\"JAPAN\",\"joinedAt\":1787240000,\"lastSeenAt\":1787240123},{\"user\":{\"id\":1,\"username\":\"Admin\"},\"role\":\"admin\",\"nationId\":null,\"joinedAt\":1787240000,\"lastSeenAt\":null}]}";
+        }
+        Equal("POST", request.Method.Method);
+        Equal("https://ksr.example/api/v1/campaigns/KSR-20260821-ABC/kick", request.RequestUri!.ToString());
+        using var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+        True(body.RootElement.GetProperty("userId").GetInt64() == 12, "Wrong member removed.");
+        Equal("retain", body.RootElement.GetProperty("dataDisposition").GetString()!);
+        return "{\"ok\":true,\"removed\":true}";
+    }));
+    var client = new KsrPlatformClient(http);
+    var members = await client.GetCampaignMembersAsync("https://ksr.example", "access-1", "KSR-20260821-ABC");
+    True(members.Count == 2, "Member list was not parsed.");
+    Equal("Player", members[0].User.Username);
+    Equal("JAPAN", members[0].NationId!);
+    True(members[0].LastSeenAt is not null && members[1].LastSeenAt is null,
+        "Last connection timestamps were not parsed.");
+    await client.KickCampaignMemberAsync("https://ksr.example", "access-1", "KSR-20260821-ABC", 12);
+    True(requests == 2, "Expected one list request and one removal request.");
 }
 
 static async Task PlatformGameTicketIsCampaignScoped()

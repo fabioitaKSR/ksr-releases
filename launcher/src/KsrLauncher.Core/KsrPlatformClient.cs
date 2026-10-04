@@ -31,6 +31,9 @@ public sealed record KsrCampaign(
 
 public sealed record KsrGameTicket(string Token, string CampaignCode, int ExpiresIn, double? ExpiresAt);
 
+public sealed record KsrCampaignMember(KsrUser User, string Role, string? NationId, DateTimeOffset JoinedAt,
+    DateTimeOffset? LastSeenAt);
+
 public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 {
     public const string ProductionServerUrl = "https://play.kerbalspacerace.net";
@@ -197,6 +200,44 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             ? root
             : RequiredArray(Unwrap(root), "campaigns");
         return campaigns.EnumerateArray().Select(ReadCampaign).ToList();
+    }
+
+    public async Task<IReadOnlyList<KsrCampaignMember>> GetCampaignMembersAsync(
+        string serverUrl, string accessToken, string campaignCode, CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(campaignCode)) throw new ArgumentException("A campaign code is required.");
+        using var request = AuthorizedRequest(HttpMethod.Get,
+            new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(campaignCode.Trim())}/members"), accessToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        return RequiredArray(Unwrap(document.RootElement), "members").EnumerateArray().Select(item =>
+        {
+            var user = RequiredObject(item, "user");
+            return new KsrCampaignMember(
+                new KsrUser(RequiredInt64(user, "id"), RequiredString(user, "username")),
+                RequiredString(item, "role"), OptionalString(item, "nationId"),
+                DateTimeOffset.FromUnixTimeMilliseconds((long)((OptionalDouble(item, "joinedAt") ??
+                    throw new InvalidDataException("KSR response is missing 'joinedAt'.")) * 1000)),
+                OptionalDouble(item, "lastSeenAt") is double lastSeen
+                    ? DateTimeOffset.FromUnixTimeMilliseconds((long)(lastSeen * 1000)) : null);
+        }).ToList();
+    }
+
+    public async Task KickCampaignMemberAsync(string serverUrl, string accessToken, string campaignCode,
+        long userId, CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        if (string.IsNullOrWhiteSpace(campaignCode)) throw new ArgumentException("A campaign code is required.");
+        if (userId <= 0) throw new ArgumentOutOfRangeException(nameof(userId));
+        using var request = AuthorizedRequest(HttpMethod.Post,
+            new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(campaignCode.Trim())}/kick"), accessToken);
+        request.Content = JsonContent.Create(new { userId, dataDisposition = "retain" }, options: ManifestService.JsonOptions);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        if (!Unwrap(document.RootElement).TryGetProperty("removed", out var removed) ||
+            removed.ValueKind != JsonValueKind.True)
+            throw new InvalidDataException("The server did not confirm that the player was removed.");
     }
 
     public async Task<KsrGameTicket> GetGameTicketAsync(

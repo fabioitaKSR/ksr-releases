@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     private string? _kspRoot;
     private string? _referenceSavePath;
     private readonly ObservableCollection<CampaignListItem> _campaigns = [];
+    private readonly ObservableCollection<AdminMemberItem> _adminMembers = [];
     private readonly ObservableCollection<string> _ignoredGameDataFolders = [];
     private readonly KsrPlatformClient _platformClient = new();
     private readonly Dictionary<string, CampaignBaselinePackage> _localBaselines = new(StringComparer.OrdinalIgnoreCase);
@@ -23,6 +24,10 @@ public partial class MainWindow : Window
     private RememberedSession? _rememberedSession;
     private bool _campaignCloseInProgress;
     private bool _campaignUploadInProgress;
+    private bool _adminMembersRefreshInProgress;
+    private bool _adminMemberKickInProgress;
+    private bool _adminCampaignPanelReady;
+    private string? _adminMembersCampaignCode;
     private bool _launchAndLogsInstallInProgress;
     private readonly DispatcherTimer _downloadCountdownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _ticketRefreshTimer = new() { Interval = TimeSpan.FromHours(4) };
@@ -53,6 +58,7 @@ public partial class MainWindow : Window
             ? "LAUNCHER"
             : $"LAUNCHER  ·  v{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
         CampaignsList.ItemsSource = _campaigns;
+        AdminMembersList.ItemsSource = _adminMembers;
         IgnoredGameDataFoldersList.ItemsSource = _ignoredGameDataFolders;
         LauncherSession.ServerUrl = LauncherSettingsStore.LoadServerUrl() ?? LauncherSession.ServerUrl;
         try
@@ -413,12 +419,13 @@ public partial class MainWindow : Window
         UpdateAreaTabVisuals(PlayerTabButton, AdminTabButton);
     }
 
-    private void AdminTab_Click(object sender, RoutedEventArgs e)
+    private async void AdminTab_Click(object sender, RoutedEventArgs e)
     {
         PlayerArea.Visibility = Visibility.Collapsed;
         AdminArea.Visibility = Visibility.Visible;
         RefreshLaunchAndLogsSetupState();
         UpdateAreaTabVisuals(AdminTabButton, PlayerTabButton);
+        if (GetActiveAdminCampaign() is not null) await RefreshAdminMembersAsync();
     }
 
     private void SelectLaunchAndLogsKspFolder_Click(object sender, RoutedEventArgs e)
@@ -456,8 +463,9 @@ public partial class MainWindow : Window
         LaunchAndLogsKspPathTextBox.Text = validRoot ? _kspRoot! : "No KSP folder selected";
         LaunchAndLogsKspPathTextBox.Foreground = (System.Windows.Media.Brush)FindResource(validRoot ? "ForegroundBrush" : "MutedBrush");
         var ready = validRoot && AreLaunchAndLogsInstalled(_kspRoot!);
+        _adminCampaignPanelReady = ready;
         LaunchAndLogsSetupPanel.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
-        AdminCampaignPanel.Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
+        UpdateCreateRaceState();
         DownloadLaunchAndLogsButton.IsEnabled = validRoot && !_launchAndLogsInstallInProgress;
         LaunchAndLogsStatusText.Text = !validRoot
             ? "Select the KSP folder to check the required components."
@@ -770,6 +778,19 @@ public partial class MainWindow : Window
     {
         if (!IsInitialized) return;
         var blockingCampaign = GetBlockingAdminCampaign();
+        var activeAdminCampaign = GetActiveAdminCampaign();
+        AdminCampaignPanel.Visibility = _adminCampaignPanelReady && activeAdminCampaign is null
+            ? Visibility.Visible : Visibility.Collapsed;
+        AdminMembersPanel.Visibility = _adminCampaignPanelReady && activeAdminCampaign is not null
+            ? Visibility.Visible : Visibility.Collapsed;
+        AdminMembersCampaignText.Text = activeAdminCampaign is null ? "" :
+            $"{activeAdminCampaign.Name}  ·  {activeAdminCampaign.CampaignCode}";
+        if (!string.Equals(_adminMembersCampaignCode, activeAdminCampaign?.CampaignCode, StringComparison.OrdinalIgnoreCase))
+        {
+            _adminMembers.Clear();
+            _adminMembersCampaignCode = activeAdminCampaign?.CampaignCode;
+            AdminMembersStatusText.Text = activeAdminCampaign is null ? "" : "Open this area to load participants.";
+        }
         var campaignCreationAvailable = LauncherSession.IsAuthenticated && blockingCampaign is null;
         var retryableDraft = blockingCampaign is not null &&
             blockingCampaign.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase) &&
@@ -804,6 +825,82 @@ public partial class MainWindow : Window
 
     private CampaignListItem? GetBlockingAdminCampaign() =>
         _campaigns.FirstOrDefault(campaign => CampaignRules.BlocksNewAdminCampaign(campaign.Role, campaign.Status));
+
+    private CampaignListItem? GetActiveAdminCampaign() =>
+        _campaigns.FirstOrDefault(campaign =>
+            campaign.Role.Equals("ADMIN", StringComparison.OrdinalIgnoreCase) &&
+            campaign.Status.Equals("ACTIVE", StringComparison.OrdinalIgnoreCase));
+
+    private async void RefreshAdminMembers_Click(object sender, RoutedEventArgs e) =>
+        await RefreshAdminMembersAsync();
+
+    private async Task RefreshAdminMembersAsync()
+    {
+        var campaign = GetActiveAdminCampaign();
+        if (campaign is null || _adminMembersRefreshInProgress) return;
+        _adminMembersRefreshInProgress = true;
+        RefreshAdminMembersButton.IsEnabled = false;
+        AdminMembersStatusText.Text = "Loading participants...";
+        try
+        {
+            var serverUrl = LauncherSession.ServerUrl ??
+                throw new InvalidOperationException("The KSR server is not configured.");
+            await LauncherSession.EnsureFreshAccessTokenAsync(serverUrl);
+            var members = await _platformClient.GetCampaignMembersAsync(serverUrl,
+                LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in to view participants."),
+                campaign.CampaignCode);
+            if (!string.Equals(GetActiveAdminCampaign()?.CampaignCode, campaign.CampaignCode,
+                    StringComparison.OrdinalIgnoreCase)) return;
+            _adminMembers.Clear();
+            foreach (var member in members)
+                _adminMembers.Add(new AdminMemberItem(member));
+            AdminMembersStatusText.Text = members.Count == 0
+                ? "No participants have joined this race yet."
+                : $"{members.Count} participant{(members.Count == 1 ? "" : "s")} · Last connections shown in local time.";
+        }
+        catch (Exception exception)
+        {
+            AdminMembersStatusText.Text = $"Could not load participants: {exception.Message}";
+        }
+        finally
+        {
+            _adminMembersRefreshInProgress = false;
+            RefreshAdminMembersButton.IsEnabled = true;
+        }
+    }
+
+    private async void KickAdminMember_Click(object sender, RoutedEventArgs e)
+    {
+        var campaign = GetActiveAdminCampaign();
+        if (campaign is null || _adminMemberKickInProgress ||
+            sender is not Button { DataContext: AdminMemberItem { CanKick: true } member }) return;
+        var confirmed = MessageBox.Show(
+            $"Remove {member.Username} from '{campaign.Name}'?\n\nTheir existing race records and nation reservation will be retained. They will lose access to this race.",
+            "Remove Race Participant", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (confirmed != MessageBoxResult.Yes) return;
+        _adminMemberKickInProgress = true;
+        AdminMembersList.IsEnabled = false;
+        try
+        {
+            var serverUrl = LauncherSession.ServerUrl ??
+                throw new InvalidOperationException("The KSR server is not configured.");
+            await LauncherSession.EnsureFreshAccessTokenAsync(serverUrl);
+            await _platformClient.KickCampaignMemberAsync(serverUrl,
+                LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in to remove a player."),
+                campaign.CampaignCode, member.UserId);
+            _adminMembers.Remove(member);
+            await RefreshAdminMembersAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(exception.Message, "Remove Race Participant", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            _adminMemberKickInProgress = false;
+            AdminMembersList.IsEnabled = true;
+        }
+    }
 
     private async void CloseCampaign_Click(object sender, RoutedEventArgs e)
     {
@@ -1129,6 +1226,8 @@ public partial class MainWindow : Window
             if (selectedCode is not null)
                 CampaignsList.SelectedItem = _campaigns.FirstOrDefault(item =>
                     item.CampaignCode.Equals(selectedCode, StringComparison.OrdinalIgnoreCase));
+            if (AdminArea.Visibility == Visibility.Visible && GetActiveAdminCampaign() is not null)
+                await RefreshAdminMembersAsync();
             await RefreshGameTicketsAsync(LauncherSession.AccessToken);
         }
         catch (KsrApiException exception)
@@ -1960,4 +2059,16 @@ internal sealed record CampaignListItem(
 {
     public string RoleColor => string.Equals(Role, "ADMIN", StringComparison.OrdinalIgnoreCase) ? "#FFF57C00" : "#FF4AB8F1";
     public string StatusColor => string.Equals(Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) ? "#FF80D420" : "#FF9BA0A3";
+}
+
+internal sealed record AdminMemberItem(KsrCampaignMember Member)
+{
+    public long UserId => Member.User.Id;
+    public string Username => Member.User.Username;
+    public string Role => Member.Role.Equals("ADMIN", StringComparison.OrdinalIgnoreCase) ? "ADMIN" : "PLAYER";
+    public string Nation => string.IsNullOrWhiteSpace(Member.NationId) ? "No nation" : Member.NationId;
+    public string LastSeenText => Member.LastSeenAt is null
+        ? "Never connected"
+        : Member.LastSeenAt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm");
+    public bool CanKick => Role == "PLAYER";
 }
