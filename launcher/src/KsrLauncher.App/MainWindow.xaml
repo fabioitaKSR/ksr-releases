@@ -623,14 +623,47 @@
                 <Button x:Name="SendSaveButton" Grid.Column="4" Content="SEND SAVE" Style="{StaticResource GhostButton}"
                         MinWidth="105" VerticalAlignment="Center" Click="SendSave_Click"
                         ToolTip="Choose the KSP save folder to include in the report" />
-                <StackPanel Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <TextBlock Text="YOUR MODS. YOUR RULES. YOUR SPACE RACE."
-                               Foreground="{StaticResource MutedBrush}" FontSize="13"
-                               HorizontalAlignment="Center" TextAlignment="Center" />
-                    <TextBlock Text="by KerbalSpaceRace" Foreground="{StaticResource MutedBrush}"
-                               FontSize="9" Opacity="0.78" Margin="0,2,0,0"
-                               HorizontalAlignment="Center" TextAlignment="Center" />
-                </StackPanel>
+                <Grid Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0" Width="42" Height="42" Margin="0,0,18,0"
+                            Padding="0" Background="Transparent" BorderThickness="0" Cursor="Hand"
+                            Tag="https://www.youtube.com/@KerbalSpaceRace"
+                            ToolTip="Open the Kerbal Space Race YouTube channel"
+                            Click="OpenExternalReference_Click">
+                        <Grid Width="30" Height="22">
+                            <Border Background="#FFFF0033" CornerRadius="6" />
+                            <Path Data="M 12,6 L 12,16 L 21,11 Z" Fill="White" Stretch="None" />
+                        </Grid>
+                    </Button>
+
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="YOUR MODS. YOUR RULES. YOUR SPACE RACE."
+                                   Foreground="{StaticResource MutedBrush}" FontSize="13"
+                                   HorizontalAlignment="Center" TextAlignment="Center" />
+                        <TextBlock Text="by KerbalSpaceRace" Foreground="{StaticResource MutedBrush}"
+                                   FontSize="9" Opacity="0.78" Margin="0,2,0,0"
+                                   HorizontalAlignment="Center" TextAlignment="Center" />
+                    </StackPanel>
+
+                    <Button Grid.Column="2" Width="42" Height="42" Margin="18,0,0,0"
+                            Padding="0" Background="Transparent" BorderThickness="0" Cursor="Hand"
+                            Tag="https://discord.gg/nWjGWGHUj"
+                            ToolTip="Join the Kerbal Space Race Discord server"
+                            Click="OpenExternalReference_Click">
+                        <Grid Width="30" Height="30">
+                            <Border Background="#FF5865F2" CornerRadius="8" />
+                            <Path Data="M 7,10 C 11,7 19,7 23,10 L 21.5,20 C 19.5,18.5 17.5,18 15,18 C 12.5,18 10.5,18.5 8.5,20 Z"
+                                  Fill="White" Stretch="None" />
+                            <Ellipse Width="3.2" Height="3.2" Fill="#FF5865F2" Margin="10,0,0,0" />
+                            <Ellipse Width="3.2" Height="3.2" Fill="#FF5865F2" Margin="0,0,10,0" />
+                        </Grid>
+                    </Button>
+                </Grid>
                 <Button x:Name="LaunchKspButton" Grid.Column="6" Content="LAUNCH KSP" Style="{StaticResource PrimaryButton}" MinWidth="260"
                         VerticalAlignment="Center" Click="LaunchKsp_Click" />
             </Grid>
