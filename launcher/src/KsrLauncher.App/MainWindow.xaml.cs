@@ -874,10 +874,14 @@ public partial class MainWindow : Window
         var campaign = GetActiveAdminCampaign();
         if (campaign is null || _adminMemberKickInProgress ||
             sender is not Button { DataContext: AdminMemberItem { CanKick: true } member }) return;
-        var confirmed = MessageBox.Show(
-            $"Remove {member.Username} from '{campaign.Name}'?\n\nTheir existing race records and nation reservation will be retained. They will lose access to this race.",
-            "Remove Race Participant", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-        if (confirmed != MessageBoxResult.Yes) return;
+        var dialog = new RemoveCampaignMemberWindow(member.Username, campaign.Name) { Owner = this };
+        if (dialog.ShowDialog() != true) return;
+        var disposition = dialog.SelectedDisposition;
+        if (disposition == CampaignMemberDataDisposition.Delete &&
+            MessageBox.Show(
+                $"Permanently delete all synchronized race records for {member.Username} ({member.Nation})?\n\nThe nation reservation will be released and standings recalculated. This cannot be undone.",
+                "Confirm Record Deletion", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
+            != MessageBoxResult.Yes) return;
         _adminMemberKickInProgress = true;
         AdminMembersList.IsEnabled = false;
         try
@@ -887,7 +891,7 @@ public partial class MainWindow : Window
             await LauncherSession.EnsureFreshAccessTokenAsync(serverUrl);
             await _platformClient.KickCampaignMemberAsync(serverUrl,
                 LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in to remove a player."),
-                campaign.CampaignCode, member.UserId);
+                campaign.CampaignCode, member.UserId, disposition);
             _adminMembers.Remove(member);
             await RefreshAdminMembersAsync();
         }

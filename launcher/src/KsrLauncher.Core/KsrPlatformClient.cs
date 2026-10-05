@@ -34,6 +34,12 @@ public sealed record KsrGameTicket(string Token, string CampaignCode, int Expire
 public sealed record KsrCampaignMember(KsrUser User, string Role, string? NationId, DateTimeOffset JoinedAt,
     DateTimeOffset? LastSeenAt);
 
+public enum CampaignMemberDataDisposition
+{
+    Retain,
+    Delete
+}
+
 public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 {
     public const string ProductionServerUrl = "https://play.kerbalspacerace.net";
@@ -225,14 +231,19 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
     }
 
     public async Task KickCampaignMemberAsync(string serverUrl, string accessToken, string campaignCode,
-        long userId, CancellationToken cancellationToken = default)
+        long userId, CampaignMemberDataDisposition disposition, CancellationToken cancellationToken = default)
     {
         var baseUri = ValidateServerUri(serverUrl);
         if (string.IsNullOrWhiteSpace(campaignCode)) throw new ArgumentException("A campaign code is required.");
         if (userId <= 0) throw new ArgumentOutOfRangeException(nameof(userId));
+        if (!Enum.IsDefined(disposition)) throw new ArgumentOutOfRangeException(nameof(disposition));
         using var request = AuthorizedRequest(HttpMethod.Post,
             new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(campaignCode.Trim())}/kick"), accessToken);
-        request.Content = JsonContent.Create(new { userId, dataDisposition = "retain" }, options: ManifestService.JsonOptions);
+        request.Content = JsonContent.Create(new
+        {
+            userId,
+            dataDisposition = disposition == CampaignMemberDataDisposition.Delete ? "delete" : "retain"
+        }, options: ManifestService.JsonOptions);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         using var document = await ReadResponseAsync(response, cancellationToken);
         if (!Unwrap(document.RootElement).TryGetProperty("removed", out var removed) ||

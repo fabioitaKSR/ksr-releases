@@ -28,6 +28,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Settings conserva i comandi della partita test", TestGameSettingsControlsRemainAvailable),
     ("Creazione gara conserva l'opzione Discord", CampaignDiscordOptionIsAvailable),
     ("Admin area conserva creazione gara e gestione partecipanti", AdminMemberControlsRemainAvailable),
+    ("Espulsione spiega conservazione e cancellazione dei record", AdminMemberRemovalOptionsAreClear),
     ("Settings limita log e save alla partita test", TestGameSupportFilesStayInSelectedInstallation),
     ("Launch & Logs riconosce il logger nella cartella KSRLite", LaunchAndLogsRecognizesInstalledFiles),
     ("Mod di terzi non viene toccata", ThirdPartyModIsUntouched),
@@ -495,6 +496,30 @@ static Task AdminMemberControlsRemainAvailable()
     return Task.CompletedTask;
 }
 
+static Task AdminMemberRemovalOptionsAreClear()
+{
+    var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "RemoveCampaignMemberWindow.xaml"));
+    XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+    var retain = document.Descendants().Single(element =>
+        (string?)element.Attribute(x + "Name") == "RetainRecordsOption");
+    var delete = document.Descendants().Single(element =>
+        (string?)element.Attribute(x + "Name") == "DeleteRecordsOption");
+    True((string?)retain.Attribute("IsChecked") == "True",
+        "Keeping synchronized records must be the default.");
+    True((string?)delete.Attribute("IsChecked") != "True",
+        "Deleting synchronized records must require an explicit choice.");
+    var text = string.Join(" ", document.Descendants().Attributes("Text").Select(attribute => attribute.Value));
+    foreach (var phrase in new[] { "points and nation reservation remain", "past results continue to count",
+                                   "race events", "recalculated",
+                                   "local KSP save is not deleted" })
+        True(text.Contains(phrase, StringComparison.Ordinal),
+            $"The removal dialog must explain '{phrase}'.");
+    var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml.cs"));
+    True(source.Contains("Confirm Record Deletion", StringComparison.Ordinal),
+        "Deleting server records must require a second confirmation.");
+    return Task.CompletedTask;
+}
+
 static Task TestGameSupportFilesStayInSelectedInstallation()
 {
     using var scope = new TempScope();
@@ -796,6 +821,7 @@ static async Task PlatformCloseCampaignIsAuthenticated()
 static async Task PlatformCampaignMembersAndKick()
 {
     var requests = 0;
+    var dispositions = new List<string>();
     using var http = new HttpClient(new FakeHttpHandler(request =>
     {
         Equal("Bearer", request.Headers.Authorization?.Scheme!);
@@ -810,7 +836,7 @@ static async Task PlatformCampaignMembersAndKick()
         Equal("https://ksr.example/api/v1/campaigns/KSR-20260821-ABC/kick", request.RequestUri!.ToString());
         using var body = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
         True(body.RootElement.GetProperty("userId").GetInt64() == 12, "Wrong member removed.");
-        Equal("retain", body.RootElement.GetProperty("dataDisposition").GetString()!);
+        dispositions.Add(body.RootElement.GetProperty("dataDisposition").GetString()!);
         return "{\"ok\":true,\"removed\":true}";
     }));
     var client = new KsrPlatformClient(http);
@@ -820,8 +846,16 @@ static async Task PlatformCampaignMembersAndKick()
     Equal("JAPAN", members[0].NationId!);
     True(members[0].LastSeenAt is not null && members[1].LastSeenAt is null,
         "Last connection timestamps were not parsed.");
-    await client.KickCampaignMemberAsync("https://ksr.example", "access-1", "KSR-20260821-ABC", 12);
-    True(requests == 2, "Expected one list request and one removal request.");
+    await client.KickCampaignMemberAsync("https://ksr.example", "access-1", "KSR-20260821-ABC",
+        12, CampaignMemberDataDisposition.Retain);
+    await client.KickCampaignMemberAsync("https://ksr.example", "access-1", "KSR-20260821-ABC",
+        12, CampaignMemberDataDisposition.Delete);
+    True(dispositions.SequenceEqual(["retain", "delete"]),
+        "The launcher must send the administrator's selected data disposition.");
+    True(requests == 3, "Expected one list request and two removal requests.");
+    await ThrowsAsync<ArgumentOutOfRangeException>(() =>
+        client.KickCampaignMemberAsync("https://ksr.example", "access-1", "KSR-20260821-ABC",
+            12, (CampaignMemberDataDisposition)42));
 }
 
 static async Task PlatformGameTicketIsCampaignScoped()

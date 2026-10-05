@@ -645,7 +645,7 @@
                                     </StackPanel>
                                     <Button Grid.Column="3" Content="REMOVE" Style="{StaticResource DangerButton}"
                                             IsEnabled="{Binding CanKick}" VerticalAlignment="Center" Margin="14,0,0,0"
-                                            ToolTip="Remove this player from the race. Existing records are retained."
+                                            ToolTip="Remove this player and choose whether to keep or delete synchronized records."
                                             Click="KickAdminMember_Click" />
                                 </Grid>
                             </DataTemplate>
