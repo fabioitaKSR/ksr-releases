@@ -12,16 +12,16 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="26" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="10" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="12" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="12" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="12" />
+            <RowDefinition x:Name="TestGameTitleRow" Height="Auto" />
+            <RowDefinition x:Name="TestGameTitleGapRow" Height="10" />
+            <RowDefinition x:Name="TestGamePathRow" Height="Auto" />
+            <RowDefinition x:Name="TestGameDescriptionRow" Height="*" />
+            <RowDefinition x:Name="TestGameMaintenanceRow" Height="Auto" />
+            <RowDefinition x:Name="TestGameMaintenanceGapRow" Height="12" />
+            <RowDefinition x:Name="TestGameSupportRow" Height="Auto" />
+            <RowDefinition x:Name="TestGameSupportGapRow" Height="12" />
+            <RowDefinition x:Name="TestGameProgressRow" Height="Auto" />
+            <RowDefinition x:Name="TestGameBottomGapRow" Height="12" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
         <StackPanel>
@@ -32,8 +32,8 @@
         <TextBox x:Name="ServerUrlTextBox" Grid.Row="4" FontSize="16" />
         <TextBlock Grid.Row="5" Text="Use the stable HTTPS Cloudflare address. HTTP is accepted only for localhost development. Authentication tokens are never stored in this setting."
                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,12,0,0" />
-        <TextBlock Grid.Row="7" Text="TEST GAME INSTALLATION" Style="{StaticResource SectionTitle}" />
-        <Grid Grid.Row="9">
+        <TextBlock x:Name="TestGameTitle" Grid.Row="7" Text="TEST GAME INSTALLATION" Style="{StaticResource SectionTitle}" />
+        <Grid x:Name="TestGamePath" Grid.Row="9">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="10" />
@@ -46,9 +46,9 @@
             <Button x:Name="BrowseTestKspButton" Grid.Column="2" Content="BROWSE" MinWidth="90" Click="BrowseTestKsp_Click" />
             <Button x:Name="ClearTestKspButton" Grid.Column="4" Content="CLEAR" MinWidth="70" Click="ClearTestKsp_Click" />
         </Grid>
-        <TextBlock Grid.Row="10" Text="Choose the KSP folder used for the existing test game. Test launch connects to the test1 campaign and replaces any previous campaign ticket."
+        <TextBlock x:Name="TestGameDescription" Grid.Row="10" Text="Choose the KSP folder used for the existing test game. Test launch connects to the test1 campaign and replaces any previous campaign ticket."
                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,12,0,0" />
-        <Grid Grid.Row="11" Margin="0,8,0,0">
+        <Grid x:Name="TestGameMaintenance" Grid.Row="11" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="10" />
@@ -60,7 +60,7 @@
             <TextBlock x:Name="TestKspMaintenanceStatus" Grid.Column="3" Margin="14,0,0,0"
                        VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
         </Grid>
-        <StackPanel Grid.Row="13" Orientation="Horizontal">
+        <StackPanel x:Name="TestGameSupport" Grid.Row="13" Orientation="Horizontal">
             <Button x:Name="SendTestSaveButton" Content="SEND SAVE" MinWidth="115" Click="SendTestSave_Click" />
             <Button x:Name="SendTestLogButton" Content="SEND LOG" MinWidth="115" Margin="10,0,0,0" Click="SendTestLog_Click" />
         </StackPanel>

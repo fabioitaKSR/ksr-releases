@@ -18,6 +18,20 @@ public partial class ServerSettingsWindow : Window
     {
         InitializeComponent();
         _testKspRoot = LauncherSettingsStore.LoadTestKspRoot();
+        if (!LauncherSession.CanAccessTestGame)
+        {
+            Height = 295;
+            foreach (var row in new[] { TestGameTitleRow, TestGameTitleGapRow, TestGamePathRow,
+                         TestGameDescriptionRow, TestGameMaintenanceRow, TestGameMaintenanceGapRow,
+                         TestGameSupportRow, TestGameSupportGapRow, TestGameProgressRow, TestGameBottomGapRow })
+                row.Height = new GridLength(0);
+            TestGameTitle.Visibility = Visibility.Collapsed;
+            TestGamePath.Visibility = Visibility.Collapsed;
+            TestGameDescription.Visibility = Visibility.Collapsed;
+            TestGameMaintenance.Visibility = Visibility.Collapsed;
+            TestGameSupport.Visibility = Visibility.Collapsed;
+            LaunchTestKspButton.Visibility = Visibility.Collapsed;
+        }
         RefreshTestKspPath();
         ServerUrlTextBox.Text = currentServerUrl ?? string.Empty;
         ServerUrlTextBox.Focus();
@@ -47,12 +61,14 @@ public partial class ServerSettingsWindow : Window
             return false;
         }
         ServerUrl = value;
-        LauncherSettingsStore.SaveServerAndTestKspRoot(value, _testKspRoot);
+        LauncherSettingsStore.SaveServerAndTestKspRoot(value,
+            LauncherSession.CanAccessTestGame ? _testKspRoot : LauncherSettingsStore.LoadTestKspRoot());
         return true;
     }
 
     private void BrowseTestKsp_Click(object sender, RoutedEventArgs e)
     {
+        if (!LauncherSession.CanAccessTestGame) return;
         var picker = new OpenFolderDialog { Title = "Select the test Kerbal Space Program folder", Multiselect = false };
         if (!string.IsNullOrWhiteSpace(_testKspRoot) && Directory.Exists(_testKspRoot))
             picker.InitialDirectory = _testKspRoot;
@@ -71,6 +87,7 @@ public partial class ServerSettingsWindow : Window
 
     private void ClearTestKsp_Click(object sender, RoutedEventArgs e)
     {
+        if (!LauncherSession.CanAccessTestGame) return;
         _testKspRoot = null;
         RefreshTestKspPath();
     }
@@ -79,7 +96,7 @@ public partial class ServerSettingsWindow : Window
     {
         TestKspPathTextBox.Text = _testKspRoot ?? "No test installation selected";
         TestKspPathTextBox.ToolTip = _testKspRoot;
-        LaunchTestKspButton.IsEnabled = !string.IsNullOrWhiteSpace(_testKspRoot) &&
+        LaunchTestKspButton.IsEnabled = LauncherSession.CanAccessTestGame && !string.IsNullOrWhiteSpace(_testKspRoot) &&
             File.Exists(Path.Combine(_testKspRoot, "KSP_x64.exe")) &&
             Directory.Exists(Path.Combine(_testKspRoot, "GameData"));
         UpgradeTestKspButton.IsEnabled = LaunchTestKspButton.IsEnabled;
@@ -90,7 +107,7 @@ public partial class ServerSettingsWindow : Window
 
     private void SendTestSave_Click(object sender, RoutedEventArgs e)
     {
-        if (_maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
+        if (!LauncherSession.CanAccessTestGame || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
         try
         {
             var picker = new OpenFolderDialog
@@ -111,7 +128,7 @@ public partial class ServerSettingsWindow : Window
 
     private void SendTestLog_Click(object sender, RoutedEventArgs e)
     {
-        if (_maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
+        if (!LauncherSession.CanAccessTestGame || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
         try
         {
             var log = TestGameSupportPaths.LogFile(_testKspRoot);
@@ -137,6 +154,7 @@ public partial class ServerSettingsWindow : Window
 
     private async void RepairTestKsp_Click(object sender, RoutedEventArgs e)
     {
+        if (!LauncherSession.CanAccessTestGame) return;
         if (MessageBox.Show("Reinstall all official KSR game components in the selected test installation?",
                 "Repair test game", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         await MaintainTestKspAsync(UpdatePolicy.ReinstallAll);
@@ -144,7 +162,7 @@ public partial class ServerSettingsWindow : Window
 
     private async Task MaintainTestKspAsync(UpdatePolicy policy)
     {
-        if (_maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot) || !UpgradeTestKspButton.IsEnabled) return;
+        if (!LauncherSession.CanAccessTestGame || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot) || !UpgradeTestKspButton.IsEnabled) return;
         if (Process.GetProcessesByName("KSP_x64").Length > 0)
         {
             MessageBox.Show("Close KSP before updating the test installation.",
@@ -222,7 +240,7 @@ public partial class ServerSettingsWindow : Window
 
     private async void LaunchTestKsp_Click(object sender, RoutedEventArgs e)
     {
-        if (string.IsNullOrWhiteSpace(_testKspRoot) || !LaunchTestKspButton.IsEnabled) return;
+        if (!LauncherSession.CanAccessTestGame || string.IsNullOrWhiteSpace(_testKspRoot) || !LaunchTestKspButton.IsEnabled) return;
         if (Process.GetProcessesByName("KSP_x64").Length > 0)
         {
             MessageBox.Show("Close the running KSP game before starting the test installation.",

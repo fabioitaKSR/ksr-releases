@@ -166,7 +166,8 @@ public partial class MainWindow : Window
         await TryRestoreSessionAsync();
         if (!TestInstallationPaths.IsSameKspRoot(_kspRoot, LauncherSettingsStore.LoadTestKspRoot()))
             await UpdateInstalledKsrModsAsync();
-        await UpdateTestKspAsync();
+        if (LauncherSession.CanAccessTestGame)
+            await UpdateTestKspAsync();
         if (LoggerVersionText.Text == "LOGGER --" || LaunchAndLogsVersionText.Text == "L&L --")
             await RefreshReleaseComponentVersionsAsync();
         await CheckForLauncherUpdateAsync();
@@ -305,6 +306,7 @@ public partial class MainWindow : Window
 
     private async Task UpdateTestKspAsync()
     {
+        if (!LauncherSession.CanAccessTestGame) return;
         var testRoot = LauncherSettingsStore.LoadTestKspRoot();
         if (!IsValidKspRoot(testRoot) || Process.GetProcessesByName("KSP_x64").Length > 0) return;
 
@@ -1753,6 +1755,7 @@ public partial class MainWindow : Window
         var serverUrl = LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server has not been configured.");
         var campaigns = await _platformClient.GetCampaignsAsync(serverUrl, session.AccessToken);
         LauncherSession.Username = session.User.Username;
+        LauncherSession.CanAccessTestGame = session.User.CanAccessTestGame;
         LauncherSession.AccessToken = session.AccessToken;
         LauncherSession.RefreshToken = session.RefreshToken;
         LauncherSession.AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(session.ExpiresIn);
@@ -1800,7 +1803,7 @@ public partial class MainWindow : Window
                 saveFolders[campaign.CampaignCode] = CampaignSaveNaming.CreateStartFolderName(campaign.Name);
             }
             KsrGameTicket? testTicket = null;
-            if (testReady)
+            if (testReady && LauncherSession.CanAccessTestGame)
             {
                 try { testTicket = await _platformClient.GetGameTicketAsync(LauncherSession.ServerUrl!, accessToken, "test1"); }
                 catch (KsrApiException exception) { Debug.WriteLine($"KSR test ticket refresh failed: {exception.Message}"); }
@@ -1893,6 +1896,7 @@ public partial class MainWindow : Window
             GameLoggerConfiguration.Clear(testRoot!);
         }
         LauncherSession.UserId = 0;
+        LauncherSession.CanAccessTestGame = false;
         _rememberedSession = null;
         RememberMeCheckBox.IsChecked = false;
         TryClearRememberedSession();
@@ -2016,6 +2020,7 @@ internal static class LauncherSession
 {
     public static string Username { get; set; } = "PLAYER";
     public static long UserId { get; set; }
+    public static bool CanAccessTestGame { get; set; }
     public static string? ServerUrl { get; set; } =
         Environment.GetEnvironmentVariable("KSR_SERVER_URL") ?? KsrPlatformClient.ProductionServerUrl;
     public static string? AccessToken { get; set; }
@@ -2046,6 +2051,7 @@ internal static class LauncherSession
         AccessToken = refreshed.AccessToken;
         RefreshToken = refreshed.RefreshToken;
         AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(refreshed.ExpiresIn);
+        CanAccessTestGame = refreshed.User.CanAccessTestGame;
     }
 }
 

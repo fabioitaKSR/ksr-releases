@@ -7,7 +7,7 @@ using System.Text.Json;
 
 namespace KsrLauncher.Core;
 
-public sealed record KsrUser(long Id, string Username);
+public sealed record KsrUser(long Id, string Username, bool CanAccessTestGame = false);
 
 public sealed record KsrHealth(string Service, string? Version, bool Legacy);
 
@@ -189,7 +189,8 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             RequiredString(root, "accessToken"),
             RequiredString(root, "refreshToken"),
             OptionalInt32(root, "expiresIn") ?? 1800,
-            new KsrUser(RequiredInt64(userElement, "id"), RequiredString(userElement, "username")));
+            new KsrUser(RequiredInt64(userElement, "id"), RequiredString(userElement, "username"),
+                userElement.TryGetProperty("canAccessTestGame", out var testAccess) && testAccess.ValueKind == JsonValueKind.True));
     }
 
     public async Task<IReadOnlyList<KsrCampaign>> GetCampaignsAsync(

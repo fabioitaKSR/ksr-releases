@@ -26,6 +26,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Upgrade rileva ogni file mancante, Repair reinstalla tutto", UpgradeAndRepairPolicies),
     ("Avvio aggiorna la test installazione senza toccare quella principale", StartupUpdatesTestInstallationSeparately),
     ("Settings conserva i comandi della partita test", TestGameSettingsControlsRemainAvailable),
+    ("Settings nasconde la partita test senza permesso server", TestGameSettingsRequireServerPermission),
     ("Creazione gara conserva l'opzione Discord", CampaignDiscordOptionIsAvailable),
     ("Admin area conserva creazione gara e gestione partecipanti", AdminMemberControlsRemainAvailable),
     ("Espulsione spiega conservazione e cancellazione dei record", AdminMemberRemovalOptionsAreClear),
@@ -457,6 +458,24 @@ static Task TestGameSettingsControlsRemainAvailable()
     return Task.CompletedTask;
 }
 
+static Task TestGameSettingsRequireServerPermission()
+{
+    var settings = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "ServerSettingsWindow.xaml.cs"));
+    var main = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml.cs"));
+    True(settings.Contains("if (!LauncherSession.CanAccessTestGame)", StringComparison.Ordinal),
+        "Settings must hide test game controls for other users.");
+    True(settings.Contains("TestGameTitleRow", StringComparison.Ordinal) &&
+         settings.Contains("LaunchTestKspButton.Visibility = Visibility.Collapsed", StringComparison.Ordinal),
+        "The whole test section, including its launch button, must disappear.");
+    True(settings.Contains("LauncherSettingsStore.LoadTestKspRoot()", StringComparison.Ordinal),
+        "Saving ordinary server settings must preserve the stored test installation.");
+    True(main.Contains("if (LauncherSession.CanAccessTestGame)", StringComparison.Ordinal) &&
+         main.Contains("await UpdateTestKspAsync();", StringComparison.Ordinal) &&
+         main.Contains("if (testReady && LauncherSession.CanAccessTestGame)", StringComparison.Ordinal),
+        "Automatic test updates and ticket renewal must require permission.");
+    return Task.CompletedTask;
+}
+
 static Task CampaignDiscordOptionIsAvailable()
 {
     var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml"));
@@ -749,7 +768,7 @@ static async Task PlatformLoginParsesSession()
         Equal("Fabio", document.RootElement.GetProperty("username").GetString()!);
         Equal("secret", document.RootElement.GetProperty("password").GetString()!);
         requestChecked = true;
-        return "{\"accessToken\":\"access-1\",\"refreshToken\":\"refresh-1\",\"expiresIn\":1800,\"user\":{\"id\":7,\"username\":\"Fabio\"}}";
+        return "{\"accessToken\":\"access-1\",\"refreshToken\":\"refresh-1\",\"expiresIn\":1800,\"user\":{\"id\":7,\"username\":\"Fabio\",\"canAccessTestGame\":true}}";
     }));
 
     var session = await new KsrPlatformClient(http).LoginAsync("https://ksr.example", "Fabio", "secret");
@@ -758,6 +777,7 @@ static async Task PlatformLoginParsesSession()
     Equal("refresh-1", session.RefreshToken);
     Equal("Fabio", session.User.Username);
     True(session.User.Id == 7, "The user ID was not parsed.");
+    True(session.User.CanAccessTestGame, "The test-game permission was not parsed.");
 }
 
 static async Task PlatformRefreshRotatesSession()

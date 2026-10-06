@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\KsrLauncher.Core\KsrLauncher.Core.csproj" />
     <None Include="..\..\src\KsrLauncher.App\ServerSettingsWindow.xaml" Link="ServerSettingsWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\KsrLauncher.App\ServerSettingsWindow.xaml.cs" Link="ServerSettingsWindow.xaml.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\KsrLauncher.App\MainWindow.xaml" Link="MainWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\KsrLauncher.App\MainWindow.xaml.cs" Link="MainWindow.xaml.cs" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\src\KsrLauncher.App\RemoveCampaignMemberWindow.xaml" Link="RemoveCampaignMemberWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
