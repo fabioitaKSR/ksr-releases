@@ -70,9 +70,9 @@ public sealed class PackageService(HttpClient? httpClient = null)
 
     public static void ExtractSafely(string zipPath, string destination)
     {
-        Directory.CreateDirectory(destination);
         var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         SafePaths.RejectReparsePoints(Path.GetPathRoot(root)!, destination);
+        Directory.CreateDirectory(destination);
         using var archive = ZipFile.OpenRead(zipPath);
         foreach (var entry in archive.Entries)
         {
