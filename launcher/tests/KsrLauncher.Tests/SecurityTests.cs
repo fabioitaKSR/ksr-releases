@@ -17,6 +17,58 @@ internal sealed class TestSignatures : IDisposable
 
 internal static class SecurityTests
 {
+    public static async Task InternalCatalogRequiresTrustedSignatureAndHttpsPackages()
+    {
+        using var key = new TestSignatures();
+        using var otherKey = new TestSignatures();
+        var root = Path.Combine(Path.GetTempPath(), "ksr-internal-catalog-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "ksr-release.json");
+        var manifest = new ReleaseManifest { SchemaVersion=1, Product="KerbalSpaceRace", Version="1.0.0", MinimumLauncherVersion="0.1.0",
+            Components=[new ComponentManifest {Id="client",Asset="client.zip",AssetUrl="https://example.test/client.zip",Sha256=new string('a',64),Source="payload",Target="GameData/Test"}] };
+        async Task WriteSigned(TestSignatures signer)
+        {
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(manifest, ManifestService.JsonOptions);
+            await File.WriteAllBytesAsync(path, bytes);
+            await File.WriteAllBytesAsync(path + ".sig", signer.Sign(bytes));
+        }
+        async Task MustRejectAsync(Func<Task> action)
+        {
+            try { await action(); } catch (Exception ex) when (ex is InvalidDataException or IOException) { return; }
+            throw new Exception("An unsafe internal catalog was accepted.");
+        }
+        try
+        {
+            var client = new GitHubReleaseClient(signatures:key.Verifier, internalSignedCatalog:path);
+            await WriteSigned(key);
+            var resolved = await client.ResolveAsync("fabioitaKSR/ksr-releases");
+            if(resolved.Tag != "internal-1.0.0") throw new Exception("Valid signed internal catalog failed.");
+            await File.AppendAllTextAsync(path, " ");
+            await MustRejectAsync(() => client.ResolveAsync("fabioitaKSR/ksr-releases"));
+            await WriteSigned(otherKey);
+            await MustRejectAsync(() => client.ResolveAsync("fabioitaKSR/ksr-releases"));
+            await WriteSigned(key);
+            File.Delete(path + ".sig");
+            await MustRejectAsync(() => client.ResolveAsync("fabioitaKSR/ksr-releases"));
+            manifest.Components[0].AssetUrl="";
+            await WriteSigned(key);
+            await MustRejectAsync(() => client.ResolveAsync("fabioitaKSR/ksr-releases"));
+            manifest.Components[0].AssetUrl="http://example.test/client.zip";
+            await WriteSigned(key);
+            await MustRejectAsync(() => client.ResolveAsync("fabioitaKSR/ksr-releases"));
+            manifest.Components[0].AssetUrl="https://example.test/client.zip";
+            manifest.Channel="beta";
+            await WriteSigned(key);
+            await MustRejectAsync(() => client.ResolveAsync("fabioitaKSR/ksr-releases"));
+            await File.WriteAllBytesAsync(path, new byte[2 * 1024 * 1024 + 1]);
+            await MustRejectAsync(() => client.ResolveAsync("fabioitaKSR/ksr-releases"));
+            await WriteSigned(key);
+            await File.WriteAllBytesAsync(path + ".sig",new byte[16 * 1024 + 1]);
+            await MustRejectAsync(() => client.ResolveAsync("fabioitaKSR/ksr-releases"));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     public static Task SignaturesRejectTamperingAndOtherKeys()
     {
         using var key = new TestSignatures();

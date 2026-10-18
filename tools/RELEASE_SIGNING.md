@@ -42,3 +42,25 @@ export and offline storage are still to be arranged with the owner. No external
 backup has been claimed or created by the initial setup. A compromised logged-in
 Windows account can use DPAPI; the scheme isolates GitHub/server compromise,
 not compromise of the signing PC.
+
+## Internal catalog tests before publication
+
+The desktop launcher accepts `KSR_INTERNAL_SIGNED_CATALOG` as a process-local
+environment variable containing an absolute local path to `ksr-release.json`.
+Its `.sig` sidecar must be signed by the same trusted release key. Metadata
+size limits, channel checks, manifest validation and installed-version checks
+still apply. Every package must have an authenticated absolute HTTPS asset URL;
+the local catalog does not authorize arbitrary local packages or unsigned data.
+
+Start a freshly built launcher from a wrapper that sets the variable only in
+its own process and restores it after `Start-Process`. Do not persist the
+variable in user/system settings. The window title identifies the internal
+test, and launcher self-update is suspended for that process so it cannot
+replace the test executable mid-run. Component checks and installation use
+the normal updater, including backups and preservation.
+
+Without the variable, public GitHub discovery is unchanged. This mode tests
+the signed catalog and component updater before publication; it does not
+establish that an older launcher discovers, downloads and installs the final
+public release. Rebuild and sign the final executable metadata after source
+changes, rather than reusing signatures for an earlier binary.

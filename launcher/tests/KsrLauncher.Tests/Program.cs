@@ -7,6 +7,7 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Internal catalog requires trusted signature and HTTPS packages", SecurityTests.InternalCatalogRequiresTrustedSignatureAndHttpsPackages),
     ("Signatures reject tampering and untrusted keys", SecurityTests.SignaturesRejectTamperingAndOtherKeys),
     ("Unsafe ids cannot change the filesystem", SecurityTests.RejectUnsafeIdsBeforeFilesystemChanges),
     ("Downloads reject unsigned or changed authorization", SecurityTests.DownloadRejectsUnsignedOrModifiedAuthorization),

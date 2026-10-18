@@ -12,6 +12,8 @@ namespace KsrLauncher.App;
 
 public partial class MainWindow : Window
 {
+    private readonly string? _internalSignedCatalog = Environment.GetEnvironmentVariable("KSR_INTERNAL_SIGNED_CATALOG");
+    private GitHubReleaseClient CreateComponentReleaseClient() => new(internalSignedCatalog: _internalSignedCatalog);
     private string? _kspRoot;
     private string? _referenceSavePath;
     private readonly ObservableCollection<CampaignListItem> _campaigns = [];
@@ -53,6 +55,11 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        if (!string.IsNullOrWhiteSpace(_internalSignedCatalog))
+        {
+            Title = "KSR Platform — INTERNAL SIGNED CATALOG TEST";
+            LauncherVersionText.ToolTip = "Internal test using a locally stored signed catalog. Public launcher updates are suspended for this process.";
+        }
         var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
         LauncherVersionText.Text = version is null
             ? "LAUNCHER"
@@ -177,7 +184,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            var release = await CreateComponentReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
             ShowReleaseComponentVersions(release.Manifest);
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException)
@@ -210,7 +217,7 @@ public partial class MainWindow : Window
             LauncherVersionText.Text = $"{normalVersionText}  ·  CHECKING KSR MODS";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
 
-            var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            var release = await CreateComponentReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
             ShowReleaseComponentVersions(release.Manifest);
             var releaseComponents = release.Manifest.Components.ToList();
             var requiredComponents = releaseComponents
@@ -315,7 +322,7 @@ public partial class MainWindow : Window
         var overlayGeneration = ShowBlockingOperation("CHECKING TEST GAME", "Checking the selected test installation...");
         try
         {
-            var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            var release = await CreateComponentReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
             ShowReleaseComponentVersions(release.Manifest);
             release.Manifest.Components = release.Manifest.Components
                 .Where(component => string.Equals(component.TargetKind, "ksp", StringComparison.OrdinalIgnoreCase))
@@ -368,6 +375,7 @@ public partial class MainWindow : Window
 
     private async Task CheckForLauncherUpdateAsync()
     {
+        if (!string.IsNullOrWhiteSpace(_internalSignedCatalog)) return;
         var current = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
         if (current is null) return;
         try
@@ -532,7 +540,7 @@ public partial class MainWindow : Window
         PlayerLaunchAndLogsStatusText.Text = LaunchAndLogsStatusText.Text;
         try
         {
-            var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            var release = await CreateComponentReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
             ShowReleaseComponentVersions(release.Manifest);
             var selected = release.Manifest.Components
                 .Where(component => LaunchAndLogsComponentIds.Contains(component.Id, StringComparer.OrdinalIgnoreCase))

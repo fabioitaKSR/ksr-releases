@@ -186,7 +186,8 @@ public partial class ServerSettingsWindow : Window
         TestKspMaintenanceStatus.Text = "Checking official KSR release...";
         try
         {
-            var release = await new GitHubReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            var release = await new GitHubReleaseClient(internalSignedCatalog:
+                Environment.GetEnvironmentVariable("KSR_INTERNAL_SIGNED_CATALOG")).ResolveAsync("fabioitaKSR/ksr-releases");
             release.Manifest.Components = release.Manifest.Components
                 .Where(component => string.Equals(component.TargetKind, "ksp", StringComparison.OrdinalIgnoreCase))
                 .ToList();
