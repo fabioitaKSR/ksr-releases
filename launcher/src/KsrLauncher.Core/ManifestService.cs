@@ -38,6 +38,8 @@ public static partial class ManifestService
         var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var component in manifest.Components)
         {
+            if (!Regex.IsMatch(component.Id, "^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$", RegexOptions.CultureInvariant))
+                errors.Add("Component id must be a simple identifier of at most 80 characters.");
             if (string.IsNullOrWhiteSpace(component.Id) || !ids.Add(component.Id)) errors.Add($"id componente vuoto o duplicato: '{component.Id}'");
             if (string.IsNullOrWhiteSpace(component.TransactionGroup)) errors.Add($"{component.Id}: transactionGroup mancante");
             if (Path.GetFileName(component.Asset) != component.Asset || !component.Asset.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)) errors.Add($"{component.Id}: asset deve essere un solo nome file ZIP");

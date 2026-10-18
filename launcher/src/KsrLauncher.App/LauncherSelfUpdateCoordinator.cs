@@ -6,8 +6,9 @@ namespace KsrLauncher.App;
 
 internal static class LauncherSelfUpdateCoordinator
 {
-    public static bool TrySchedule(string downloadedExecutable)
+    public static bool TrySchedule(string downloadedExecutable, string expectedSha256)
     {
+        if (expectedSha256.Length != 64 || !expectedSha256.All(Uri.IsHexDigit)) return false;
         var source = Path.GetFullPath(downloadedExecutable);
         var destination = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(destination) || !File.Exists(source)) return false;
@@ -39,6 +40,8 @@ internal static class LauncherSelfUpdateCoordinator
         startInfo.ArgumentList.Add(source);
         startInfo.ArgumentList.Add("-Destination");
         startInfo.ArgumentList.Add(destination);
+        startInfo.ArgumentList.Add("-ExpectedSha256");
+        startInfo.ArgumentList.Add(expectedSha256);
         Process.Start(startInfo);
         return true;
     }
@@ -47,7 +50,8 @@ internal static class LauncherSelfUpdateCoordinator
 param(
     [Parameter(Mandatory=$true)][int]$ProcessId,
     [Parameter(Mandatory=$true)][string]$Source,
-    [Parameter(Mandatory=$true)][string]$Destination
+    [Parameter(Mandatory=$true)][string]$Destination,
+    [Parameter(Mandatory=$true)][string]$ExpectedSha256
 )
 $ErrorActionPreference = 'Stop'
 $sourcePath = [System.IO.Path]::GetFullPath($Source)
@@ -58,7 +62,9 @@ while ((Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) -and [DateTime
     Start-Sleep -Milliseconds 250
 }
 if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) { exit 3 }
+if ((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -ne $ExpectedSha256) { exit 4 }
 Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
+if ((Get-FileHash -LiteralPath $destinationPath -Algorithm SHA256).Hash -ne $ExpectedSha256) { exit 5 }
 Start-Process -FilePath $destinationPath -WorkingDirectory ([System.IO.Path]::GetDirectoryName($destinationPath))
 """;
 }

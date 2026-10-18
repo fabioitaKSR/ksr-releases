@@ -10,8 +10,10 @@ public sealed class GitHubReleaseClient
 {
     private readonly HttpClient _httpClient;
 
-    public GitHubReleaseClient(HttpClient? httpClient = null)
+    private readonly ReleaseSignatures _signatures;
+    public GitHubReleaseClient(HttpClient? httpClient = null, ReleaseSignatures? signatures = null)
     {
+        _signatures = signatures ?? new ReleaseSignatures();
         _httpClient = httpClient ?? new HttpClient();
         if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("KSR-Launcher", "1.0"));
@@ -38,9 +40,12 @@ public sealed class GitHubReleaseClient
         if (release is null) throw new InvalidOperationException($"Nessuna release {channel} con ksr-release.json pubblicata in {repository}.");
 
         var manifestAsset = release.Assets.First(item => string.Equals(item.Name, "ksr-release.json", StringComparison.OrdinalIgnoreCase));
-        using var manifestResponse = await _httpClient.GetAsync(manifestAsset.BrowserDownloadUrl, cancellationToken);
-        manifestResponse.EnsureSuccessStatusCode();
-        await using var manifestStream = await manifestResponse.Content.ReadAsStreamAsync(cancellationToken);
+        var signatureAsset = release.Assets.SingleOrDefault(item => item.Name == "ksr-release.json.sig")
+            ?? throw new InvalidDataException("The release does not contain a signed component manifest.");
+        var payload = await ReleaseSignatures.DownloadBoundedAsync(_httpClient, manifestAsset.BrowserDownloadUrl, 2 * 1024 * 1024, cancellationToken);
+        var signature = await ReleaseSignatures.DownloadBoundedAsync(_httpClient, signatureAsset.BrowserDownloadUrl, 16 * 1024, cancellationToken);
+        _signatures.Verify(payload, signature);
+        await using var manifestStream = new MemoryStream(payload, false);
         var manifest = await ManifestService.LoadAsync(manifestStream, cancellationToken);
         if (!string.Equals(manifest.Channel, channel, StringComparison.OrdinalIgnoreCase) && channel == "stable")
             throw new InvalidDataException($"Il manifest della release {release.TagName} dichiara il canale '{manifest.Channel}', atteso stable.");

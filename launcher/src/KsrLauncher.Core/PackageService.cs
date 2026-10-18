@@ -72,6 +72,7 @@ public sealed class PackageService(HttpClient? httpClient = null)
     {
         Directory.CreateDirectory(destination);
         var root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        SafePaths.RejectReparsePoints(Path.GetPathRoot(root)!, destination);
         using var archive = ZipFile.OpenRead(zipPath);
         foreach (var entry in archive.Entries)
         {
@@ -79,6 +80,7 @@ public sealed class PackageService(HttpClient? httpClient = null)
             if (unixType == 0xA000) throw new InvalidDataException($"Il pacchetto contiene un link simbolico non consentito: {entry.FullName}");
             var target = Path.GetFullPath(Path.Combine(destination, SafePaths.Normalize(entry.FullName)));
             if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException($"Voce ZIP pericolosa: {entry.FullName}");
+            SafePaths.RejectReparsePoints(destination, target);
             if (string.IsNullOrEmpty(entry.Name)) Directory.CreateDirectory(target);
             else
             {

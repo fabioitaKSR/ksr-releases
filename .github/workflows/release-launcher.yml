@@ -1,22 +1,18 @@
-name: Release launcher
+name: Verify locally signed launcher release
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag
-        required: true
-        type: string
-      manifest_source_tag:
-        description: Published release with the approved mod manifest
+        description: Existing locally signed draft release tag
         required: true
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  publish:
+  verify:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,67 +21,22 @@ jobs:
           dotnet-version: 8.0.x
       - name: Test launcher
         run: dotnet run --project launcher/tests/KsrLauncher.Tests/KsrLauncher.Tests.csproj -c Release
-      - name: Build standalone launcher
+      - name: Verify signed draft without rebuilding signed executables
         shell: pwsh
         env:
+          GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid release tag.' }
-          $version = $env:RELEASE_TAG.Substring(1)
-          dotnet publish launcher/src/KsrLauncher.App/KsrLauncher.App.csproj -c Release -r win-x64 --self-contained true -p:Version=$version -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=None -p:DebugSymbols=false -o release-output
-          if ($LASTEXITCODE -ne 0) { throw 'Launcher publish failed.' }
-          $asset = "KSR-Launcher-v$version-win-x64.exe"
-          Move-Item -LiteralPath release-output/KsrLauncher.App.exe -Destination "release-output/$asset"
-          $hash = (Get-FileHash -LiteralPath "release-output/$asset" -Algorithm SHA256).Hash.ToLowerInvariant()
-          Set-Content -LiteralPath release-output/SHA256SUMS.txt -Value "$hash  $asset" -Encoding ascii
-      - name: Validate complete draft release
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          MANIFEST_SOURCE_TAG: ${{ inputs.manifest_source_tag }}
-        run: |
-          $tag = $env:RELEASE_TAG
-          $sourceTag = $env:MANIFEST_SOURCE_TAG
-          if ($tag -eq $sourceTag) { throw 'Manifest source must be a previous approved release.' }
-          $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
-          $matches = @($releases | Where-Object tag_name -eq $tag)
-          if ($matches.Count -ne 1 -or -not $matches[0].draft) { throw 'Target must be one unambiguous draft release.' }
-          gh release download $sourceTag --pattern ksr-release.json --dir release-output
-          if ($LASTEXITCODE -ne 0) { throw 'Approved manifest download failed.' }
-          dotnet run --project launcher/src/KsrLauncher.Cli/KsrLauncher.Cli.csproj -c Release -- validate-manifest --manifest release-output/ksr-release.json
-          if ($LASTEXITCODE -ne 0) { throw 'Approved manifest is invalid.' }
-          $manifest = Get-Content release-output/ksr-release.json -Raw | ConvertFrom-Json
-          if ($manifest.channel -ne 'stable' -or @($manifest.components).Count -eq 0) { throw 'Manifest must contain stable mod components.' }
-          foreach ($component in $manifest.components) {
-            if (-not $component.assetUrl -or -not $component.assetUrl.StartsWith('https://')) {
-              throw "Component $($component.id) has no immutable HTTPS asset URL."
-            }
-          }
-      - name: Upload verified release assets
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.tag }}
-        run: |
           $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
           $matches = @($releases | Where-Object tag_name -eq $env:RELEASE_TAG)
-          if ($matches.Count -ne 1 -or -not $matches[0].draft) { throw 'Target draft is missing or ambiguous.' }
+          if ($matches.Count -ne 1) { throw 'Target must be one unambiguous draft release.' }
           $release = $matches[0]
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json'; 'X-GitHub-Api-Version' = '2022-11-28' }
-          $uploadRoot = $release.upload_url -replace '\{\?name,label\}$', ''
-          foreach ($path in @((Get-ChildItem release-output/KSR-Launcher-*.exe).FullName, 'release-output/SHA256SUMS.txt', 'release-output/ksr-release.json')) {
-            $file = Get-Item -LiteralPath $path
-            $old = @($release.assets | Where-Object name -eq $file.Name)
-            if ($old.Count -gt 1) { throw "Duplicate release asset $($file.Name)." }
-            if ($old.Count -eq 1) { gh api -X DELETE "repos/$env:GITHUB_REPOSITORY/releases/assets/$($old[0].id)"; if ($LASTEXITCODE -ne 0) { throw "Cannot replace $($file.Name)." } }
-            $name = [Uri]::EscapeDataString($file.Name)
-            $asset = Invoke-RestMethod -Method Post -Uri "${uploadRoot}?name=$name" -Headers $headers -ContentType 'application/octet-stream' -InFile $file.FullName
-            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($asset.state -ne 'uploaded' -or $asset.size -ne $file.Length -or $asset.digest -ne "sha256:$hash") { throw "Upload verification failed for $($file.Name)." }
-          }
-          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" | ConvertFrom-Json
-          foreach ($name in @((Get-ChildItem release-output/KSR-Launcher-*.exe).Name, 'SHA256SUMS.txt', 'ksr-release.json')) {
-            if (-not ($release.assets.name -contains $name)) { throw "Release asset $name is missing." }
-          }
-          if (-not $release.draft) { throw 'Release became public before verification.' }
+          if (-not $release.draft) { throw 'Verification requires a draft release.' }
+          gh release download $env:RELEASE_TAG --dir release-output --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Draft download failed.' }
+          dotnet run --project launcher/src/KsrLauncher.Cli/KsrLauncher.Cli.csproj -c Release -- verify-release --directory release-output
+          if ($LASTEXITCODE -ne 0) { throw 'Release authenticity verification failed.' }
+          dotnet run --project launcher/src/KsrLauncher.Cli/KsrLauncher.Cli.csproj -c Release -- validate-manifest --manifest release-output/ksr-release.json
+          if ($LASTEXITCODE -ne 0) { throw 'Manifest validation failed.' }
+          # Signing is performed on the owner's PC; no private key is stored in GitHub.

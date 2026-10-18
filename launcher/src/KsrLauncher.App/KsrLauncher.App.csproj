@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\KsrLauncher.Core\KsrLauncher.Core.csproj" />
@@ -16,7 +16,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Version>0.7.13</Version>
+    <Version>0.7.14</Version>
     <ApplicationIcon>Assets\ksr-launcher.ico</ApplicationIcon>
   </PropertyGroup>
 

@@ -13,6 +13,27 @@ internal static class LauncherCli
             var options = ParseOptions(args.Skip(1).ToArray());
             switch (command)
             {
+                case "verify-manifest":
+                    var signedManifestPath = Required(options, "manifest");
+                    new ReleaseSignatures().Verify(await File.ReadAllBytesAsync(signedManifestPath), await File.ReadAllBytesAsync(signedManifestPath + ".sig"));
+                    await ManifestService.LoadAsync(signedManifestPath);
+                    Console.WriteLine("Component manifest signature verified.");
+                    return 0;
+                case "verify-release":
+                    var directory = Path.GetFullPath(Required(options, "directory"));
+                    var verifier = new ReleaseSignatures();
+                    foreach (var file in new[] { "ksr-release.json", "ksr-launcher-update.json" })
+                        verifier.Verify(await File.ReadAllBytesAsync(Path.Combine(directory, file)), await File.ReadAllBytesAsync(Path.Combine(directory, file + ".sig")));
+                    var metadata = System.Text.Json.JsonSerializer.Deserialize<SignedLauncherMetadata>(await File.ReadAllBytesAsync(Path.Combine(directory, "ksr-launcher-update.json")), ManifestService.JsonOptions)
+                        ?? throw new InvalidDataException("Invalid launcher metadata.");
+                    if (metadata.SchemaVersion != 1 || metadata.Product != "KSRLauncher" || Path.GetFileName(metadata.AssetName) != metadata.AssetName)
+                        throw new InvalidDataException("Invalid launcher authorization.");
+                    var executable = SafePaths.Under(directory, metadata.AssetName);
+                    if (new FileInfo(executable).Length != metadata.Size || !string.Equals(await PackageService.ComputeSha256Async(executable), metadata.Sha256, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException("The executable does not match its signed authorization.");
+                    await ManifestService.LoadAsync(Path.Combine(directory, "ksr-release.json"));
+                    Console.WriteLine("Release signatures, executable hash and size verified.");
+                    return 0;
                 case "validate-manifest":
                     var checkedManifest = await ManifestService.LoadAsync(Required(options, "manifest"));
                     Console.WriteLine($"Manifest valido: {checkedManifest.Product} {checkedManifest.Version}, {checkedManifest.Components.Count} componenti.");
@@ -52,7 +73,9 @@ internal static class LauncherCli
             Console.WriteLine($"GitHub Release selezionata: {release.Tag}");
             return new ManifestSource(release.Manifest, release.AssetsBaseUrl);
         }
-        return new ManifestSource(await ManifestService.LoadAsync(Required(options, "manifest")), "");
+        var path = Required(options, "manifest");
+        new ReleaseSignatures().Verify(await File.ReadAllBytesAsync(path), await File.ReadAllBytesAsync(path + ".sig"));
+        return new ManifestSource(await ManifestService.LoadAsync(path), "");
     }
 
     private static void PrintPlan(UpdatePlan plan)

@@ -397,7 +397,7 @@ public partial class MainWindow : Window
                 $"KSR Launcher {update.Tag} has been downloaded and verified.\n\nRestart now to install the update?",
                 "KSR Launcher Update Ready", MessageBoxButton.YesNo, MessageBoxImage.Information);
             if (restart != MessageBoxResult.Yes) return;
-            if (!LauncherSelfUpdateCoordinator.TrySchedule(downloaded))
+            if (!LauncherSelfUpdateCoordinator.TrySchedule(downloaded, update.Sha256))
             {
                 MessageBox.Show(
                     $"The update was downloaded but cannot replace this development launcher automatically.\n\nFile: {downloaded}",

@@ -15,10 +15,14 @@ public sealed class UpdateEngine(PackageService? packageService = null)
         IProgress<UpdateProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ManifestService.Validate(manifest);
         if (manifest.Components.Any(component => !string.Equals(component.TargetKind, "launcherData", StringComparison.OrdinalIgnoreCase)))
             UpdatePlanner.ValidateKspRoot(locations.KspRoot);
 
         var state = await StateStore.LoadAsync(locations.LauncherDataRoot, cancellationToken);
+        if (Version.TryParse(manifest.Version, out var incomingVersion) && manifest.Components.Any(component =>
+            state.Components.TryGetValue(component.Id, out var installed) && Version.TryParse(installed.Version, out var previousVersion) && previousVersion > incomingVersion))
+            throw new InvalidDataException("An older component catalog cannot replace an installed newer catalog.");
         var plan = UpdatePlanner.Create(manifest, state, locations, policy);
         if (!apply || !plan.HasUpdates) return new UpdateResult(plan, false, null);
         if (string.IsNullOrWhiteSpace(assetsBase)) throw new ArgumentException("assetsBase e obbligatorio per applicare un aggiornamento.");
@@ -115,7 +119,7 @@ public sealed class UpdateEngine(PackageService? packageService = null)
                 assetsBase, item.Component, Path.Combine(workRoot, "downloads"), cancellationToken, componentProgress);
             completedBytes += item.Component.Size > 0 ? item.Component.Size : new FileInfo(zip).Length;
             progress?.Report(new UpdateProgress(item.Component.Id, Math.Min(totalBytes, completedBytes), totalBytes, currentIndex + 1, pending.Count, "DOWNLOADING"));
-            var extractRoot = Path.Combine(workRoot, "extracted", item.Component.Id);
+            var extractRoot = SafePaths.Under(workRoot, Path.Combine("extracted", Guid.NewGuid().ToString("N")));
             PackageService.ExtractSafely(zip, extractRoot);
             var source = SafePaths.Under(extractRoot, item.Component.Source);
             if (!Directory.Exists(source)) throw new InvalidDataException($"{item.Component.Id}: source '{item.Component.Source}' assente nel pacchetto.");
@@ -144,13 +148,14 @@ public sealed class UpdateEngine(PackageService? packageService = null)
         var backupRelative = Path.Combine("components", component.Id);
         var backup = SafePaths.Under(backupRoot, backupRelative);
         var hadOriginal = Directory.Exists(target);
-        var overlay = string.Equals(component.InstallMode, "overlay", StringComparison.OrdinalIgnoreCase);
 
         try
         {
-            if (overlay && hadOriginal) FileTree.CopyDirectory(target, replacement);
+            // Updates preserve installed content absent from the incoming package.
+            // Removal requires a separate, explicitly authorized operation.
+            if (hadOriginal) FileTree.CopyDirectory(target, replacement);
             FileTree.CopyDirectory(prepared.SourcePath, replacement);
-            if (hadOriginal && !overlay) CopyPreservedFiles(target, replacement, root, manifest);
+            if (hadOriginal) CopyPreservedFiles(target, replacement, root, manifest);
             if (hadOriginal)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(backup)!);

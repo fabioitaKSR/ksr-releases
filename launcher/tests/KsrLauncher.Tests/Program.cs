@@ -7,6 +7,9 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Signatures reject tampering and untrusted keys", SecurityTests.SignaturesRejectTamperingAndOtherKeys),
+    ("Unsafe ids cannot change the filesystem", SecurityTests.RejectUnsafeIdsBeforeFilesystemChanges),
+    ("Downloads reject unsigned or changed authorization", SecurityTests.DownloadRejectsUnsignedOrModifiedAuthorization),
     ("Manifest valido", ManifestValid),
     ("Manifest blocca path traversal", ManifestRejectsTraversal),
     ("Manifest blocca installMode sconosciuto", ManifestRejectsUnknownInstallMode),
@@ -135,7 +138,7 @@ static async Task UpdatePreserveRollback()
     var result = await new UpdateEngine().RunAsync(manifest, new LauncherLocations(ksp, launcherData), assets, true);
     Equal("new", await File.ReadAllTextAsync(Path.Combine(target, "new.txt")));
     Equal("local-value", await File.ReadAllTextAsync(Path.Combine(target, "PluginData", "local.cfg")));
-    False(File.Exists(Path.Combine(target, "old.txt")), "Il file vecchio non gestito doveva sparire.");
+    Equal("old", await File.ReadAllTextAsync(Path.Combine(target, "old.txt")));
     True(result.BackupDirectory is not null, "Backup non creato.");
     await UpdateEngine.RollbackAsync(result.BackupDirectory!, new LauncherLocations(ksp, launcherData), true);
     Equal("old", await File.ReadAllTextAsync(Path.Combine(target, "old.txt")));
@@ -241,6 +244,7 @@ static async Task GroupFailureRollsBack()
 
 static async Task GitHubSelectsStableRelease()
 {
+    using var signing = new TestSignatures();
     var manifest = CreateManifest(new string('a', 64));
     var manifestJson = JsonSerializer.Serialize(manifest, ManifestService.JsonOptions);
     var releasesJson = """
@@ -250,13 +254,14 @@ static async Task GitHubSelectsStableRelease()
             {"name":"KSR-Launcher-v1.0.1-win-x64.exe","browser_download_url":"https://downloads.example/launcher.exe"}
           ]},
           {"tag_name":"v1.0.0","draft":false,"prerelease":false,"assets":[
-            {"name":"ksr-release.json","browser_download_url":"https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0/ksr-release.json"}
+            {"name":"ksr-release.json","browser_download_url":"https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0/ksr-release.json"},
+            {"name":"ksr-release.json.sig","browser_download_url":"https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0/ksr-release.json.sig"}
           ]}
         ]
         """;
     using var http = new HttpClient(new FakeHttpHandler(request =>
-        request.RequestUri!.Host == "api.github.com" ? releasesJson : manifestJson));
-    var release = await new GitHubReleaseClient(http).ResolveAsync("fabioitaKSR/ksr-releases", "stable");
+        request.RequestUri!.Host == "api.github.com" ? releasesJson : request.RequestUri.AbsolutePath.EndsWith(".sig") ? Encoding.UTF8.GetString(signing.Sign(Encoding.UTF8.GetBytes(manifestJson))) : manifestJson));
+    var release = await new GitHubReleaseClient(http, signing.Verifier).ResolveAsync("fabioitaKSR/ksr-releases", "stable");
     Equal("v1.0.0", release.Tag);
     Equal("1.0.0", release.Manifest.Version);
     Equal("https://github.com/fabioitaKSR/ksr-releases/releases/download/v1.0.0", release.AssetsBaseUrl);
@@ -266,11 +271,12 @@ static Task LauncherReleaseRequiresManifestAndDraft()
 {
     var workflow = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "release-launcher.yml"));
     var publisher = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "publish-github-release.ps1"));
-    True(workflow.Contains("manifest_source_tag:", StringComparison.Ordinal), "La release richiede un manifest approvato.");
+    True(workflow.Contains("verify-release", StringComparison.Ordinal), "The draft must have valid local signatures.");
     True(workflow.Contains("validate-manifest", StringComparison.Ordinal), "Il manifest deve essere validato.");
     True(workflow.Contains("if (-not $release.draft)", StringComparison.Ordinal), "La release deve restare in bozza.");
     True(workflow.Contains("release-output/ksr-release.json", StringComparison.Ordinal), "Il manifest deve essere caricato con il launcher.");
-    True(workflow.Contains("$release.upload_url", StringComparison.Ordinal), "L'upload della bozza deve usare l'ID della release.");
+    True(workflow.Contains("contents: read", StringComparison.Ordinal), "CI must not replace signed release assets.");
+    True(publisher.Contains("verify-release", StringComparison.Ordinal), "The publisher must reject unsigned launcher assets.");
     True(publisher.Contains("[switch]$CreateDraft", StringComparison.Ordinal), "La creazione di una release deve essere esplicita.");
     True(publisher.Contains("draft = $true", StringComparison.Ordinal), "Una nuova release deve iniziare in bozza.");
     return Task.CompletedTask;
@@ -940,12 +946,16 @@ static async Task PlatformJoinCampaignIsAuthenticated()
 
 static async Task LauncherAutoUpdateDownloadsVerifiedRelease()
 {
+    using var signing = new TestSignatures();
     using var scope = new TempScope();
     var executable = Encoding.UTF8.GetBytes("verified launcher update");
     var sha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(executable)).ToLowerInvariant();
+    var metadata = JsonSerializer.SerializeToUtf8Bytes(new SignedLauncherMetadata(1,"KSRLauncher","0.1.2","KSR-Launcher-v0.1.2-win-x64.exe","https://downloads.example/launcher.exe",sha256,executable.Length), ManifestService.JsonOptions);
     using var http = new HttpClient(new ResponseHttpHandler(request =>
     {
         var path = request.RequestUri!.AbsoluteUri;
+        if (path.EndsWith("ksr-launcher-update.json.sig")) return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(signing.Sign(metadata)) };
+        if (path.EndsWith("ksr-launcher-update.json")) return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(metadata) };
         if (path.Contains("/releases?", StringComparison.Ordinal))
         {
             var json = "[{\"tag_name\":\"v0.1.3\",\"draft\":false,\"prerelease\":false,\"assets\":[" +
@@ -954,6 +964,8 @@ static async Task LauncherAutoUpdateDownloadsVerifiedRelease()
                        "{\"tag_name\":\"v0.1.2\",\"draft\":false,\"prerelease\":false,\"assets\":[" +
                        $"{{\"name\":\"KSR-Launcher-v0.1.2-win-x64.exe\",\"size\":{executable.Length},\"browser_download_url\":\"https://downloads.example/launcher.exe\"}}," +
                        "{\"name\":\"ksr-release.json\",\"browser_download_url\":\"https://downloads.example/ksr-release.json\"}," +
+                       "{\"name\":\"ksr-launcher-update.json\",\"browser_download_url\":\"https://downloads.example/ksr-launcher-update.json\"}," +
+                       "{\"name\":\"ksr-launcher-update.json.sig\",\"browser_download_url\":\"https://downloads.example/ksr-launcher-update.json.sig\"}," +
                        "{\"name\":\"SHA256SUMS.txt\",\"browser_download_url\":\"https://downloads.example/SHA256SUMS.txt\"}]}]";
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -969,7 +981,7 @@ static async Task LauncherAutoUpdateDownloadsVerifiedRelease()
             return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(executable) };
         throw new Exception("Unexpected auto-update endpoint.");
     }));
-    var service = new LauncherUpdateService(http);
+    var service = new LauncherUpdateService(http, signing.Verifier);
     var update = await service.CheckAsync("fabioitaKSR/ksr-releases", new Version(0, 1, 1));
     True(update is not null, "The newer launcher release was not detected.");
     Equal("v0.1.2", update!.Tag);

@@ -10,14 +10,18 @@ public sealed record LauncherUpdateRelease(
     string AssetName,
     string AssetUrl,
     string Sha256,
-    long Size);
+    long Size,
+    byte[]? SignedMetadata = null,
+    byte[]? MetadataSignature = null);
 
 public sealed class LauncherUpdateService
 {
     private readonly HttpClient _httpClient;
+    private readonly ReleaseSignatures _signatures;
 
-    public LauncherUpdateService(HttpClient? httpClient = null)
+    public LauncherUpdateService(HttpClient? httpClient = null, ReleaseSignatures? signatures = null)
     {
+        _signatures = signatures ?? new ReleaseSignatures();
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
         if (!_httpClient.DefaultRequestHeaders.UserAgent.Any())
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("KSR-Launcher", "0.1"));
@@ -48,18 +52,24 @@ public sealed class LauncherUpdateService
             var expectedName = $"KSR-Launcher-v{versionText}-win-x64.exe";
             var executable = release.Release.Assets.FirstOrDefault(asset =>
                 asset.Name.Equals(expectedName, StringComparison.OrdinalIgnoreCase));
-            var checksums = release.Release.Assets.FirstOrDefault(asset =>
-                asset.Name.Equals("SHA256SUMS.txt", StringComparison.OrdinalIgnoreCase));
+            var metadata = release.Release.Assets.SingleOrDefault(asset => asset.Name == "ksr-launcher-update.json");
+            var signature = release.Release.Assets.SingleOrDefault(asset => asset.Name == "ksr-launcher-update.json.sig");
             var manifest = release.Release.Assets.FirstOrDefault(asset =>
                 asset.Name.Equals("ksr-release.json", StringComparison.OrdinalIgnoreCase));
-            if (executable is null || checksums is null || manifest is null) continue;
-
-            var checksumText = await _httpClient.GetStringAsync(checksums.BrowserDownloadUrl, cancellationToken);
-            var sha256 = ParseChecksum(checksumText, executable.Name);
-            if (sha256 is null) continue;
+            if (executable is null || manifest is null) continue;
+            if (metadata is null || signature is null) throw new InvalidDataException("The launcher update is not signed.");
+            var payload = await ReleaseSignatures.DownloadBoundedAsync(_httpClient, metadata.BrowserDownloadUrl, 64 * 1024, cancellationToken);
+            var proof = await ReleaseSignatures.DownloadBoundedAsync(_httpClient, signature.BrowserDownloadUrl, 16 * 1024, cancellationToken);
+            _signatures.Verify(payload, proof);
+            var signed = JsonSerializer.Deserialize<SignedLauncherMetadata>(payload, ManifestService.JsonOptions)
+                ?? throw new InvalidDataException("Invalid signed launcher metadata.");
+            if (signed.SchemaVersion != 1 || signed.Product != "KSRLauncher" || signed.Version != versionText ||
+                signed.AssetName != executable.Name || signed.AssetUrl != executable.BrowserDownloadUrl || signed.Size != executable.Size ||
+                signed.Size <= 0 || signed.Sha256.Length != 64 || !signed.Sha256.All(Uri.IsHexDigit))
+                throw new InvalidDataException("The launcher release does not match its signed metadata.");
             return new LauncherUpdateRelease(
-                release.Version, release.Release.TagName, executable.Name, executable.BrowserDownloadUrl, sha256,
-                executable.Size);
+                release.Version, release.Release.TagName, executable.Name, executable.BrowserDownloadUrl, signed.Sha256,
+                executable.Size, payload, proof);
         }
         return null;
     }
@@ -71,6 +81,15 @@ public sealed class LauncherUpdateService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(release);
+        if (release.SignedMetadata is null || release.MetadataSignature is null)
+            throw new InvalidDataException("Unsigned launcher updates are not allowed.");
+        _signatures.Verify(release.SignedMetadata, release.MetadataSignature);
+        var signed = JsonSerializer.Deserialize<SignedLauncherMetadata>(release.SignedMetadata, ManifestService.JsonOptions);
+        if (signed is null || signed.SchemaVersion != 1 || signed.Product != "KSRLauncher" ||
+            signed.Version != release.Version.ToString(3) || signed.AssetName != release.AssetName ||
+            signed.AssetUrl != release.AssetUrl || signed.Sha256 != release.Sha256 || signed.Size != release.Size ||
+            !Uri.TryCreate(release.AssetUrl, UriKind.Absolute, out var assetUri) || assetUri.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidDataException("The launcher download authorization was changed.");
         if (Path.GetFileName(release.AssetName) != release.AssetName ||
             !release.AssetName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("The launcher update asset name is unsafe.");
@@ -93,10 +112,12 @@ public sealed class LauncherUpdateService
                 {
                     await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                     total += read;
+                    if (total > release.Size) throw new InvalidDataException("The launcher download exceeds its signed size.");
                     progress?.Report(total);
                 }
             }
             var actual = await PackageService.ComputeSha256Async(partial, cancellationToken);
+            if (new FileInfo(partial).Length != release.Size) throw new InvalidDataException("The launcher download size is incorrect.");
             if (!actual.Equals(release.Sha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("The downloaded launcher update failed SHA-256 verification.");
             File.Move(partial, destination, true);
