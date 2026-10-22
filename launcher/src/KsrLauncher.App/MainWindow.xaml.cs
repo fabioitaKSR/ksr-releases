@@ -91,6 +91,9 @@ public partial class MainWindow : Window
         PreviewKeyDown += (_, args) => { if (_blockingOperationInProgress) args.Handled = true; };
         _downloadCountdownTimer.Tick += (_, _) => RefreshDownloadCountdown();
         _ticketRefreshTimer.Tick += RenewGameTickets_Tick;
+        BetaAccess.Changed += UpdateBetaButton;
+        SizeChanged += (_, _) => HeaderActions.Width = ActualWidth < 1200 ? 202 : double.NaN;
+        Closed += (_, _) => BetaAccess.Changed -= UpdateBetaButton;
     }
 
     private int ShowBlockingOperation(string title, string detail)
@@ -165,6 +168,7 @@ public partial class MainWindow : Window
             DateTimeOffset.UtcNow - _lastActivationCampaignRefreshUtc < TimeSpan.FromSeconds(3)) return;
         _lastActivationCampaignRefreshUtc = DateTimeOffset.UtcNow;
         await RefreshCampaignsFromServerAsync(false);
+        await BetaAccess.RefreshAsync();
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -322,7 +326,9 @@ public partial class MainWindow : Window
         var overlayGeneration = ShowBlockingOperation("CHECKING TEST GAME", "Checking the selected test installation...");
         try
         {
-            var release = await CreateComponentReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
+            if (await BetaAccess.RequireAsync("ksr-full") is null) return;
+            using var privateRelease = new PrivateBetaReleaseClient(LauncherSession.ServerUrl!, "ksr-full", LauncherSession.AccessToken!);
+            var release = await privateRelease.ResolveAsync();
             ShowReleaseComponentVersions(release.Manifest);
             release.Manifest.Components = release.Manifest.Components
                 .Where(component => string.Equals(component.TargetKind, "ksp", StringComparison.OrdinalIgnoreCase))
@@ -346,7 +352,7 @@ public partial class MainWindow : Window
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
             var dataRoot = TestInstallationPaths.GetLauncherDataRoot(
                 testRoot!, LauncherSettingsStore.LoadKspRoot(), launcherData);
-            var result = await new UpdateEngine().RunAsync(release.Manifest,
+            var result = await new UpdateEngine(new PackageService(privateRelease.Http)).RunAsync(release.Manifest,
                 new LauncherLocations(testRoot!, dataRoot), release.AssetsBaseUrl,
                 true, UpdatePolicy.VerifyAllFiles, progress);
             ModUpdateProgressBar.IsIndeterminate = false;
@@ -1759,6 +1765,7 @@ public partial class MainWindow : Window
 
     private async Task ApplySessionAsync(KsrLoginSession session)
     {
+        BetaAccess.Clear();
         _authGeneration++;
         var serverUrl = LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server has not been configured.");
         var campaigns = await _platformClient.GetCampaignsAsync(serverUrl, session.AccessToken);
@@ -1782,6 +1789,7 @@ public partial class MainWindow : Window
         }
         try { await RefreshGameTicketsAsync(session.AccessToken, session.User.Id); }
         catch (Exception exception) { ShowAuthFeedback($"Signed in, but game tickets could not be refreshed: {exception.Message}"); }
+        await BetaAccess.RefreshAsync();
         _ticketRefreshTimer.Start();
         UpdateSessionVisuals();
         await RefreshServerStatusAsync();
@@ -1891,6 +1899,7 @@ public partial class MainWindow : Window
     private void SignOut_Click(object sender, RoutedEventArgs e)
     {
         _authGeneration++;
+        BetaAccess.Clear();
         _ticketRefreshTimer.Stop();
         if (IsValidKspRoot(_kspRoot))
         {
@@ -1951,6 +1960,18 @@ public partial class MainWindow : Window
         return false;
     }
 
+    private void UpdateBetaButton()
+    {
+        BetaButton.Visibility = LauncherSession.IsAuthenticated && BetaAccess.Modules.Count > 0
+            ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void Beta_Click(object sender, RoutedEventArgs e)
+    {
+        if (!await BetaAccess.RefreshAsync() || BetaAccess.Modules.Count == 0) return;
+        new BetaModulesWindow { Owner = this }.ShowDialog();
+    }
+
     private void Data_Click(object sender, RoutedEventArgs e)
     {
         new CampaignDataWindow { Owner = this }.ShowDialog();
@@ -1960,6 +1981,8 @@ public partial class MainWindow : Window
     {
         var dialog = new ServerSettingsWindow(LauncherSession.ServerUrl) { Owner = this };
         if (dialog.ShowDialog() != true) return;
+        if (!string.Equals(LauncherSession.ServerUrl, dialog.ServerUrl, StringComparison.OrdinalIgnoreCase))
+            SignOut_Click(this, new RoutedEventArgs());
         LauncherSession.ServerUrl = dialog.ServerUrl;
         UpdateSessionVisuals();
         await RefreshServerStatusAsync();
@@ -1967,6 +1990,7 @@ public partial class MainWindow : Window
 
     private void UpdateSessionVisuals()
     {
+        UpdateBetaButton();
         var signedIn = LauncherSession.IsAuthenticated;
         AccountPanel.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
         LoginPanel.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
@@ -2038,8 +2062,12 @@ internal static class LauncherSession
     public static string? CampaignName { get; set; }
     public static bool IsAuthenticated => !string.IsNullOrWhiteSpace(AccessToken);
 
+    private static readonly SemaphoreSlim TokenRefreshGate = new(1, 1);
     public static async Task EnsureFreshAccessTokenAsync(string serverUrl)
     {
+        await TokenRefreshGate.WaitAsync();
+        try
+        {
         if (!string.Equals(serverUrl.TrimEnd('/'), ServerUrl?.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Sign in to the selected KSR server first.");
         if (!IsAuthenticated)
@@ -2049,8 +2077,12 @@ internal static class LauncherSession
         if (string.IsNullOrWhiteSpace(RefreshToken))
             throw new InvalidOperationException("Your session has expired. Sign in again.");
 
+        var refreshUser = UserId;
         var oldRefreshToken = RefreshToken;
-        var refreshed = await new KsrPlatformClient().RefreshAsync(serverUrl, oldRefreshToken);
+        using var refreshHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+        var refreshed = await new KsrPlatformClient(refreshHttp).RefreshAsync(serverUrl, oldRefreshToken);
+        if (!IsAuthenticated || UserId != refreshUser || RefreshToken != oldRefreshToken || ServerUrl != serverUrl)
+            throw new InvalidOperationException("The signed-in account changed.");
         var remembered = LauncherCredentialStore.Load();
         if (remembered is not null &&
             string.Equals(remembered.ServerUrl.TrimEnd('/'), serverUrl.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) &&
@@ -2060,6 +2092,8 @@ internal static class LauncherSession
         RefreshToken = refreshed.RefreshToken;
         AccessTokenExpiresAtUtc = DateTimeOffset.UtcNow.AddSeconds(refreshed.ExpiresIn);
         CanAccessTestGame = refreshed.User.CanAccessTestGame;
+        }
+        finally { TokenRefreshGate.Release(); }
     }
 }
 

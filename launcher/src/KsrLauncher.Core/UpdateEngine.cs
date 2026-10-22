@@ -83,7 +83,7 @@ public sealed class UpdateEngine(PackageService? packageService = null)
             // Se la preparazione fallisce prima della prima sostituzione, l'installazione
             // e lo stato esistente non sono stati toccati e non devono essere ripristinati.
             if (journal.Entries.Count > 0)
-                await RollbackEntriesAsync(journal, locations, backupRoot, cancellationToken);
+                await RollbackEntriesAsync(journal, locations, backupRoot, CancellationToken.None);
             throw;
         }
         finally

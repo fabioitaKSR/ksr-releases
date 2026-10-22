@@ -27,7 +27,9 @@ public sealed record KsrCampaign(
     long? MasterSaveSize,
     int? BaselineSchemaVersion = null,
     string? BaselineSha256 = null,
-    double? CampaignStartUt = null);
+    double? CampaignStartUt = null,
+    string? EndDataChoice = null,
+    bool DataChoiceSupported = true);
 
 public sealed record KsrGameTicket(string Token, string CampaignCode, int ExpiresIn, double? ExpiresAt);
 
@@ -43,6 +45,7 @@ public enum CampaignMemberDataDisposition
 public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 {
     public const string ProductionServerUrl = "https://play.kerbalspacerace.net";
+    public static Uri BuildPrivacyNoticeUri(string serverUrl) => new(ValidateServerUri(serverUrl), "/privacy");
 
     private readonly HttpClient _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
 
@@ -209,6 +212,28 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         return campaigns.EnumerateArray().Select(ReadCampaign).ToList();
     }
 
+    public async Task<IReadOnlyList<KsrCampaign>> GetDataCampaignsAsync(
+        string serverUrl, string accessToken, CancellationToken cancellationToken = default)
+    {
+        var baseUri = ValidateServerUri(serverUrl);
+        using var request = AuthorizedRequest(HttpMethod.Get, new Uri(baseUri, "/api/v1/me/data-campaigns"), accessToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Older servers have no preference endpoint. Keep their real campaigns
+            // readable and show the authorized legacy race without inventing a choice.
+            var campaigns = (await GetCampaignsAsync(serverUrl, accessToken, cancellationToken))
+                .Select(c => c with { DataChoiceSupported = false }).ToList();
+            var modules = await new BetaModulesClient(_httpClient).GetAsync(serverUrl, accessToken, cancellationToken);
+            if (modules.Any(m => m.Id == "ksr-full") && !campaigns.Any(c => c.CampaignCode.Equals("test1", StringComparison.OrdinalIgnoreCase)))
+                campaigns.Add(new KsrCampaign("test1", "KSR Full Mode (test1)", "unknown", "tester", null, null, null,
+                    DataChoiceSupported: false));
+            return campaigns;
+        }
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        return RequiredArray(Unwrap(document.RootElement), "campaigns").EnumerateArray().Select(ReadCampaign).ToList();
+    }
+
     public async Task<IReadOnlyList<KsrCampaignMember>> GetCampaignMembersAsync(
         string serverUrl, string accessToken, string campaignCode, CancellationToken cancellationToken = default)
     {
@@ -328,12 +353,40 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         return campaign;
     }
 
+    public Task<KsrCampaign> JoinCampaignWithDataChoiceAsync(
+        string serverUrl, string accessToken, string campaignCode, string endDataChoice,
+        CancellationToken cancellationToken = default) =>
+        JoinCampaignAsync(serverUrl, accessToken, campaignCode, cancellationToken, endDataChoice);
+
+    public async Task<KsrCampaign> SetCampaignDataChoiceAsync(
+        string serverUrl, string accessToken, string campaignCode, string endDataChoice,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateDataChoice(endDataChoice);
+        using var request = AuthorizedRequest(HttpMethod.Put,
+            new Uri(ValidateServerUri(serverUrl), $"/api/v1/campaigns/{Uri.EscapeDataString(campaignCode)}/data-preference"), accessToken);
+        request.Content = JsonContent.Create(new { endDataChoice, privacyNoticeVersion = CampaignPrivacyNoticeVersion });
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var campaign = ReadCampaign(Unwrap(document.RootElement).GetProperty("campaign"));
+        if (campaign.CampaignCode != campaignCode || campaign.EndDataChoice != endDataChoice)
+            throw new InvalidDataException("The server did not confirm your data choice. Please reload and try again.");
+        return campaign;
+    }
+
+    public const string CampaignPrivacyNoticeVersion = "placeholder-2026-10-21";
+    private static void ValidateDataChoice(string choice)
+    {
+        if (choice is not ("delete" or "retain")) throw new ArgumentException("Choose Delete my data or Keep my data.");
+    }
+
     public async Task<KsrCampaign> JoinCampaignAsync(
         string serverUrl,
         string accessToken,
         string campaignCode,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, string? endDataChoice = null)
     {
+        ValidateDataChoice(endDataChoice ?? "");
         var baseUri = ValidateServerUri(serverUrl);
         var normalizedCode = campaignCode.Trim();
         if (normalizedCode.Length < 5 || normalizedCode.Length > 100 ||
@@ -343,13 +396,18 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             HttpMethod.Post,
             new Uri(baseUri, $"/api/v1/campaigns/{Uri.EscapeDataString(normalizedCode)}/join"),
             accessToken);
+        request.Content = JsonContent.Create(new { endDataChoice, privacyNoticeVersion = CampaignPrivacyNoticeVersion });
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         using var document = await ReadResponseAsync(response, cancellationToken);
         var root = Unwrap(document.RootElement);
         var campaign = root.TryGetProperty("campaign", out var campaignElement) && campaignElement.ValueKind == JsonValueKind.Object
             ? campaignElement
             : root;
-        return ReadCampaign(campaign);
+        var result = ReadCampaign(campaign);
+        if (!result.CampaignCode.Equals(normalizedCode, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The server confirmed a different campaign.");
+        ValidateDataChoice(result.EndDataChoice ?? "");
+        return result;
     }
 
     public async Task<CampaignBaselinePackage> DownloadCampaignArtifactsAsync(
@@ -499,7 +557,9 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         OptionalInt64(item, "masterSaveSize"),
         OptionalInt32(item, "baselineSchemaVersion"),
         OptionalString(item, "baselineSha256"),
-        OptionalDouble(item, "campaignStartUt"));
+        OptionalDouble(item, "campaignStartUt"),
+        OptionalString(item, "endDataChoice"),
+        item.TryGetProperty("endDataChoice", out _));
 
     private static HttpRequestMessage AuthorizedRequest(HttpMethod method, Uri uri, string accessToken)
     {

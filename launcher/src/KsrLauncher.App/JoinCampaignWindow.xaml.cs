@@ -31,11 +31,13 @@ public partial class JoinCampaignWindow : Window
 
     private async void Join_Click(object sender, RoutedEventArgs e)
     {
+        var choice = new CampaignDataChoiceWindow(_serverUrl) { Owner = this };
+        if (choice.ShowDialog() != true) return;
         SetBusy(true);
         try
         {
-            JoinedCampaign = await _client.JoinCampaignAsync(
-                _serverUrl, _accessToken, CampaignIdTextBox.Text);
+            JoinedCampaign = await _client.JoinCampaignWithDataChoiceAsync(
+                _serverUrl, _accessToken, CampaignIdTextBox.Text, choice.Choice!);
             MessageBox.Show(
                 $"You joined {JoinedCampaign.Name}.\n\nCampaign ID: {JoinedCampaign.CampaignCode}\nRole: {JoinedCampaign.Role.ToUpperInvariant()}",
                 "Campaign Joined", MessageBoxButton.OK, MessageBoxImage.Information);

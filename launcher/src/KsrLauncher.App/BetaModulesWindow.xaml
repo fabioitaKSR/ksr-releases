@@ -1,0 +1,33 @@
+<Window x:Class="KsrLauncher.App.BetaModulesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Beta modules" Width="1000" Height="680" MinWidth="760" MinHeight="560"
+        MaxWidth="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Width}"
+        MaxHeight="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Height}"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner" Background="{StaticResource BackgroundBrush}">
+    <Grid Margin="28">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock Text="BETA" Style="{StaticResource SectionTitle}"/>
+        <TextBlock Grid.Row="1" Text="Select a beta to manage its installation." Foreground="{StaticResource MutedBrush}" Margin="0,8,0,22"/>
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="ModulesList">
+                <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Margin="0,0,14,14" Padding="22" HorizontalContentAlignment="Stretch" Click="OpenModule_Click" Tag="{Binding Id}">
+                            <StackPanel MinHeight="105">
+                                <TextBlock Text="{Binding Label}" Foreground="{StaticResource OrangeBrush}" FontSize="22" FontWeight="Bold" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Description}" Margin="0,10,0,10" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}"/>
+                                <TextBlock Text="{Binding Version}" FontSize="12"/>
+                            </StackPanel>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="REFRESH" Click="Refresh_Click" Margin="0,0,10,0"/>
+            <Button Content="CLOSE" Click="Close_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -42,6 +42,23 @@ public static class LauncherSettingsStore
         Write(settings, settingsPath);
     }
 
+    public static string? LoadBetaKspRoot(string moduleId, string? settingsPath = null)
+    {
+        BetaModulesClient.ValidateId(moduleId);
+        if (moduleId == "ksr-full") return LoadTestKspRoot(settingsPath);
+        return TryRead(settingsPath).BetaKspRoots.GetValueOrDefault(moduleId);
+    }
+
+    public static void SaveBetaKspRoot(string moduleId, string? root, string? settingsPath = null)
+    {
+        BetaModulesClient.ValidateId(moduleId);
+        var settings = Read(settingsPath);
+        if (moduleId == "ksr-full") settings.TestKspRoot = root is null ? null : Path.GetFullPath(root);
+        else if (root is null) settings.BetaKspRoots.Remove(moduleId);
+        else settings.BetaKspRoots[moduleId] = Path.GetFullPath(root);
+        Write(settings, settingsPath);
+    }
+
     private static LauncherSettings Read(string? settingsPath)
     {
         var path = settingsPath ?? DefaultSettingsPath;
@@ -68,6 +85,7 @@ public static class LauncherSettingsStore
 
     private sealed class LauncherSettings
     {
+        public Dictionary<string, string> BetaKspRoots { get; set; } = new();
         public string? ServerUrl { get; set; }
         public string? KspRoot { get; set; }
         public string? TestKspRoot { get; set; }

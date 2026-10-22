@@ -7,6 +7,16 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("DATA includes legacy test1 only with server authorization", CampaignPrivacyTests.LegacyDataListUsesServerAuthorization),
+    ("Campaign data choices require a session, an explicit choice and server confirmation", CampaignPrivacyTests.TransportAndServerConfirmation),
+    ("Cancelled beta update rolls back installed components", BetaModuleTests.CancellationStillRollsBackInstalledComponents),
+    ("Beta catalogs isolate accounts and support six modules", BetaModuleTests.CatalogAndAccountIsolation),
+    ("Beta settings preserve Full Mode and other module paths", BetaModuleTests.SettingsPreserveLegacyAndSeparateModules),
+    ("Private beta transport requires signature and confines credentials", BetaModuleTests.PrivateTransportVerifiesAndDoesNotFollowPublicAssets),
+    ("ZIP budgets reject metadata before writing and accept exact limits", PackageLimitTests.MetadataBudgetsRejectBeforeWriting),
+    ("ZIP actual bytes cannot bypass forged metadata", PackageLimitTests.ActualBytesCannotBypassZipMetadata),
+    ("Rejected oversized ZIP preserves installed content", PackageLimitTests.RejectedZipPreservesInstalledContent),
+    ("Package download counts bytes despite a false HTTP length", PackageLimitTests.DownloadChecksActualBytesDespiteFalseHeader),
     ("Internal catalog requires trusted signature and HTTPS packages", SecurityTests.InternalCatalogRequiresTrustedSignatureAndHttpsPackages),
     ("Signatures reject tampering and untrusted keys", SecurityTests.SignaturesRejectTamperingAndOtherKeys),
     ("Unsafe ids cannot change the filesystem", SecurityTests.RejectUnsafeIdsBeforeFilesystemChanges),
@@ -469,7 +479,7 @@ static Task TestGameSettingsRequireServerPermission()
 {
     var settings = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "ServerSettingsWindow.xaml.cs"));
     var main = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml.cs"));
-    True(settings.Contains("if (!LauncherSession.CanAccessTestGame)", StringComparison.Ordinal),
+    True(settings.Contains("if (!HasModuleAccess)", StringComparison.Ordinal) && settings.Contains("IsFullMode ? LauncherSession.CanAccessTestGame", StringComparison.Ordinal),
         "Settings must hide test game controls for other users.");
     True(settings.Contains("TestGameTitleRow", StringComparison.Ordinal) &&
          settings.Contains("LaunchTestKspButton.Visibility = Visibility.Collapsed", StringComparison.Ordinal),
@@ -935,11 +945,11 @@ static async Task PlatformJoinCampaignIsAuthenticated()
         Equal("Bearer", request.Headers.Authorization!.Scheme);
         Equal("access-1", request.Headers.Authorization.Parameter!);
         requestChecked = true;
-        return "{\"ok\":true,\"campaign\":{\"campaignCode\":\"KSR-20260822-ABC123\",\"name\":\"Lunar Race\",\"status\":\"active\",\"role\":\"player\",\"nationId\":null,\"masterSaveSha256\":\"abc123\",\"masterSaveSize\":12345}}";
+        return "{\"ok\":true,\"campaign\":{\"campaignCode\":\"KSR-20260822-ABC123\",\"name\":\"Lunar Race\",\"status\":\"active\",\"role\":\"player\",\"nationId\":null,\"masterSaveSha256\":\"abc123\",\"masterSaveSize\":12345,\"endDataChoice\":\"delete\"}}";
     }));
 
-    var campaign = await new KsrPlatformClient(http).JoinCampaignAsync(
-        "https://ksr.example", "access-1", "KSR-20260822-ABC123");
+    var campaign = await new KsrPlatformClient(http).JoinCampaignWithDataChoiceAsync(
+        "https://ksr.example", "access-1", "KSR-20260822-ABC123", "delete");
     True(requestChecked, "The campaign join endpoint was not called.");
     Equal("KSR-20260822-ABC123", campaign.CampaignCode);
     Equal("player", campaign.Role);
@@ -1561,3 +1571,4 @@ sealed class ResponseHttpHandler(Func<HttpRequestMessage, HttpResponseMessage> r
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
         Task.FromResult(responseFactory(request));
 }
+

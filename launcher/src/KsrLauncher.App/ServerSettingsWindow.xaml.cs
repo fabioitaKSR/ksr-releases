@@ -10,17 +10,41 @@ namespace KsrLauncher.App;
 
 public partial class ServerSettingsWindow : Window
 {
+    private readonly KsrBetaModule? _module;
+    private string ModuleId => _module?.Id ?? "ksr-full";
+    private bool IsFullMode => ModuleId == "ksr-full";
+    private bool HasModuleAccess => _module is not null && (IsFullMode ? LauncherSession.CanAccessTestGame :
+        BetaAccess.Modules.Any(m => m.Id == ModuleId));
+    private bool _accessRevoked;
+    private readonly System.Threading.CancellationTokenSource _operationCancellation = new();
     private string? _testKspRoot;
     private bool _maintenanceInProgress;
     public string? ServerUrl { get; private set; }
 
-    public ServerSettingsWindow(string? currentServerUrl)
+    public ServerSettingsWindow(string? currentServerUrl, KsrBetaModule? module = null)
     {
+        _module = module;
         InitializeComponent();
-        _testKspRoot = LauncherSettingsStore.LoadTestKspRoot();
-        if (!LauncherSession.CanAccessTestGame)
+        _testKspRoot = LauncherSettingsStore.LoadBetaKspRoot(ModuleId);
+        if (_module is not null)
         {
-            Height = 295;
+            Title = _module.Label;
+            ServerSection.Visibility = Visibility.Collapsed;
+            ServerUrlLabel.Visibility = Visibility.Collapsed;
+            ServerUrlTextBox.Visibility = Visibility.Collapsed;
+            ServerDescription.Visibility = Visibility.Collapsed;
+            foreach (var row in new[] { ServerTitleRow, ServerTitleGapRow, ServerLabelRow,
+                ServerLabelGapRow, ServerUrlRow, ServerDescriptionRow, ServerBottomGapRow }) row.Height = new GridLength(0);
+            TestGameTitle.Text = _module.Label.ToUpperInvariant();
+            TestGameDescription.Text = _module.Description +
+                (IsFullMode ? " This installation uses the existing test1 campaign." : string.Empty);
+            LaunchTestKspButton.Content = "LAUNCH KSP";
+        }
+        BetaAccess.Changed += AccessChanged;
+        Closed += (_, _) => { BetaAccess.Changed -= AccessChanged; _operationCancellation.Cancel(); };
+        if (!HasModuleAccess)
+        {
+            Height = 380;
             foreach (var row in new[] { TestGameTitleRow, TestGameTitleGapRow, TestGamePathRow,
                          TestGameDescriptionRow, TestGameMaintenanceRow, TestGameMaintenanceGapRow,
                          TestGameSupportRow, TestGameSupportGapRow, TestGameProgressRow, TestGameBottomGapRow })
@@ -34,13 +58,49 @@ public partial class ServerSettingsWindow : Window
         }
         RefreshTestKspPath();
         ServerUrlTextBox.Text = currentServerUrl ?? string.Empty;
-        ServerUrlTextBox.Focus();
+        if (_module is null) ServerUrlTextBox.Focus();
         ServerUrlTextBox.CaretIndex = ServerUrlTextBox.Text.Length;
-        Closing += (_, e) => { if (_maintenanceInProgress) e.Cancel = true; };
+        Closing += (_, e) => { if (_maintenanceInProgress && !_accessRevoked) e.Cancel = true; };
     }
 
-    private void Save_Click(object sender, RoutedEventArgs e)
+    private void AccessChanged()
     {
+        if (HasModuleAccess) return;
+        _accessRevoked = true;
+        _operationCancellation.Cancel();
+        _testKspRoot = null;
+        TestKspPathTextBox.Text = string.Empty;
+        if (_module is not null) Close();
+        else
+        {
+            Height = 380;
+            foreach (var row in new[] { TestGameTitleRow, TestGameTitleGapRow, TestGamePathRow,
+                TestGameDescriptionRow, TestGameMaintenanceRow, TestGameMaintenanceGapRow,
+                TestGameSupportRow, TestGameSupportGapRow, TestGameProgressRow, TestGameBottomGapRow })
+                row.Height = new GridLength(0);
+            foreach (var element in new FrameworkElement[] { TestGameTitle, TestGamePath, TestGameDescription,
+                TestGameMaintenance, TestGameSupport, LaunchTestKspButton }) element.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async Task<bool> CheckAccessAsync()
+    {
+        if (!string.Equals(ServerUrlTextBox.Text.Trim().TrimEnd('/'),
+                LauncherSession.ServerUrl?.TrimEnd('/'), StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show("Save the server setting and sign in to that server before managing a beta.",
+                "KSR Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+        var module = await BetaAccess.RequireAsync(ModuleId);
+        if (module is not null && !_accessRevoked) return true;
+        if (_module is null) RefreshTestKspPath();
+        return false;
+    }
+
+    private async void Save_Click(object sender, RoutedEventArgs e)
+    {
+        if (_module is not null && !await CheckAccessAsync()) return;
         if (!TrySaveSettings()) return;
         DialogResult = true;
     }
@@ -61,14 +121,17 @@ public partial class ServerSettingsWindow : Window
             return false;
         }
         ServerUrl = value;
-        LauncherSettingsStore.SaveServerAndTestKspRoot(value,
-            LauncherSession.CanAccessTestGame ? _testKspRoot : LauncherSettingsStore.LoadTestKspRoot());
+        if (_module is not null)
+            LauncherSettingsStore.SaveBetaKspRoot(ModuleId, _testKspRoot);
+        else
+            LauncherSettingsStore.SaveServerAndTestKspRoot(value,
+                HasModuleAccess ? _testKspRoot : LauncherSettingsStore.LoadTestKspRoot());
         return true;
     }
 
     private void BrowseTestKsp_Click(object sender, RoutedEventArgs e)
     {
-        if (!LauncherSession.CanAccessTestGame) return;
+        if (!HasModuleAccess) return;
         var picker = new OpenFolderDialog { Title = "Select the test Kerbal Space Program folder", Multiselect = false };
         if (!string.IsNullOrWhiteSpace(_testKspRoot) && Directory.Exists(_testKspRoot))
             picker.InitialDirectory = _testKspRoot;
@@ -87,7 +150,7 @@ public partial class ServerSettingsWindow : Window
 
     private void ClearTestKsp_Click(object sender, RoutedEventArgs e)
     {
-        if (!LauncherSession.CanAccessTestGame) return;
+        if (!HasModuleAccess) return;
         _testKspRoot = null;
         RefreshTestKspPath();
     }
@@ -96,18 +159,20 @@ public partial class ServerSettingsWindow : Window
     {
         TestKspPathTextBox.Text = _testKspRoot ?? "No test installation selected";
         TestKspPathTextBox.ToolTip = _testKspRoot;
-        LaunchTestKspButton.IsEnabled = LauncherSession.CanAccessTestGame && !string.IsNullOrWhiteSpace(_testKspRoot) &&
+        LaunchTestKspButton.IsEnabled = HasModuleAccess && !string.IsNullOrWhiteSpace(_testKspRoot) &&
             File.Exists(Path.Combine(_testKspRoot, "KSP_x64.exe")) &&
             Directory.Exists(Path.Combine(_testKspRoot, "GameData"));
         UpgradeTestKspButton.IsEnabled = LaunchTestKspButton.IsEnabled;
         RepairTestKspButton.IsEnabled = LaunchTestKspButton.IsEnabled;
-        SendTestSaveButton.IsEnabled = LaunchTestKspButton.IsEnabled;
-        SendTestLogButton.IsEnabled = LaunchTestKspButton.IsEnabled;
+        SendTestSaveButton.IsEnabled = IsFullMode && LaunchTestKspButton.IsEnabled;
+        SendTestLogButton.IsEnabled = IsFullMode && LaunchTestKspButton.IsEnabled;
+        TestGameSupport.Visibility = IsFullMode && HasModuleAccess ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void SendTestSave_Click(object sender, RoutedEventArgs e)
+    private async void SendTestSave_Click(object sender, RoutedEventArgs e)
     {
-        if (!LauncherSession.CanAccessTestGame || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
+        if (!HasModuleAccess || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
+        if (!IsFullMode || !await CheckAccessAsync()) return;
         try
         {
             var picker = new OpenFolderDialog
@@ -126,9 +191,10 @@ public partial class ServerSettingsWindow : Window
         }
     }
 
-    private void SendTestLog_Click(object sender, RoutedEventArgs e)
+    private async void SendTestLog_Click(object sender, RoutedEventArgs e)
     {
-        if (!LauncherSession.CanAccessTestGame || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
+        if (!HasModuleAccess || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
+        if (!IsFullMode || !await CheckAccessAsync()) return;
         try
         {
             var log = TestGameSupportPaths.LogFile(_testKspRoot);
@@ -154,7 +220,7 @@ public partial class ServerSettingsWindow : Window
 
     private async void RepairTestKsp_Click(object sender, RoutedEventArgs e)
     {
-        if (!LauncherSession.CanAccessTestGame) return;
+        if (!HasModuleAccess) return;
         if (MessageBox.Show("Reinstall all official KSR game components in the selected test installation?",
                 "Repair test game", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         await MaintainTestKspAsync(UpdatePolicy.ReinstallAll);
@@ -162,7 +228,7 @@ public partial class ServerSettingsWindow : Window
 
     private async Task MaintainTestKspAsync(UpdatePolicy policy)
     {
-        if (!LauncherSession.CanAccessTestGame || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot) || !UpgradeTestKspButton.IsEnabled) return;
+        if (!HasModuleAccess || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot) || !UpgradeTestKspButton.IsEnabled) return;
         if (Process.GetProcessesByName("KSP_x64").Length > 0)
         {
             MessageBox.Show("Close KSP before updating the test installation.",
@@ -170,6 +236,7 @@ public partial class ServerSettingsWindow : Window
             return;
         }
 
+        if (!await CheckAccessAsync()) return;
         _maintenanceInProgress = true;
         BrowseTestKspButton.IsEnabled = false;
         ClearTestKspButton.IsEnabled = false;
@@ -186,8 +253,8 @@ public partial class ServerSettingsWindow : Window
         TestKspMaintenanceStatus.Text = "Checking official KSR release...";
         try
         {
-            var release = await new GitHubReleaseClient(internalSignedCatalog:
-                Environment.GetEnvironmentVariable("KSR_INTERNAL_SIGNED_CATALOG")).ResolveAsync("fabioitaKSR/ksr-releases");
+            using var privateRelease = new PrivateBetaReleaseClient(ServerUrlTextBox.Text.Trim(), ModuleId, LauncherSession.AccessToken!);
+            var release = await privateRelease.ResolveAsync(_operationCancellation.Token);
             release.Manifest.Components = release.Manifest.Components
                 .Where(component => string.Equals(component.TargetKind, "ksp", StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -206,9 +273,9 @@ public partial class ServerSettingsWindow : Window
                 TestKspMaintenanceStatus.Text = $"{value.Phase} {value.ComponentId}  {percent:0}%";
             });
             var launcherData = GetTestLauncherDataRoot(_testKspRoot);
-            var result = await new UpdateEngine().RunAsync(release.Manifest,
+            var result = await new UpdateEngine(new PackageService(privateRelease.Http)).RunAsync(release.Manifest,
                 new LauncherLocations(_testKspRoot, launcherData), release.AssetsBaseUrl,
-                true, policy, progress);
+                true, policy, progress, _operationCancellation.Token);
             TestKspMaintenanceProgress.IsIndeterminate = false;
             TestKspMaintenanceProgress.Value = 100;
             TestKspMaintenanceStatus.Foreground = (Brush)FindResource("GreenBrush");
@@ -216,7 +283,7 @@ public partial class ServerSettingsWindow : Window
                 ? $"{(policy == UpdatePolicy.ReinstallAll ? "Repair" : "Upgrade")} complete: {result.Plan.Components.Count(item => item.NeedsUpdate)} components."
                 : "All KSR game components are up to date.";
         }
-        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException or OperationCanceledException)
         {
             TestKspMaintenanceProgress.IsIndeterminate = false;
             TestKspMaintenanceStatus.Foreground = (Brush)FindResource("ErrorBrush");
@@ -233,22 +300,38 @@ public partial class ServerSettingsWindow : Window
         }
     }
 
-    private static string GetTestLauncherDataRoot(string testKspRoot)
+    private string GetTestLauncherDataRoot(string testKspRoot)
     {
         var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
-        return TestInstallationPaths.GetLauncherDataRoot(testKspRoot, LauncherSettingsStore.LoadKspRoot(), launcherData);
+        if (IsFullMode) return TestInstallationPaths.GetLauncherDataRoot(testKspRoot, LauncherSettingsStore.LoadKspRoot(), launcherData);
+        var pathKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(testKspRoot).ToUpperInvariant())))[..16];
+        return Path.Combine(launcherData, "beta", ModuleId, pathKey);
     }
 
     private async void LaunchTestKsp_Click(object sender, RoutedEventArgs e)
     {
-        if (!LauncherSession.CanAccessTestGame || string.IsNullOrWhiteSpace(_testKspRoot) || !LaunchTestKspButton.IsEnabled) return;
+        if (!HasModuleAccess || string.IsNullOrWhiteSpace(_testKspRoot) || !LaunchTestKspButton.IsEnabled) return;
         if (Process.GetProcessesByName("KSP_x64").Length > 0)
         {
             MessageBox.Show("Close the running KSP game before starting the test installation.",
                 "KSR Settings", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        if (!TrySaveSettings()) return;
+        if (!await CheckAccessAsync() || !TrySaveSettings()) return;
+        if (!IsFullMode)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(Path.Combine(_testKspRoot, "KSP_x64.exe")) { WorkingDirectory = _testKspRoot, UseShellExecute = true });
+                DialogResult = true;
+            }
+            catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException)
+            {
+                MessageBox.Show("The beta installation could not be launched.\n\n" + exception.Message,
+                    Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            return;
+        }
         if (!LauncherSession.IsAuthenticated || string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
         {
             MessageBox.Show("Sign in before launching the test game so it can connect to test1.",
