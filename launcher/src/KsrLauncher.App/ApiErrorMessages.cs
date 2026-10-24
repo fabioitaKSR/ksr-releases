@@ -17,6 +17,8 @@ internal static class ApiErrorMessages
 
     public static string ForRegistration(KsrApiException exception) => exception.Code switch
     {
+        "privacy_notice_required" => "Read and acknowledge the current privacy notice before creating an account.",
+        "age_confirmation_required" => "You must confirm that you are at least 16 years old to create an account.",
         "invalid_username" => "Choose a valid username containing at least 3 characters.",
         "invalid_email" => "Enter a valid email address.",
         "weak_password" => "Choose a stronger password containing at least 8 characters.",

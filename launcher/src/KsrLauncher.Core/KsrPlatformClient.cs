@@ -44,6 +44,7 @@ public enum CampaignMemberDataDisposition
 
 public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 {
+    public const string PrivacyNoticeVersion = "privacy-part1-2026-10-23";
     public const string ProductionServerUrl = "https://play.kerbalspacerace.net";
     public static Uri BuildPrivacyNoticeUri(string serverUrl) => new(ValidateServerUri(serverUrl), "/privacy");
 
@@ -83,6 +84,8 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         string username,
         string email,
         string password,
+        bool age16Confirmed,
+        bool privacyNoticeAccepted,
         CancellationToken cancellationToken = default)
     {
         var baseUri = ValidateServerUri(serverUrl);
@@ -92,10 +95,15 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             throw new ArgumentException("Enter a valid email address.");
         if (password.Length < 8)
             throw new ArgumentException("Password must contain at least 8 characters.");
+        if (!age16Confirmed)
+            throw new ArgumentException("You must confirm that you are at least 16 years old to create an account.");
+
+        if (!privacyNoticeAccepted)
+            throw new ArgumentException("Read and acknowledge the privacy notice before creating an account.");
 
         await PostForSuccessAsync(
             new Uri(baseUri, "/api/v1/auth/register"),
-            new { username = username.Trim(), email = email.Trim(), password },
+            new { username = username.Trim(), email = email.Trim(), password, age16Confirmed, privacyNoticeAccepted, privacyNoticeVersion = PrivacyNoticeVersion },
             "KSR account creation failed",
             cancellationToken);
     }
@@ -374,7 +382,7 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         return campaign;
     }
 
-    public const string CampaignPrivacyNoticeVersion = "placeholder-2026-10-21";
+    public const string CampaignPrivacyNoticeVersion = PrivacyNoticeVersion;
     private static void ValidateDataChoice(string choice)
     {
         if (choice is not ("delete" or "retain")) throw new ArgumentException("Choose Delete my data or Keep my data.");

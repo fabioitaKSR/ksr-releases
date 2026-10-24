@@ -43,6 +43,11 @@ public partial class CreateAccountWindow : Window
             ShowValidation("The two passwords do not match.");
             return;
         }
+        if (AgeConfirmationCheckBox.IsChecked != true)
+        {
+            ShowValidation("You must confirm that you are at least 16 years old to create an account.");
+            return;
+        }
         if (EmailUseConsentCheckBox.IsChecked != true)
         {
             ShowValidation("Confirm the limited email-use notice before creating the account.");
@@ -52,7 +57,9 @@ public partial class CreateAccountWindow : Window
         SetBusy(true);
         try
         {
-            await _client.RegisterAsync(_serverUrl, username, email, PasswordBox.Password);
+            await _client.RegisterAsync(_serverUrl, username, email, PasswordBox.Password,
+                age16Confirmed: AgeConfirmationCheckBox.IsChecked == true,
+                privacyNoticeAccepted: AgeConfirmationCheckBox.IsChecked == true);
             CreatedUsername = username;
             PasswordBox.Clear();
             ConfirmPasswordBox.Clear();
@@ -78,9 +85,20 @@ public partial class CreateAccountWindow : Window
         PasswordBox.IsEnabled = !busy;
         ConfirmPasswordBox.IsEnabled = !busy;
         EmailUseConsentCheckBox.IsEnabled = !busy;
+        AgeConfirmationCheckBox.IsEnabled = !busy;
         CreateButton.IsEnabled = !busy;
         CreateButton.Content = busy ? "CREATING…" : "CREATE ACCOUNT";
         if (busy) StatusText.Text = "Creating your account securely…";
+    }
+
+    private void PrivacyNotice_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var uri = KsrPlatformClient.BuildPrivacyNoticeUri(_serverUrl);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception exception) { ShowValidation(exception.Message); }
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;

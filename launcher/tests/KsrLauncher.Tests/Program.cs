@@ -1142,11 +1142,30 @@ static async Task PlatformRegistrationSendsEmail()
         Equal("Fabio", document.RootElement.GetProperty("username").GetString()!);
         Equal("fabio@example.com", document.RootElement.GetProperty("email").GetString()!);
         Equal("safe-password", document.RootElement.GetProperty("password").GetString()!);
+        True(document.RootElement.GetProperty("age16Confirmed").GetBoolean(), "Explicit age declaration missing.");
+        True(document.RootElement.GetProperty("privacyNoticeAccepted").GetBoolean(), "Notice acknowledgment missing.");
+        Equal(KsrPlatformClient.PrivacyNoticeVersion, document.RootElement.GetProperty("privacyNoticeVersion").GetString()!);
         return "{\"ok\":true}";
     }));
 
     await new KsrPlatformClient(http).RegisterAsync(
-        "https://ksr.example", "Fabio", "fabio@example.com", "safe-password");
+        "https://ksr.example", "Fabio", "fabio@example.com", "safe-password", age16Confirmed: true, privacyNoticeAccepted: true);
+    var rejected = false;
+    try
+    {
+        await new KsrPlatformClient(http).RegisterAsync(
+            "https://ksr.example", "Fabio", "fabio@example.com", "safe-password", age16Confirmed: false, privacyNoticeAccepted: true);
+    }
+    catch (ArgumentException) { rejected = true; }
+    True(rejected, "Registration without an age declaration must fail before sending a request.");
+    rejected = false;
+    try
+    {
+        await new KsrPlatformClient(http).RegisterAsync(
+            "https://ksr.example", "Fabio", "fabio@example.com", "safe-password", age16Confirmed: true, privacyNoticeAccepted: false);
+    }
+    catch (ArgumentException) { rejected = true; }
+    True(rejected, "Registration without reading the privacy notice must fail before HTTP.");
 }
 
 static async Task PlatformPasswordRecoveryUsesV1Endpoints()
