@@ -1,0 +1,1 @@
+Logging Privacy 1.0.0: normal campaign stop/leave. Legacy/test1 installations are excluded. Administrator departure preserves ownership and leaves the campaign open. Source compiled against KSP 1.12 managed assemblies and Harmony. Full KSP playtest pending; public release requested for player testing.

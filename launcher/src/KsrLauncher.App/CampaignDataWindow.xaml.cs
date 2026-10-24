@@ -13,9 +13,11 @@ public partial class CampaignDataWindow : Window
     private readonly string _serverUrl;
     private readonly string? _accessToken;
     private bool _busy;
+    private readonly string[] _gameRoots;
 
-    public CampaignDataWindow()
+    public CampaignDataWindow(IEnumerable<string>? gameRoots = null)
     {
+        _gameRoots = gameRoots?.Where(root => !GameLoggingPrivacy.IsLegacyInstallation(root)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray() ?? Array.Empty<string>();
         _serverUrl = LauncherSession.ServerUrl ?? KsrPlatformClient.ProductionServerUrl;
         _accessToken = LauncherSession.AccessToken;
         InitializeComponent();
@@ -62,7 +64,7 @@ public partial class CampaignDataWindow : Window
     {
         if (CampaignSelector.SelectedItem is not KsrCampaign campaign)
         {
-            ChangeChoiceButton.IsEnabled = false;
+            StopLoggingButton.IsEnabled = ChangeChoiceButton.IsEnabled = false;
             return;
         }
         SavedChoiceText.Text = !campaign.DataChoiceSupported
@@ -73,6 +75,8 @@ public partial class CampaignDataWindow : Window
             "retain" => "Saved choice: Keep my data as anonymous race records at the end of this campaign.",
             _ => "No data choice has been recorded for this campaign."
         };
+        StopLoggingButton.IsEnabled = !_busy && campaign.Status == "active" && !string.Equals(campaign.CampaignCode,"test1",StringComparison.OrdinalIgnoreCase) && _gameRoots.Length > 0 &&
+            !_gameRoots.All(root => GameLoggingPrivacy.IsExitConfirmed(root,campaign.CampaignCode,LauncherSession.UserId));
         ChangeChoiceButton.IsEnabled = !_busy && campaign.Status == "active" && campaign.DataChoiceSupported;
     }
 
@@ -102,6 +106,29 @@ public partial class CampaignDataWindow : Window
             CampaignSelector.IsEnabled = true;
             ShowCampaignChoice();
         }
+    }
+
+    private async void StopLogging_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || CampaignSelector.SelectedItem is not KsrCampaign campaign || _gameRoots.Length == 0 || string.Equals(campaign.CampaignCode,"test1",StringComparison.OrdinalIgnoreCase)) return;
+        var message = $"Stop gameplay collection and queued uploads, and leave {campaign.Name}?\n\n" +
+            "This stops only your participation. If you administer this campaign, it remains open and you keep your administration role. Your previously received data keeps its saved end-of-campaign choice.\n\n" +
+            "If offline, logging stays blocked locally and the server exit is retried after reconnecting. KSP must have the updated Logging Privacy component loaded.";
+        if (MessageBox.Show(this,message,"Stop logging and leave",MessageBoxButton.OKCancel,MessageBoxImage.Warning) != MessageBoxResult.OK) return;
+        _busy = true; StopLoggingButton.IsEnabled = ChangeChoiceButton.IsEnabled = false;
+        try
+        {
+            GameLoggingPrivacy.Stop(_gameRoots,campaign.CampaignCode,LauncherSession.UserId,_serverUrl);
+            ChoiceStatusText.Text = "Logging stopped locally. Confirming server exit…";
+            var pending = await GameLoggingPrivacy.DeliverPendingAsync(_gameRoots,LauncherSession.UserId,_accessToken);
+            ChoiceStatusText.Text = pending == 0 ? "Logging stopped. Server exit confirmed." :
+                "Logging stopped locally. Server exit pending; reconnect in the launcher or game to retry.";
+        }
+        catch
+        {
+            ChoiceStatusText.Text = "The stop could not be fully saved. Keep KSP closed and retry; contact support if the problem continues.";
+        }
+        finally { _busy = false; ShowCampaignChoice(); }
     }
 
     private async void Refresh_Click(object sender, RoutedEventArgs e) => await LoadCampaignsAsync();

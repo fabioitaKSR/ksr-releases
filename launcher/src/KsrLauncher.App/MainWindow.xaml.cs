@@ -32,6 +32,9 @@ public partial class MainWindow : Window
     private string? _adminMembersCampaignCode;
     private bool _launchAndLogsInstallInProgress;
     private readonly DispatcherTimer _downloadCountdownTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _privacyExitRetryTimer = new() { Interval = TimeSpan.FromSeconds(30) };
+    private readonly Dictionary<string, KerbalSpaceRace.LoggingPrivacy.LoggingPrivacyStore> _privacyExitStores = new(StringComparer.OrdinalIgnoreCase);
+    private bool _privacyExitRetryBusy;
     private readonly DispatcherTimer _ticketRefreshTimer = new() { Interval = TimeSpan.FromHours(4) };
     private readonly SemaphoreSlim _gameTicketUpdateGate = new(1, 1);
     private int _authGeneration;
@@ -91,6 +94,9 @@ public partial class MainWindow : Window
         PreviewKeyDown += (_, args) => { if (_blockingOperationInProgress) args.Handled = true; };
         _downloadCountdownTimer.Tick += (_, _) => RefreshDownloadCountdown();
         _ticketRefreshTimer.Tick += RenewGameTickets_Tick;
+        _privacyExitRetryTimer.Tick += async (_, _) => await RetryPrivacyExitsAsync();
+        Loaded += (_, _) => WatchPrivacyExits();
+        Closed += (_, _) => { _privacyExitRetryTimer.Stop(); foreach (var store in _privacyExitStores.Values) store.Dispose(); };
         BetaAccess.Changed += UpdateBetaButton;
         SizeChanged += (_, _) => HeaderActions.Width = ActualWidth < 1200 ? 202 : double.NaN;
         Closed += (_, _) => BetaAccess.Changed -= UpdateBetaButton;
@@ -1807,9 +1813,11 @@ public partial class MainWindow : Window
             var mainReady = IsValidKspRoot(_kspRoot);
             var testReady = IsValidKspRoot(testRoot);
             if (!mainReady && !testReady) return;
+            var privacyRoots = new[] { _kspRoot, testRoot }.Where(root => IsValidKspRoot(root)).Select(root => root!).Where(root => !GameLoggingPrivacy.IsLegacyInstallation(root)).ToArray();
+            await GameLoggingPrivacy.DeliverPendingAsync(privacyRoots,id,accessToken);
             var tickets = new List<KsrGameTicket>();
             var saveFolders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var campaign in _campaigns.Where(c => string.Equals(c.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) &&
+            foreach (var campaign in _campaigns.Where(c => !privacyRoots.Any(root => GameLoggingPrivacy.IsStopped(root,c.CampaignCode)) && string.Equals(c.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) &&
                                                            !string.Equals(c.CampaignCode, "test1", StringComparison.OrdinalIgnoreCase)))
             {
                 var ticket = await _platformClient.GetGameTicketAsync(LauncherSession.ServerUrl!, accessToken, campaign.CampaignCode);
@@ -1972,9 +1980,43 @@ public partial class MainWindow : Window
         new BetaModulesWindow { Owner = this }.ShowDialog();
     }
 
+    private void WatchPrivacyExits()
+    {
+        var roots = new[] { _kspRoot, LauncherSettingsStore.LoadTestKspRoot() }
+            .Where(root => IsValidKspRoot(root)).Select(root => root!).Where(root => !GameLoggingPrivacy.IsLegacyInstallation(root)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        foreach (var obsolete in _privacyExitStores.Keys.Except(roots,StringComparer.OrdinalIgnoreCase).ToArray())
+        { _privacyExitStores[obsolete].Dispose(); _privacyExitStores.Remove(obsolete); }
+        foreach (var root in roots)
+        {
+            if (_privacyExitStores.ContainsKey(root)) continue;
+            try
+            {
+                var store = new KerbalSpaceRace.LoggingPrivacy.LoggingPrivacyStore(root);
+                store.Stopped += _ => Dispatcher.BeginInvoke(new Action(() => _privacyExitRetryTimer.Start()));
+                _privacyExitStores.Add(root,store);
+                if (store.HasPending) _privacyExitRetryTimer.Start();
+            }
+            catch { ShowAuthFeedback("Privacy exit storage is unavailable. Keep KSP closed and check the selected installation."); }
+        }
+    }
+
+    private async Task RetryPrivacyExitsAsync()
+    {
+        if (_privacyExitRetryBusy) return;
+        _privacyExitRetryBusy = true;
+        try
+        {
+            var pending = await GameLoggingPrivacy.DeliverPendingAsync(_privacyExitStores.Keys.ToArray(),LauncherSession.UserId,LauncherSession.AccessToken);
+            if (pending == 0) _privacyExitRetryTimer.Stop();
+        }
+        catch { /* Durable requests remain blocked and are retried; no false acknowledgement. */ }
+        finally { _privacyExitRetryBusy = false; }
+    }
+
     private void Data_Click(object sender, RoutedEventArgs e)
     {
-        new CampaignDataWindow { Owner = this }.ShowDialog();
+        WatchPrivacyExits();
+        new CampaignDataWindow(new[] { _kspRoot, LauncherSettingsStore.LoadTestKspRoot() }.Where(root => IsValidKspRoot(root)).Select(root => root!)) { Owner = this }.ShowDialog();
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs e)

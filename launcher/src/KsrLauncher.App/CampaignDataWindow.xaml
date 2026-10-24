@@ -34,8 +34,10 @@
                         <TextBlock x:Name="ChoiceStatusText" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0" />
                         <WrapPanel Margin="0,12,0,0">
                             <Button x:Name="ChangeChoiceButton" Content="CHANGE CHOICE" IsEnabled="False" Click="ChangeChoice_Click" Margin="0,0,12,8" />
+                            <Button x:Name="StopLoggingButton" Content="STOP LOGGING AND LEAVE" IsEnabled="False" Click="StopLogging_Click" Margin="0,0,12,8" />
                             <Button Content="REFRESH" Click="Refresh_Click" Margin="0,0,0,8" />
                         </WrapPanel>
+                        <TextBlock Text="Stopping logging applies to normal campaigns and requires the Logging Privacy add-on, loaded after restarting KSP. test1 is unchanged." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,8" />
                         <TextBlock Margin="0,4,0,0"><Hyperlink Foreground="{StaticResource OrangeBrush}" Click="Privacy_Click">Privacy notice</Hyperlink></TextBlock>
                     </StackPanel>
                 </Border>
@@ -49,7 +51,7 @@
                 <Border Style="{StaticResource Card}" Margin="0,0,0,14" Padding="18">
                     <StackPanel>
                         <TextBlock Text="ANONYMOUS RACE ARCHIVES" Style="{StaticResource SectionTitle}" FontSize="17" />
-                        <TextBlock Text="Only completed and closed races appear on the public archive page. Each race has its own CSV file, such as race-01.csv, containing the full chronological list of registered records and contract entries."
+                        <TextBlock Text="Only reviewed, genuinely anonymous results of completed campaigns may appear publicly. Results selected for deletion are excluded. Public CSV downloads are not available."
                                    TextWrapping="Wrap" Margin="0,9,0,0" />
                         <TextBlock Text="Labels such as Agency 1 and Agency 2 stay consistent within each race. Game contract codes, dates, times and values are preserved; player names and real agency names are excluded."
                                    TextWrapping="Wrap" Margin="0,9,0,0" />

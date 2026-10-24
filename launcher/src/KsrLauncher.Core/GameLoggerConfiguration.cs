@@ -38,6 +38,8 @@ public static class GameLoggerConfiguration
         if (string.IsNullOrWhiteSpace(campaignCode) || string.IsNullOrWhiteSpace(gameTicket))
             throw new InvalidOperationException("A campaign-scoped game ticket is required.");
 
+        if (GameLoggingPrivacy.IsStopped(kspRoot,campaignCode))
+            throw new InvalidOperationException("Logging has been stopped for this campaign. It will not be restarted automatically.");
         static string Safe(string value) => value.Replace("\r", string.Empty).Replace("\n", string.Empty).Trim();
         var path = GetPath(kspRoot);
         var directory = Path.GetDirectoryName(path)!;
@@ -95,6 +97,7 @@ public static class GameLoggerConfiguration
         };
         foreach (var ticket in entries)
         {
+            if (GameLoggingPrivacy.IsStopped(kspRoot,ticket.CampaignCode)) continue;
             lines.AddRange(new[] {
                 "    TICKET", "    {", $"        campaignId = {ticket.CampaignCode}",
                 $"        token = {ticket.Token}"
