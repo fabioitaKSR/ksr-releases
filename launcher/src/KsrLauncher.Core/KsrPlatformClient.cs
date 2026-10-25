@@ -33,6 +33,11 @@ public sealed record KsrCampaign(
 
 public sealed record KsrGameTicket(string Token, string CampaignCode, int ExpiresIn, double? ExpiresAt);
 
+public sealed record KsrAccountDeletionPreview(long UserId, string Username, string[] CampaignsToClose,
+    int ParticipationCount, int SupportReportCount, int LinkedRecordCount, string[] Blockers,
+    bool CanDelete, string PreviewToken, int ExpiresIn);
+public sealed record KsrAccountDeletionResult(bool AccountDeleted, bool ProcessingComplete, bool ConfirmationEmailQueued);
+
 public sealed record KsrCampaignMember(KsrUser User, string Role, string? NationId, DateTimeOffset JoinedAt,
     DateTimeOffset? LastSeenAt);
 
@@ -44,7 +49,33 @@ public enum CampaignMemberDataDisposition
 
 public sealed class KsrPlatformClient(HttpClient? httpClient = null)
 {
-    public const string PrivacyNoticeVersion = "privacy-part1-2026-10-23";
+    public async Task<KsrAccountDeletionPreview> PreviewAccountDeletionAsync(string serverUrl, string accessToken,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = AuthorizedRequest(HttpMethod.Post,
+            new Uri(ValidateServerUri(serverUrl), "/api/v1/me/deletion/preview"), accessToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        return JsonSerializer.Deserialize<KsrAccountDeletionPreview>(Unwrap(document.RootElement).GetRawText(),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new InvalidDataException("The deletion preview is missing.");
+    }
+
+    public async Task<KsrAccountDeletionResult> DeleteAccountAsync(string serverUrl, string accessToken,
+        KsrAccountDeletionPreview preview, string username, string password, CancellationToken cancellationToken = default)
+    {
+        if (!preview.CanDelete || !string.Equals(username, preview.Username, StringComparison.Ordinal) || string.IsNullOrEmpty(password))
+            throw new ArgumentException("Confirm your username and current password.");
+        using var request = AuthorizedRequest(HttpMethod.Post,
+            new Uri(ValidateServerUri(serverUrl), "/api/v1/me/deletion/confirm"), accessToken);
+        request.Content = JsonContent.Create(new { username, password, previewToken = preview.PreviewToken, confirmed = true });
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var result = JsonSerializer.Deserialize<KsrAccountDeletionResult>(Unwrap(document.RootElement).GetRawText(),
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new InvalidDataException("The server did not confirm account deletion.");
+        if (!result.AccountDeleted) throw new InvalidDataException("The server did not confirm account deletion.");
+        return result;
+    }
+    public const string PrivacyNoticeVersion = "privacy-account-deletion-2026-10-25";
     public const string ProductionServerUrl = "https://play.kerbalspacerace.net";
     public static Uri BuildPrivacyNoticeUri(string serverUrl) => new(ValidateServerUri(serverUrl), "/privacy");
 

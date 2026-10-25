@@ -7,6 +7,7 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Account deletion requires an authenticated preview and explicit reauthentication", AccountDeletionTests.PreviewAndExplicitConfirmation),
     ("DATA includes legacy test1 only with server authorization", CampaignPrivacyTests.LegacyDataListUsesServerAuthorization),
     ("Campaign data choices require a session, an explicit choice and server confirmation", CampaignPrivacyTests.TransportAndServerConfirmation),
     ("Cancelled beta update rolls back installed components", BetaModuleTests.CancellationStillRollsBackInstalledComponents),

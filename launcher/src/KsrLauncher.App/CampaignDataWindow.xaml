@@ -51,7 +51,7 @@
                 <Border Style="{StaticResource Card}" Margin="0,0,0,14" Padding="18">
                     <StackPanel>
                         <TextBlock Text="ANONYMOUS RACE ARCHIVES" Style="{StaticResource SectionTitle}" FontSize="17" />
-                        <TextBlock Text="Only reviewed, genuinely anonymous results of completed campaigns may appear publicly. Results selected for deletion are excluded. Public CSV downloads are not available."
+                        <TextBlock Text="Completed campaigns can publish an automatically checked anonymous CSV containing agency labels, game dates and record descriptions. Results selected for deletion are excluded."
                                    TextWrapping="Wrap" Margin="0,9,0,0" />
                         <TextBlock Text="Labels such as Agency 1 and Agency 2 stay consistent within each race. Game contract codes, dates, times and values are preserved; player names and real agency names are excluded."
                                    TextWrapping="Wrap" Margin="0,9,0,0" />
@@ -62,6 +62,13 @@
                         <TextBlock Text="FUTURE BOT PLAYERS" Style="{StaticResource SectionTitle}" FontSize="17" />
                         <TextBlock Text="Anonymous race histories help us understand how races unfolded and support the future development of bot players in Launch and Log."
                                    TextWrapping="Wrap" Margin="0,9,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="18">
+                    <StackPanel>
+                        <TextBlock Text="YOUR ACCOUNT" Style="{StaticResource SectionTitle}" FontSize="17" />
+                        <TextBlock Text="Permanently delete your account and identifiable data. Review the consequences before confirming with your username and password." TextWrapping="Wrap" Margin="0,9,0,12" />
+                        <Button x:Name="DeleteAccountButton" Content="DELETE ACCOUNT" Click="DeleteAccount_Click" HorizontalAlignment="Left" />
                     </StackPanel>
                 </Border>
             </StackPanel>

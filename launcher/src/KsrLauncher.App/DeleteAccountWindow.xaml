@@ -1,0 +1,32 @@
+<Window x:Class="KsrLauncher.App.DeleteAccountWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Delete KSR Account" Width="690" Height="780" MinWidth="600" MinHeight="520"
+        Background="{StaticResource BackgroundBrush}" Foreground="{StaticResource ForegroundBrush}"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+    <Grid Margin="26">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <TextBlock Text="DELETE ACCOUNT" Style="{StaticResource SectionTitle}" FontSize="27" Margin="0,0,0,16"/>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="This permanently removes your account and identifiable data from the active KSR service. It cannot be undone." TextWrapping="Wrap" FontWeight="Bold"/>
+                <TextBlock x:Name="SummaryText" TextWrapping="Wrap" Margin="0,14,0,12"/>
+                <TextBlock Text="Your current participation and identifiable records will be removed, overriding your previous Keep choices. Campaigns you administer will close, applying each other participant's saved data choice." TextWrapping="Wrap"/>
+                <TextBlock Text="Existing anonymous archives cannot be linked back to you. Backups expire separately within 60 days of creation. Messages already delivered to email providers are handled separately. Local game installations and saves are kept." TextWrapping="Wrap" Margin="0,12,0,12"/>
+                <TextBlock Text="You will be signed out on all devices. A confirmation email will be queued only after data and attachment cleanup finishes. If cleanup needs a retry, your account access still ends immediately." TextWrapping="Wrap"/>
+                <TextBlock Text="Type your username exactly" Margin="0,18,0,6"/>
+                <TextBox x:Name="UsernameTextBox" MaxLength="80" TextChanged="Confirmation_Changed"/>
+                <TextBlock Text="Current password" Margin="0,12,0,6"/>
+                <PasswordBox x:Name="CurrentPasswordBox" MaxLength="1024" PasswordChanged="Confirmation_Changed"/>
+                <CheckBox x:Name="UnderstandCheckBox" Checked="Confirmation_Changed" Unchecked="Confirmation_Changed" Margin="0,16,0,8">
+                    <TextBlock Text="I understand the consequences and want to permanently delete my account." TextWrapping="Wrap"/>
+                </CheckBox>
+                <TextBlock x:Name="StatusText" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,14"/>
+            </StackPanel>
+        </ScrollViewer>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="CancelButton" Content="CANCEL" Click="Cancel_Click" MinWidth="100" Margin="0,0,12,0"/>
+            <Button x:Name="DeleteButton" Content="PERMANENTLY DELETE ACCOUNT" IsEnabled="False" Click="Delete_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -2016,7 +2016,9 @@ public partial class MainWindow : Window
     private void Data_Click(object sender, RoutedEventArgs e)
     {
         WatchPrivacyExits();
-        new CampaignDataWindow(new[] { _kspRoot, LauncherSettingsStore.LoadTestKspRoot() }.Where(root => IsValidKspRoot(root)).Select(root => root!)) { Owner = this }.ShowDialog();
+        var dialog = new CampaignDataWindow(new[] { _kspRoot, LauncherSettingsStore.LoadTestKspRoot() }.Where(root => IsValidKspRoot(root)).Select(root => root!)) { Owner = this };
+        dialog.ShowDialog();
+        if (dialog.AccountDeleted) SignOut_Click(this, new RoutedEventArgs());
     }
 
     private async void Settings_Click(object sender, RoutedEventArgs e)

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using KsrLauncher.Core;
@@ -12,6 +13,7 @@ public partial class CampaignDataWindow : Window
     private readonly KsrPlatformClient _client = new();
     private readonly string _serverUrl;
     private readonly string? _accessToken;
+    public bool AccountDeleted { get; private set; }
     private bool _busy;
     private readonly string[] _gameRoots;
 
@@ -146,6 +148,23 @@ public partial class CampaignDataWindow : Window
                 "The browser could not be opened. Visit https://play.kerbalspacerace.net/public-records to view the archives.",
                 "Race Archives", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    private async void DeleteAccount_Click(object sender, RoutedEventArgs e)
+    {
+        if (_busy || string.IsNullOrEmpty(_accessToken)) return;
+        _busy = true; DeleteAccountButton.IsEnabled = false;
+        try
+        {
+            var preview = await _client.PreviewAccountDeletionAsync(_serverUrl, _accessToken);
+            if (preview.UserId != LauncherSession.UserId || preview.Username != LauncherSession.Username)
+                throw new InvalidDataException("Account identity did not match the current session.");
+            var dialog = new DeleteAccountWindow(preview, _serverUrl, _accessToken) { Owner = this };
+            dialog.ShowDialog();
+            if (dialog.AccountDeleted) { AccountDeleted = true; Close(); }
+        }
+        catch (Exception) { ChoiceStatusText.Text = "The deletion preview could not be loaded. Check your connection or contact support@kerbalspacerace.net."; }
+        finally { _busy = false; DeleteAccountButton.IsEnabled = true; ShowCampaignChoice(); }
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
