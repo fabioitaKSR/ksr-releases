@@ -19,7 +19,7 @@
         </Grid.Background>
         <Grid.RowDefinitions>
             <RowDefinition Height="34" />
-            <RowDefinition Height="112" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="64" />
             <RowDefinition Height="*" />
             <RowDefinition Height="76" />
@@ -69,6 +69,10 @@
         <Border Grid.Row="1" Margin="18,14,18,0" Background="#F2080B0D" BorderBrush="#FF4A3A27"
                 BorderThickness="1" CornerRadius="7">
             <Grid Margin="22,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="96" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="205" />
                     <ColumnDefinition Width="1" />
@@ -81,19 +85,7 @@
                     <TextBlock Text="KSR" Foreground="{StaticResource OrangeBrush}" FontSize="32" FontWeight="Black" />
                     <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                         <TextBlock Text="KERBAL SPACE RACE" FontSize="11" FontWeight="Bold" />
-                        <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER"
-                                   Style="{StaticResource SmallLabel}" FontSize="10" Margin="0,3,0,0"
-                                   MaxWidth="185" TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
-                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                            <TextBlock x:Name="LoggerVersionText" Text="LOGGER --" FontSize="10"
-                                       Foreground="{StaticResource MutedBrush}" ToolTip="Latest official Parameter Logger release" />
-                            <TextBlock Text="  ·  " FontSize="10" Foreground="{StaticResource MutedBrush}" />
-                            <TextBlock x:Name="LaunchAndLogsVersionText" Text="L&amp;L --" FontSize="10"
-                                       Foreground="{StaticResource MutedBrush}" ToolTip="Latest official Launch &amp; Logs core release" />
-                        </StackPanel>
-                        <TextBlock Text="LAYER 2 --  ·  L3 ASK --" FontSize="9" Margin="0,2,0,0"
-                                   Foreground="{StaticResource MutedBrush}" ToolTip="ASK: Are Still Kerbal" />
+
                     </StackPanel>
                 </StackPanel>
                 <Border Grid.Column="1" Background="#FF303538" Margin="0,16" />
@@ -186,6 +178,47 @@
                             Visibility="Collapsed" Click="CreateAccount_Click" />
                     <Button x:Name="SignOutButton" Content="SIGN OUT" Style="{StaticResource GhostButton}" Click="SignOut_Click" />
                 </WrapPanel>
+                <!-- Versions have their own full-width area, independent from account controls. -->
+                <Border Grid.Row="1" Grid.ColumnSpan="5" BorderBrush="#FF303538" BorderThickness="0,1,0,0" Padding="0,12,0,12">
+                    <StackPanel>
+                        <WrapPanel>
+                            <TextBlock x:Name="LauncherVersionText" Text="LAUNCHER" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource ForegroundBrush}" Margin="0,0,28,8" TextWrapping="Wrap"
+                                       MaxWidth="520" ToolTip="Running launcher version" />
+                            <TextBlock x:Name="LoggerVersionText" Text="LOGGER --" FontSize="13" Margin="0,0,28,8"
+                                       Foreground="{StaticResource MutedBrush}" ToolTip="Latest official Parameter Logger release" />
+                            <TextBlock x:Name="LaunchAndLogsVersionText" Text="L&amp;L --" FontSize="13" Margin="0,0,28,8"
+                                       Foreground="{StaticResource MutedBrush}" ToolTip="Latest official Launch &amp; Logs core release" />
+                            <TextBlock Text="LAYER 2 --" FontSize="13" Margin="0,0,28,8" Foreground="{StaticResource MutedBrush}" />
+                            <TextBlock Text="L3 ASK --" FontSize="13" Margin="0,0,0,8" Foreground="{StaticResource MutedBrush}"
+                                       ToolTip="ASK: Are Still Kerbal" />
+                        </WrapPanel>
+                        <StackPanel x:Name="BetaVersionPanel" Visibility="Collapsed" Margin="0,4,0,0">
+                            <TextBlock Text="YOUR BETAS · AVAILABLE VERSIONS" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8" />
+                            <ScrollViewer x:Name="BetaVersionsScroll" MaxHeight="164" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl x:Name="BetaVersionItems">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#FF151D22" BorderBrush="#FF4A3A27" BorderThickness="1" CornerRadius="4"
+                                                Padding="12,9" Margin="0,0,10,8" Width="204"
+                                                ToolTip="Latest beta version available to your account. The installed version may differ.">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding VersionLabel}" FontSize="15" FontWeight="Bold" Margin="0,5,0,0"
+                                                           TextWrapping="Wrap" Foreground="{StaticResource OrangeBrush}" />
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 

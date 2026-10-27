@@ -98,7 +98,11 @@ public partial class MainWindow : Window
         Loaded += (_, _) => WatchPrivacyExits();
         Closed += (_, _) => { _privacyExitRetryTimer.Stop(); foreach (var store in _privacyExitStores.Values) store.Dispose(); };
         BetaAccess.Changed += UpdateBetaButton;
-        SizeChanged += (_, _) => HeaderActions.Width = ActualWidth < 1200 ? 202 : double.NaN;
+        SizeChanged += (_, _) =>
+        {
+            HeaderActions.Width = ActualWidth < 1200 ? 202 : double.NaN;
+            BetaVersionsScroll.MaxHeight = ActualHeight < 800 ? 100 : 164;
+        };
         Closed += (_, _) => BetaAccess.Changed -= UpdateBetaButton;
     }
 
@@ -1970,8 +1974,19 @@ public partial class MainWindow : Window
 
     private void UpdateBetaButton()
     {
-        BetaButton.Visibility = LauncherSession.IsAuthenticated && BetaAccess.Modules.Count > 0
-            ? Visibility.Visible : Visibility.Collapsed;
+        var hasAccess = LauncherSession.IsAuthenticated && BetaAccess.Modules.Count > 0;
+        BetaButton.Visibility = hasAccess ? Visibility.Visible : Visibility.Collapsed;
+        // Catalog metadata only: no private manifest/client, installation scan or new polling.
+        BetaVersionItems.ItemsSource = hasAccess
+            ? BetaAccess.Modules.Select(module => new
+            {
+                module.Label,
+                VersionLabel = string.IsNullOrWhiteSpace(module.Version)
+                    ? "Version unavailable"
+                    : "v" + module.Version.Trim().TrimStart('v', 'V')
+            }).ToArray()
+            : null;
+        BetaVersionPanel.Visibility = hasAccess ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void Beta_Click(object sender, RoutedEventArgs e)
