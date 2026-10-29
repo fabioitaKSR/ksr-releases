@@ -686,8 +686,23 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
-                    <Button Grid.Row="3" Content="CLOSE CAMPAIGN" Style="{StaticResource DangerButton}"
-                            HorizontalAlignment="Right" Margin="0,14,0,0" Click="CloseCampaign_Click" />
+                    <Grid Grid.Row="3" Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock x:Name="RegistrationStatusText" Text="REGISTRATION STATUS UNAVAILABLE"
+                                       Foreground="{StaticResource MutedBrush}" FontWeight="SemiBold" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,8" />
+                            <WrapPanel>
+                                <Button x:Name="CloseRegistrationButton" Content="CLOSE REGISTRATION" Style="{StaticResource GhostButton}"
+                                        Margin="0,0,10,6" Click="CloseRegistration_Click"
+                                        ToolTip="Prevent new players from joining. Existing players can continue." />
+                                <Button x:Name="ReopenRegistrationButton" Content="REOPEN REGISTRATION" Style="{StaticResource GhostButton}"
+                                        Margin="0,0,10,6" Click="ReopenRegistration_Click"
+                                        ToolTip="Allow new players to join this active campaign again." />
+                            </WrapPanel>
+                        </StackPanel>
+                        <Button x:Name="AdminCloseCampaignButton" Grid.Column="1" Content="CLOSE CAMPAIGN" Style="{StaticResource DangerButton}"
+                                HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="12,0,0,6" Click="CloseCampaign_Click" />
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

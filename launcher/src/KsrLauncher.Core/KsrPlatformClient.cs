@@ -29,7 +29,8 @@ public sealed record KsrCampaign(
     string? BaselineSha256 = null,
     double? CampaignStartUt = null,
     string? EndDataChoice = null,
-    bool DataChoiceSupported = true);
+    bool DataChoiceSupported = true,
+    bool? RegistrationOpen = null);
 
 public sealed record KsrGameTicket(string Token, string CampaignCode, int ExpiresIn, double? ExpiresAt);
 
@@ -233,6 +234,33 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
             OptionalInt32(root, "expiresIn") ?? 1800,
             new KsrUser(RequiredInt64(userElement, "id"), RequiredString(userElement, "username"),
                 userElement.TryGetProperty("canAccessTestGame", out var testAccess) && testAccess.ValueKind == JsonValueKind.True));
+    }
+
+    public async Task<KsrCampaign> GetCampaignAsync(string serverUrl, string accessToken, string campaignCode,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = AuthorizedRequest(HttpMethod.Get,
+            new Uri(ValidateServerUri(serverUrl), $"/api/v1/campaigns/{Uri.EscapeDataString(campaignCode)}"), accessToken);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var result = ReadCampaign(Unwrap(document.RootElement).GetProperty("campaign"));
+        if (!result.CampaignCode.Equals(campaignCode, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("The server returned a different campaign.");
+        return result;
+    }
+
+    public async Task<KsrCampaign> SetCampaignRegistrationAsync(string serverUrl, string accessToken, string campaignCode,
+        bool open, CancellationToken cancellationToken = default)
+    {
+        using var request = AuthorizedRequest(HttpMethod.Put,
+            new Uri(ValidateServerUri(serverUrl), $"/api/v1/campaigns/{Uri.EscapeDataString(campaignCode)}/registration"), accessToken);
+        request.Content = JsonContent.Create(new { open });
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var document = await ReadResponseAsync(response, cancellationToken);
+        var result = ReadCampaign(Unwrap(document.RootElement).GetProperty("campaign"));
+        if (!result.CampaignCode.Equals(campaignCode, StringComparison.OrdinalIgnoreCase) || result.RegistrationOpen != open)
+            throw new InvalidDataException("The server did not confirm the registration setting. Refresh before trying again.");
+        return result;
     }
 
     public async Task<IReadOnlyList<KsrCampaign>> GetCampaignsAsync(
@@ -598,7 +626,9 @@ public sealed class KsrPlatformClient(HttpClient? httpClient = null)
         OptionalString(item, "baselineSha256"),
         OptionalDouble(item, "campaignStartUt"),
         OptionalString(item, "endDataChoice"),
-        item.TryGetProperty("endDataChoice", out _));
+        item.TryGetProperty("endDataChoice", out _),
+        item.TryGetProperty("registrationOpen", out var registration) && registration.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? registration.GetBoolean() : null);
 
     private static HttpRequestMessage AuthorizedRequest(HttpMethod method, Uri uri, string accessToken)
     {

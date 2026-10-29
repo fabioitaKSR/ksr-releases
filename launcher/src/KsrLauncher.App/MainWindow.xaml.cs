@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private CampaignComplianceResult? _lastCompliance;
     private RememberedSession? _rememberedSession;
     private bool _campaignCloseInProgress;
+    private bool _campaignRegistrationInProgress;
     private bool _campaignUploadInProgress;
     private bool _adminMembersRefreshInProgress;
     private bool _adminMemberKickInProgress;
@@ -817,6 +818,16 @@ public partial class MainWindow : Window
             _adminMembersCampaignCode = activeAdminCampaign?.CampaignCode;
             AdminMembersStatusText.Text = activeAdminCampaign is null ? "" : "Open this area to load participants.";
         }
+        var registrationKnown = activeAdminCampaign?.RegistrationOpen is not null;
+        var registrationBusy = _campaignRegistrationInProgress || _campaignCloseInProgress || _adminMembersRefreshInProgress;
+        var registrationEnabled = LauncherSession.IsAuthenticated && activeAdminCampaign is not null && registrationKnown && !registrationBusy;
+        RegistrationStatusText.Text = _campaignRegistrationInProgress ? "UPDATING REGISTRATION..."
+            : activeAdminCampaign?.RegistrationOpen is true ? "REGISTRATION OPEN — NEW PLAYERS CAN JOIN"
+            : activeAdminCampaign?.RegistrationOpen is false ? "REGISTRATION CLOSED — EXISTING PLAYERS CAN CONTINUE"
+            : "REGISTRATION STATUS UNAVAILABLE — REFRESH TO CHECK";
+        CloseRegistrationButton.IsEnabled = registrationEnabled && activeAdminCampaign!.RegistrationOpen is true;
+        ReopenRegistrationButton.IsEnabled = registrationEnabled && activeAdminCampaign!.RegistrationOpen is false;
+        AdminCloseCampaignButton.IsEnabled = activeAdminCampaign is not null && !_campaignRegistrationInProgress && !_campaignCloseInProgress;
         var campaignCreationAvailable = LauncherSession.IsAuthenticated && blockingCampaign is null;
         var retryableDraft = blockingCampaign is not null &&
             blockingCampaign.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase) &&
@@ -833,7 +844,7 @@ public partial class MainWindow : Window
             ? "DISCARD LOCAL DRAFT"
             : _campaignCloseInProgress ? "CLOSING CAMPAIGN…" : "CLOSE CAMPAIGN";
         CloseCampaignButton.IsEnabled = blockingCampaign is not null && LauncherSession.IsAuthenticated &&
-            !_campaignCloseInProgress && !_campaignUploadInProgress;
+            !_campaignCloseInProgress && !_campaignRegistrationInProgress && !_campaignUploadInProgress;
         CreateRaceButton.IsEnabled = campaignCreationAvailable &&
             !string.IsNullOrWhiteSpace(_referenceSavePath) &&
             !string.IsNullOrWhiteSpace(CampaignNameTextBox.Text);
@@ -864,7 +875,9 @@ public partial class MainWindow : Window
     {
         var campaign = GetActiveAdminCampaign();
         if (campaign is null || _adminMembersRefreshInProgress) return;
+        var generation = _authGeneration;
         _adminMembersRefreshInProgress = true;
+        UpdateCreateRaceState();
         RefreshAdminMembersButton.IsEnabled = false;
         AdminMembersStatusText.Text = "Loading participants...";
         try
@@ -872,10 +885,16 @@ public partial class MainWindow : Window
             var serverUrl = LauncherSession.ServerUrl ??
                 throw new InvalidOperationException("The KSR server is not configured.");
             await LauncherSession.EnsureFreshAccessTokenAsync(serverUrl);
+            var currentCampaign = await _platformClient.GetCampaignAsync(serverUrl, LauncherSession.AccessToken!, campaign.CampaignCode);
+            if (generation != _authGeneration || !LauncherSession.IsAuthenticated ||
+                !string.Equals(GetActiveAdminCampaign()?.CampaignCode, campaign.CampaignCode, StringComparison.OrdinalIgnoreCase)) return;
+            var currentItem = _campaigns.FirstOrDefault(item => item.CampaignCode.Equals(campaign.CampaignCode, StringComparison.OrdinalIgnoreCase));
+            if (currentItem is not null) _campaigns[_campaigns.IndexOf(currentItem)] = ToCampaignListItem(currentCampaign);
             var members = await _platformClient.GetCampaignMembersAsync(serverUrl,
                 LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in to view participants."),
                 campaign.CampaignCode);
-            if (!string.Equals(GetActiveAdminCampaign()?.CampaignCode, campaign.CampaignCode,
+            if (generation != _authGeneration || !LauncherSession.IsAuthenticated ||
+                !string.Equals(GetActiveAdminCampaign()?.CampaignCode, campaign.CampaignCode,
                     StringComparison.OrdinalIgnoreCase)) return;
             _adminMembers.Clear();
             foreach (var member in members)
@@ -886,12 +905,14 @@ public partial class MainWindow : Window
         }
         catch (Exception exception)
         {
-            AdminMembersStatusText.Text = $"Could not load participants: {exception.Message}";
+            if (generation == _authGeneration && LauncherSession.IsAuthenticated)
+                AdminMembersStatusText.Text = $"Could not load participants: {exception.Message}";
         }
         finally
         {
             _adminMembersRefreshInProgress = false;
             RefreshAdminMembersButton.IsEnabled = true;
+            UpdateCreateRaceState();
         }
     }
 
@@ -932,10 +953,44 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void CloseRegistration_Click(object sender, RoutedEventArgs e) => await SetCampaignRegistrationAsync(false);
+    private async void ReopenRegistration_Click(object sender, RoutedEventArgs e) => await SetCampaignRegistrationAsync(true);
+
+    private async Task SetCampaignRegistrationAsync(bool open)
+    {
+        var campaign = GetActiveAdminCampaign();
+        if (campaign is null || campaign.RegistrationOpen is null || _campaignRegistrationInProgress || _campaignCloseInProgress) return;
+        var generation = _authGeneration;
+        _campaignRegistrationInProgress = true;
+        UpdateCreateRaceState();
+        try
+        {
+            var server = LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured.");
+            await LauncherSession.EnsureFreshAccessTokenAsync(server);
+            var updated = await _platformClient.SetCampaignRegistrationAsync(server, LauncherSession.AccessToken!, campaign.CampaignCode, open);
+            if (generation != _authGeneration || !LauncherSession.IsAuthenticated) return;
+            var item = _campaigns.FirstOrDefault(value => value.CampaignCode.Equals(campaign.CampaignCode, StringComparison.OrdinalIgnoreCase));
+            if (item is not null) _campaigns[_campaigns.IndexOf(item)] = ToCampaignListItem(updated);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidOperationException or KsrApiException or System.Text.Json.JsonException)
+        {
+            if (generation != _authGeneration || !LauncherSession.IsAuthenticated) return;
+            // The response may have been lost after commit. Do not present the old value as confirmed.
+            var item = _campaigns.FirstOrDefault(value => value.CampaignCode.Equals(campaign.CampaignCode, StringComparison.OrdinalIgnoreCase));
+            if (item is not null) _campaigns[_campaigns.IndexOf(item)] = item with { RegistrationOpen = null };
+            AdminMembersStatusText.Text = "Registration could not be confirmed. Refresh to check the current setting. " + exception.Message;
+        }
+        finally
+        {
+            _campaignRegistrationInProgress = false;
+            UpdateCreateRaceState();
+        }
+    }
+
     private async void CloseCampaign_Click(object sender, RoutedEventArgs e)
     {
         var campaign = GetBlockingAdminCampaign();
-        if (campaign is null || _campaignCloseInProgress) return;
+        if (campaign is null || _campaignCloseInProgress || _campaignRegistrationInProgress) return;
 
         if (campaign.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase))
         {
@@ -1885,7 +1940,8 @@ public partial class MainWindow : Window
         campaign.MasterSaveSha256,
         campaign.MasterSaveSize,
         campaign.BaselineSchemaVersion,
-        campaign.BaselineSha256);
+        campaign.BaselineSha256,
+        campaign.RegistrationOpen);
 
     private void SetLoginBusy(bool busy, string busyText = "SIGNING IN…")
     {
@@ -2166,7 +2222,8 @@ internal sealed record CampaignListItem(
     string? MasterSaveSha256 = null,
     long? MasterSaveSize = null,
     int? BaselineSchemaVersion = null,
-    string? BaselineSha256 = null)
+    string? BaselineSha256 = null,
+    bool? RegistrationOpen = null)
 {
     public string RoleColor => string.Equals(Role, "ADMIN", StringComparison.OrdinalIgnoreCase) ? "#FFF57C00" : "#FF4AB8F1";
     public string StatusColor => string.Equals(Status, "ACTIVE", StringComparison.OrdinalIgnoreCase) ? "#FF80D420" : "#FF9BA0A3";
