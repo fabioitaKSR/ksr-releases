@@ -16,8 +16,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Version>0.7.23</Version>
-    <InformationalVersion>0.7.23</InformationalVersion>
+    <Version>0.7.24</Version>
+    <InformationalVersion>0.7.24</InformationalVersion>
     <ApplicationIcon>Assets\ksr-launcher.ico</ApplicationIcon>
   </PropertyGroup>
 

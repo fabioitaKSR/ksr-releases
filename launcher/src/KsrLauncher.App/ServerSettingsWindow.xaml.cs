@@ -15,6 +15,11 @@ public partial class ServerSettingsWindow : Window
     private bool IsFullMode => ModuleId == "ksr-full";
     private bool HasModuleAccess => _module is not null && (IsFullMode ? LauncherSession.CanAccessTestGame :
         BetaAccess.Modules.Any(m => m.Id == ModuleId));
+    // Shared support controls apply to every authorized beta, including future modules.
+    private bool CanSendBetaSupport => HasModuleAccess && !_maintenanceInProgress &&
+        !string.IsNullOrWhiteSpace(_testKspRoot) &&
+        File.Exists(Path.Combine(_testKspRoot, "KSP_x64.exe")) &&
+        Directory.Exists(Path.Combine(_testKspRoot, "GameData"));
     private bool _accessRevoked;
     private readonly System.Threading.CancellationTokenSource _operationCancellation = new();
     private string? _testKspRoot;
@@ -164,25 +169,25 @@ public partial class ServerSettingsWindow : Window
             Directory.Exists(Path.Combine(_testKspRoot, "GameData"));
         UpgradeTestKspButton.IsEnabled = LaunchTestKspButton.IsEnabled;
         RepairTestKspButton.IsEnabled = LaunchTestKspButton.IsEnabled;
-        SendTestSaveButton.IsEnabled = IsFullMode && LaunchTestKspButton.IsEnabled;
-        SendTestLogButton.IsEnabled = IsFullMode && LaunchTestKspButton.IsEnabled;
-        TestGameSupport.Visibility = IsFullMode && HasModuleAccess ? Visibility.Visible : Visibility.Collapsed;
+        SendTestSaveButton.IsEnabled = CanSendBetaSupport;
+        SendTestLogButton.IsEnabled = CanSendBetaSupport;
+        TestGameSupport.Visibility = HasModuleAccess ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void SendTestSave_Click(object sender, RoutedEventArgs e)
     {
-        if (!HasModuleAccess || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
-        if (!IsFullMode || !await CheckAccessAsync()) return;
+        if (!CanSendBetaSupport || !await CheckAccessAsync() || !CanSendBetaSupport) return;
+        var supportRoot = _testKspRoot!;
         try
         {
             var picker = new OpenFolderDialog
             {
                 Title = "Select a save from the test installation",
-                InitialDirectory = TestGameSupportPaths.SavesRoot(_testKspRoot),
+                InitialDirectory = TestGameSupportPaths.SavesRoot(supportRoot),
                 Multiselect = false
             };
             if (picker.ShowDialog(this) != true) return;
-            var save = TestGameSupportPaths.SaveFolder(_testKspRoot, picker.FolderName);
+            var save = TestGameSupportPaths.SaveFolder(supportRoot, picker.FolderName);
             OpenTestSupportDialog(SupportReportType.Save, save, Path.GetFileName(save), true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
@@ -193,11 +198,11 @@ public partial class ServerSettingsWindow : Window
 
     private async void SendTestLog_Click(object sender, RoutedEventArgs e)
     {
-        if (!HasModuleAccess || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot)) return;
-        if (!IsFullMode || !await CheckAccessAsync()) return;
+        if (!CanSendBetaSupport || !await CheckAccessAsync() || !CanSendBetaSupport) return;
+        var supportRoot = _testKspRoot!;
         try
         {
-            var log = TestGameSupportPaths.LogFile(_testKspRoot);
+            var log = TestGameSupportPaths.LogFile(supportRoot);
             OpenTestSupportDialog(SupportReportType.Log, log, null, false);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
