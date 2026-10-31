@@ -40,6 +40,8 @@ public partial class MainWindow : Window
     private readonly SemaphoreSlim _gameTicketUpdateGate = new(1, 1);
     private int _authGeneration;
     private bool _ticketRefreshInProgress;
+    private bool _initialLoadComplete;
+    private bool _betaUpdatesInProgress;
     private readonly Stopwatch _downloadStopwatch = new();
     private bool _blockingOperationInProgress;
     private int _blockingOperationGeneration;
@@ -188,11 +190,11 @@ public partial class MainWindow : Window
         await TryRestoreSessionAsync();
         if (!TestInstallationPaths.IsSameKspRoot(_kspRoot, LauncherSettingsStore.LoadTestKspRoot()))
             await UpdateInstalledKsrModsAsync();
-        if (LauncherSession.CanAccessTestGame)
-            await UpdateTestKspAsync();
+        await UpdateAuthorizedBetasAsync();
         if (LoggerVersionText.Text == "LOGGER --" || LaunchAndLogsVersionText.Text == "L&L --")
             await RefreshReleaseComponentVersionsAsync();
         await CheckForLauncherUpdateAsync();
+        _initialLoadComplete = true;
     }
 
     private async Task RefreshReleaseComponentVersionsAsync()
@@ -326,21 +328,42 @@ public partial class MainWindow : Window
 		}
     }
 
-    private async Task UpdateTestKspAsync()
+    internal async Task UpdateAuthorizedBetasAsync()
     {
-        if (!LauncherSession.CanAccessTestGame) return;
-        var testRoot = LauncherSettingsStore.LoadTestKspRoot();
-        if (!IsValidKspRoot(testRoot) || Process.GetProcessesByName("KSP_x64").Length > 0) return;
+        if (_betaUpdatesInProgress || !LauncherSession.IsAuthenticated ||
+            Process.GetProcessesByName("KSP_x64").Length > 0) return;
+        _betaUpdatesInProgress = true;
+        var authGeneration = _authGeneration;
+        try
+        {
+            await BetaAccess.RefreshAsync();
+            await BetaInstallationUpdates.RunAsync(BetaAccess.Modules,
+                id => LauncherSettingsStore.LoadBetaKspRoot(id),
+                () => LauncherSession.IsAuthenticated && authGeneration == _authGeneration &&
+                    Process.GetProcessesByName("KSP_x64").Length == 0,
+                UpdateBetaKspAsync,
+                (module, error) => ShowAuthFeedback($"{module.Label}: {error.Message}"),
+                LauncherSettingsStore.LoadKspRoot());
+        }
+        finally { _betaUpdatesInProgress = false; }
+    }
+
+    private async Task UpdateBetaKspAsync(KsrBetaModule module, string testRoot)
+    {
+        if (!BetaInstallationUpdates.HasValidDestination(testRoot)) return;
 
         _installedKsrModsUpdateInProgress = true;
         LaunchKspButton.IsEnabled = false;
-        var overlayGeneration = ShowBlockingOperation("CHECKING TEST GAME", "Checking the selected test installation...");
+        var label = module.Label.ToUpperInvariant();
+        var overlayGeneration = ShowBlockingOperation("CHECKING " + label, "Checking the selected beta installation...");
         try
         {
-            if (await BetaAccess.RequireAsync("ksr-full") is null) return;
-            using var privateRelease = new PrivateBetaReleaseClient(LauncherSession.ServerUrl!, "ksr-full", LauncherSession.AccessToken!);
+            if (await BetaAccess.RequireAsync(module.Id) is null ||
+                !TestInstallationPaths.IsSameKspRoot(testRoot, LauncherSettingsStore.LoadBetaKspRoot(module.Id)) ||
+                !BetaInstallationUpdates.HasValidDestination(testRoot) || Process.GetProcessesByName("KSP_x64").Length > 0) return;
+            using var privateRelease = new PrivateBetaReleaseClient(LauncherSession.ServerUrl!, module.Id, LauncherSession.AccessToken!);
             var release = await privateRelease.ResolveAsync();
-            ShowReleaseComponentVersions(release.Manifest);
+            if (module.Id == "ksr-full") ShowReleaseComponentVersions(release.Manifest);
             release.Manifest.Components = release.Manifest.Components
                 .Where(component => string.Equals(component.TargetKind, "ksp", StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -356,19 +379,19 @@ public partial class MainWindow : Window
                     ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
                     : 0;
                 ShowBlockingProgress(overlayGeneration, value.Phase,
-                    $"TEST GAME · {value.ComponentId} · {percent:0}%",
+                    $"{label} · {value.ComponentId} · {percent:0}%",
                     value.BytesDownloaded, value.TotalBytes, percent);
             });
             var launcherData = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
-            var dataRoot = TestInstallationPaths.GetLauncherDataRoot(
-                testRoot!, LauncherSettingsStore.LoadKspRoot(), launcherData);
+            var dataRoot = BetaInstallationUpdates.GetLauncherDataRoot(
+                module.Id, testRoot, LauncherSettingsStore.LoadKspRoot(), launcherData);
             var result = await new UpdateEngine(new PackageService(privateRelease.Http)).RunAsync(release.Manifest,
                 new LauncherLocations(testRoot!, dataRoot), release.AssetsBaseUrl,
                 true, UpdatePolicy.VerifyAllFiles, progress);
             ModUpdateProgressBar.IsIndeterminate = false;
             ModUpdateProgressBar.Value = 100;
-            ModUpdatePhaseText.Text = result.Applied ? "TEST GAME UPDATED" : "TEST GAME UP TO DATE";
+            ModUpdatePhaseText.Text = result.Applied ? label + " UPDATED" : label + " UP TO DATE";
             ModUpdateDetailText.Text = result.Applied
                 ? "The selected test installation is ready."
                 : "No test game component requires an update.";
@@ -377,7 +400,7 @@ public partial class MainWindow : Window
         catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
             ModUpdateProgressBar.IsIndeterminate = false;
-            ModUpdatePhaseText.Text = "TEST GAME UPDATE FAILED";
+            ModUpdatePhaseText.Text = label + " UPDATE FAILED";
             ModUpdatePhaseText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             ModUpdateDetailText.Text = exception.Message;
             await Task.Delay(1400);
@@ -1858,6 +1881,7 @@ public partial class MainWindow : Window
         _ticketRefreshTimer.Start();
         UpdateSessionVisuals();
         await RefreshServerStatusAsync();
+        if (_initialLoadComplete) await UpdateAuthorizedBetasAsync();
     }
 
     private async Task RefreshGameTicketsAsync(string accessToken, long? userId = null)

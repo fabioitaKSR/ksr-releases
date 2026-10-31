@@ -7,6 +7,11 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Automatic betas never download without an explicitly selected valid destination", BetaAutomaticUpdateTests.MissingFolderNeverInvokesDownload),
+    ("All authorized betas update sequentially and errors remain isolated", BetaAutomaticUpdateTests.AuthorizedBetasSequentialAndIsolated),
+    ("Revocation and cleared destinations stop subsequent automatic downloads", BetaAutomaticUpdateTests.RevocationAndDestinationChangesStopNewDownloads),
+    ("Automatic updates do not mix beta or main destinations", BetaAutomaticUpdateTests.SharedFoldersNeverMixAutomaticPackages),
+    ("Automatic beta updater preserves existing manual state paths", BetaAutomaticUpdateTests.StatePathsMatchExistingManualBetaUpdates),
     ("Registration uses authenticated explicit open/close and parses confirmation", RegistrationTests.ExplicitSetting),
     ("Registration rejects mismatched server confirmations", RegistrationTests.MismatchedConfirmation),
     ("Older servers leave registration state unknown", RegistrationTests.OlderServer),
@@ -416,7 +421,7 @@ static async Task UpgradeAndRepairPolicies()
 static async Task StartupUpdatesTestInstallationSeparately()
 {
     var startup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml.cs"));
-    True(startup.Contains("await UpdateTestKspAsync();", StringComparison.Ordinal) &&
+    True(startup.Contains("await UpdateAuthorizedBetasAsync();", StringComparison.Ordinal) &&
         startup.Contains("true, UpdatePolicy.VerifyAllFiles, progress", StringComparison.Ordinal),
         "Startup must check every file in the selected test installation.");
 
@@ -490,8 +495,8 @@ static Task TestGameSettingsRequireServerPermission()
         "The whole test section, including its launch button, must disappear.");
     True(settings.Contains("LauncherSettingsStore.LoadTestKspRoot()", StringComparison.Ordinal),
         "Saving ordinary server settings must preserve the stored test installation.");
-    True(main.Contains("if (LauncherSession.CanAccessTestGame)", StringComparison.Ordinal) &&
-         main.Contains("await UpdateTestKspAsync();", StringComparison.Ordinal) &&
+    True(main.Contains("await BetaAccess.RequireAsync(module.Id)", StringComparison.Ordinal) &&
+         main.Contains("await UpdateAuthorizedBetasAsync();", StringComparison.Ordinal) &&
          main.Contains("if (testReady && LauncherSession.CanAccessTestGame)", StringComparison.Ordinal),
         "Automatic test updates and ticket renewal must require permission.");
     return Task.CompletedTask;

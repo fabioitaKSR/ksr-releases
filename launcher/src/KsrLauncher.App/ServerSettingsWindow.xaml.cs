@@ -42,7 +42,8 @@ public partial class ServerSettingsWindow : Window
                 ServerLabelGapRow, ServerUrlRow, ServerDescriptionRow, ServerBottomGapRow }) row.Height = new GridLength(0);
             TestGameTitle.Text = _module.Label.ToUpperInvariant();
             TestGameDescription.Text = _module.Description +
-                (IsFullMode ? " This installation uses the existing test1 campaign." : string.Empty);
+                (IsFullMode ? " This installation uses the existing test1 campaign." : string.Empty) +
+                " With a selected folder, updates run automatically at launcher startup/sign-in and before launch.";
             LaunchTestKspButton.Content = "LAUNCH KSP";
         }
         BetaAccess.Changed += AccessChanged;
@@ -220,8 +221,8 @@ public partial class ServerSettingsWindow : Window
         dialog.ShowDialog();
     }
 
-    private async void UpgradeTestKsp_Click(object sender, RoutedEventArgs e) =>
-        await MaintainTestKspAsync(UpdatePolicy.VerifyAllFiles);
+    private async void UpgradeTestKsp_Click(object sender, RoutedEventArgs e)
+    { await MaintainTestKspAsync(UpdatePolicy.VerifyAllFiles); }
 
     private async void RepairTestKsp_Click(object sender, RoutedEventArgs e)
     {
@@ -231,17 +232,24 @@ public partial class ServerSettingsWindow : Window
         await MaintainTestKspAsync(UpdatePolicy.ReinstallAll);
     }
 
-    private async Task MaintainTestKspAsync(UpdatePolicy policy)
+    private async Task<bool> MaintainTestKspAsync(UpdatePolicy policy)
     {
-        if (!HasModuleAccess || _maintenanceInProgress || string.IsNullOrWhiteSpace(_testKspRoot) || !UpgradeTestKspButton.IsEnabled) return;
+        if (!HasModuleAccess || _maintenanceInProgress || !BetaInstallationUpdates.HasValidDestination(_testKspRoot) || !UpgradeTestKspButton.IsEnabled) return false;
+        var selectedRoot = _testKspRoot!;
+        if (!BetaInstallationUpdates.HasIndependentDestination(ModuleId, selectedRoot, LauncherSettingsStore.LoadKspRoot(),
+            BetaAccess.Modules.Select(module => (module.Id, LauncherSettingsStore.LoadBetaKspRoot(module.Id)))))
+        {
+            TestKspMaintenanceStatus.Foreground = (Brush)FindResource("ErrorBrush");
+            TestKspMaintenanceStatus.Text = "Select a separate KSP folder for this beta before updating.";
+            return false;
+        }
         if (Process.GetProcessesByName("KSP_x64").Length > 0)
         {
             MessageBox.Show("Close KSP before updating the test installation.",
                 "KSR Settings", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            return false;
         }
 
-        if (!await CheckAccessAsync()) return;
         _maintenanceInProgress = true;
         BrowseTestKspButton.IsEnabled = false;
         ClearTestKspButton.IsEnabled = false;
@@ -255,9 +263,12 @@ public partial class ServerSettingsWindow : Window
         TestKspMaintenanceProgress.Visibility = Visibility.Visible;
         TestKspMaintenanceProgress.IsIndeterminate = true;
         TestKspMaintenanceStatus.Foreground = (Brush)FindResource("MutedBrush");
-        TestKspMaintenanceStatus.Text = "Checking official KSR release...";
+        TestKspMaintenanceStatus.Text = "Checking beta updates...";
         try
         {
+            if (!await CheckAccessAsync() || !HasModuleAccess ||
+                !TestInstallationPaths.IsSameKspRoot(selectedRoot, _testKspRoot) ||
+                !BetaInstallationUpdates.HasValidDestination(selectedRoot) || Process.GetProcessesByName("KSP_x64").Length > 0) return false;
             using var privateRelease = new PrivateBetaReleaseClient(ServerUrlTextBox.Text.Trim(), ModuleId, LauncherSession.AccessToken!);
             var release = await privateRelease.ResolveAsync(_operationCancellation.Token);
             release.Manifest.Components = release.Manifest.Components
@@ -277,9 +288,9 @@ public partial class ServerSettingsWindow : Window
                 TestKspMaintenanceProgress.Value = percent;
                 TestKspMaintenanceStatus.Text = $"{value.Phase} {value.ComponentId}  {percent:0}%";
             });
-            var launcherData = GetTestLauncherDataRoot(_testKspRoot);
+            var launcherData = GetTestLauncherDataRoot(selectedRoot);
             var result = await new UpdateEngine(new PackageService(privateRelease.Http)).RunAsync(release.Manifest,
-                new LauncherLocations(_testKspRoot, launcherData), release.AssetsBaseUrl,
+                new LauncherLocations(selectedRoot, launcherData), release.AssetsBaseUrl,
                 true, policy, progress, _operationCancellation.Token);
             TestKspMaintenanceProgress.IsIndeterminate = false;
             TestKspMaintenanceProgress.Value = 100;
@@ -287,12 +298,14 @@ public partial class ServerSettingsWindow : Window
             TestKspMaintenanceStatus.Text = result.Applied
                 ? $"{(policy == UpdatePolicy.ReinstallAll ? "Repair" : "Upgrade")} complete: {result.Plan.Components.Count(item => item.NeedsUpdate)} components."
                 : "All KSR game components are up to date.";
+            return true;
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException or OperationCanceledException)
         {
             TestKspMaintenanceProgress.IsIndeterminate = false;
             TestKspMaintenanceStatus.Foreground = (Brush)FindResource("ErrorBrush");
             TestKspMaintenanceStatus.Text = $"Operation failed: {exception.Message}";
+            return false;
         }
         finally
         {
@@ -308,9 +321,7 @@ public partial class ServerSettingsWindow : Window
     private string GetTestLauncherDataRoot(string testKspRoot)
     {
         var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
-        if (IsFullMode) return TestInstallationPaths.GetLauncherDataRoot(testKspRoot, LauncherSettingsStore.LoadKspRoot(), launcherData);
-        var pathKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(testKspRoot).ToUpperInvariant())))[..16];
-        return Path.Combine(launcherData, "beta", ModuleId, pathKey);
+        return BetaInstallationUpdates.GetLauncherDataRoot(ModuleId, testKspRoot, LauncherSettingsStore.LoadKspRoot(), launcherData);
     }
 
     private async void LaunchTestKsp_Click(object sender, RoutedEventArgs e)
@@ -323,6 +334,8 @@ public partial class ServerSettingsWindow : Window
             return;
         }
         if (!await CheckAccessAsync() || !TrySaveSettings()) return;
+        if (!await MaintainTestKspAsync(UpdatePolicy.VerifyAllFiles)) return;
+        if (!HasModuleAccess || !BetaInstallationUpdates.HasValidDestination(_testKspRoot)) return;
         if (!IsFullMode)
         {
             try
