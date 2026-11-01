@@ -716,6 +716,8 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="8" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="8" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
@@ -726,7 +728,10 @@
                 <Button x:Name="SendSaveButton" Grid.Column="4" Content="SEND SAVE" Style="{StaticResource GhostButton}"
                         MinWidth="105" VerticalAlignment="Center" Click="SendSave_Click"
                         ToolTip="Choose the KSP save folder to include in the report" />
-                <Grid Grid.Column="5" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Button x:Name="SendCsvButton" Grid.Column="6" Content="SEND CSV" Style="{StaticResource GhostButton}"
+                        MinWidth="105" VerticalAlignment="Center" Click="SendCsv_Click"
+                        ToolTip="Send the logger CSV files from this installation" />
+                <Grid Grid.Column="7" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
@@ -744,7 +749,7 @@
                         </Grid>
                     </Button>
 
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <StackPanel x:Name="FooterBrandText" Grid.Column="1" VerticalAlignment="Center">
                         <TextBlock Text="YOUR MODS. YOUR RULES. YOUR SPACE RACE."
                                    Foreground="{StaticResource MutedBrush}" FontSize="13"
                                    HorizontalAlignment="Center" TextAlignment="Center" />
@@ -767,7 +772,7 @@
                         </Grid>
                     </Button>
                 </Grid>
-                <Button x:Name="LaunchKspButton" Grid.Column="6" Content="LAUNCH KSP" Style="{StaticResource PrimaryButton}" MinWidth="260"
+                <Button x:Name="LaunchKspButton" Grid.Column="8" Content="LAUNCH KSP" Style="{StaticResource PrimaryButton}" MinWidth="260"
                         VerticalAlignment="Center" Click="LaunchKsp_Click" />
             </Grid>
         </Border>

@@ -104,6 +104,7 @@ public partial class MainWindow : Window
         SizeChanged += (_, _) =>
         {
             HeaderActions.Width = ActualWidth < 1200 ? 202 : double.NaN;
+            FooterBrandText.Visibility = ActualWidth < 1400 ? Visibility.Collapsed : Visibility.Visible;
             BetaVersionsScroll.MaxHeight = ActualHeight < 800 ? 100 : 164;
         };
         Closed += (_, _) => BetaAccess.Changed -= UpdateBetaButton;
@@ -1460,6 +1461,14 @@ public partial class MainWindow : Window
         CampaignsList.Visibility = _campaigns.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
         if (_campaigns.Count == 0) ApplyCampaignSelection(null);
         UpdateCreateRaceState();
+    }
+
+    private void SendCsv_Click(object sender, RoutedEventArgs e)
+    {
+        if (!EnsureKspRoot()) return;
+        var preferredSave = CampaignsList.SelectedItem is CampaignListItem campaign
+            ? CampaignSaveNaming.CreateStartFolderName(campaign.Name) : null;
+        LoggerCsvSupportDialog.Open(this, _kspRoot!, preferredSave);
     }
 
     private void SendLog_Click(object sender, RoutedEventArgs e)

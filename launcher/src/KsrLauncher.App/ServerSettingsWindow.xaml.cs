@@ -172,7 +172,14 @@ public partial class ServerSettingsWindow : Window
         RepairTestKspButton.IsEnabled = LaunchTestKspButton.IsEnabled;
         SendTestSaveButton.IsEnabled = CanSendBetaSupport;
         SendTestLogButton.IsEnabled = CanSendBetaSupport;
+        SendTestCsvButton.IsEnabled = CanSendBetaSupport;
         TestGameSupport.Visibility = HasModuleAccess ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private async void SendTestCsv_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanSendBetaSupport || !await CheckAccessAsync() || !CanSendBetaSupport) return;
+        LoggerCsvSupportDialog.Open(this, _testKspRoot!, null);
     }
 
     private async void SendTestSave_Click(object sender, RoutedEventArgs e)
@@ -258,6 +265,7 @@ public partial class ServerSettingsWindow : Window
         LaunchTestKspButton.IsEnabled = false;
         SendTestSaveButton.IsEnabled = false;
         SendTestLogButton.IsEnabled = false;
+        SendTestCsvButton.IsEnabled = false;
         SaveButton.IsEnabled = false;
         CancelButton.IsEnabled = false;
         TestKspMaintenanceProgress.Visibility = Visibility.Visible;

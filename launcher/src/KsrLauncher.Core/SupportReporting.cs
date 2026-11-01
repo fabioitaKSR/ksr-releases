@@ -9,7 +9,8 @@ namespace KsrLauncher.Core;
 public enum SupportReportType
 {
     Log,
-    Save
+    Save,
+    Csv
 }
 
 public sealed record SupportReportRequest(
@@ -22,7 +23,8 @@ public sealed record SupportReportRequest(
     string? LocalSaveName,
     string LauncherVersion,
     string KspVersion,
-    bool PersistentOnly = false);
+    bool PersistentOnly = false,
+    string? LoggerKspRoot = null);
 
 public sealed record SupportReportPackage(
     string FilePath,
@@ -47,7 +49,8 @@ public sealed class SupportReportPackager
         var created = (createdAtUtc ?? DateTimeOffset.UtcNow).ToUniversalTime();
         var username = SanitizeSegment(request.Username, "Player");
         var type = request.Type.ToString().ToUpperInvariant();
-        var fileName = $"{created:yyyy-MM-dd_HHmmss}Z_{username}_{type}.zip";
+        var csvUniqueSuffix = request.Type == SupportReportType.Csv ? "_" + Guid.NewGuid().ToString("N") : string.Empty;
+        var fileName = $"{created:yyyy-MM-dd_HHmmss}Z_{username}_{type}{csvUniqueSuffix}.zip";
         Directory.CreateDirectory(outputDirectory);
         var destination = Path.Combine(Path.GetFullPath(outputDirectory), fileName);
         var work = Path.Combine(outputDirectory, ".work-" + Guid.NewGuid().ToString("N"));
@@ -61,6 +64,13 @@ public sealed class SupportReportPackager
                 var logDestination = Path.Combine(work, "KSP.log");
                 File.Copy(Path.GetFullPath(request.SourcePath), logDestination, true);
                 includedFiles.Add(await DescribeAsync(logDestination, "KSP.log", cancellationToken));
+            }
+            else if (request.Type == SupportReportType.Csv)
+            {
+                var csvDestination = Path.Combine(work, "csv");
+                await LoggerCsvSupport.CopyAsync(request.LoggerKspRoot!, request.SourcePath, csvDestination, cancellationToken);
+                foreach (var path in Directory.EnumerateFiles(csvDestination))
+                    includedFiles.Add(await DescribeAsync(path, "csv/" + Path.GetFileName(path), cancellationToken));
             }
             else
             {
@@ -125,6 +135,12 @@ public sealed class SupportReportPackager
         if (request.Type == SupportReportType.Log &&
             (File.GetAttributes(Path.GetFullPath(request.SourcePath)) & FileAttributes.ReparsePoint) != 0)
             throw new IOException("Linked log files cannot be uploaded.");
+        if (request.Type == SupportReportType.Csv)
+        {
+            if (string.IsNullOrWhiteSpace(request.LoggerKspRoot)) throw new InvalidDataException("Select the logger installation before sending CSV files.");
+            if (LoggerCsvSupport.Files(request.LoggerKspRoot, request.SourcePath).Count == 0)
+                throw new FileNotFoundException("No current logger CSV files were found for this save.");
+        }
         if (request.Type == SupportReportType.Save)
         {
             if (!Directory.Exists(request.SourcePath)) throw new DirectoryNotFoundException("The selected save folder was not found.");

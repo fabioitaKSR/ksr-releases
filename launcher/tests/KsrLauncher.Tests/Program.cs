@@ -7,6 +7,9 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("CSV report discovers current files in one installation only", CsvSupportTests.Discovery),
+    ("CSV package preserves sources and excludes unrelated files", CsvSupportTests.Package),
+    ("CSV report rejects foreign roots, missing files and byte budgets", CsvSupportTests.Boundaries),
     ("Automatic betas never download without an explicitly selected valid destination", BetaAutomaticUpdateTests.MissingFolderNeverInvokesDownload),
     ("All authorized betas update sequentially and errors remain isolated", BetaAutomaticUpdateTests.AuthorizedBetasSequentialAndIsolated),
     ("Revocation and cleared destinations stop subsequent automatic downloads", BetaAutomaticUpdateTests.RevocationAndDestinationChangesStopNewDownloads),
