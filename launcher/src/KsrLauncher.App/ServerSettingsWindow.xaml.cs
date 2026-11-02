@@ -297,7 +297,7 @@ public partial class ServerSettingsWindow : Window
                 TestKspMaintenanceStatus.Text = $"{value.Phase} {value.ComponentId}  {percent:0}%";
             });
             var launcherData = GetTestLauncherDataRoot(selectedRoot);
-            var result = await new UpdateEngine(new PackageService(privateRelease.Http)).RunAsync(release.Manifest,
+            var result = await new UpdateEngine(new PackageService(privateRelease.Http), InstallationWarningDialog.Review).RunAsync(release.Manifest,
                 new LauncherLocations(selectedRoot, launcherData), release.AssetsBaseUrl,
                 true, policy, progress, _operationCancellation.Token);
             TestKspMaintenanceProgress.IsIndeterminate = false;

@@ -267,7 +267,7 @@ public partial class MainWindow : Window
                 LauncherVersionText.Text = $"{normalVersionText}  ·  {value.Phase} {component} {percent:0}%";
             });
             var locations = new LauncherLocations(_kspRoot!, launcherData);
-            var engine = new UpdateEngine();
+            var engine = new UpdateEngine(reviewInstallation: InstallationWarningDialog.Review);
             var applied = false;
 
             if (requiredComponents.Count > 0)
@@ -387,7 +387,7 @@ public partial class MainWindow : Window
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
             var dataRoot = BetaInstallationUpdates.GetLauncherDataRoot(
                 module.Id, testRoot, LauncherSettingsStore.LoadKspRoot(), launcherData);
-            var result = await new UpdateEngine(new PackageService(privateRelease.Http)).RunAsync(release.Manifest,
+            var result = await new UpdateEngine(new PackageService(privateRelease.Http), InstallationWarningDialog.Review).RunAsync(release.Manifest,
                 new LauncherLocations(testRoot!, dataRoot), release.AssetsBaseUrl,
                 true, UpdatePolicy.VerifyAllFiles, progress);
             ModUpdateProgressBar.IsIndeterminate = false;
@@ -613,7 +613,7 @@ public partial class MainWindow : Window
                 PlayerLaunchAndLogsStatusText.Text = LaunchAndLogsStatusText.Text;
             });
             var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
-            await new UpdateEngine().RunAsync(
+            await new UpdateEngine(reviewInstallation: InstallationWarningDialog.Review).RunAsync(
                 release.Manifest, new LauncherLocations(_kspRoot!, launcherData), release.AssetsBaseUrl,
                 true, UpdatePolicy.InstallOrRepair, progress);
             var missingFiles = LaunchAndLogsReadiness.MissingFiles(_kspRoot!);

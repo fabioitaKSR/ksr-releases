@@ -2,7 +2,8 @@ using System.Text.Json;
 
 namespace KsrLauncher.Core;
 
-public sealed class UpdateEngine(PackageService? packageService = null)
+public sealed class UpdateEngine(PackageService? packageService = null,
+    Func<LauncherLocations, IReadOnlyList<string>, bool>? reviewInstallation = null)
 {
     private readonly PackageService _packages = packageService ?? new PackageService();
 
@@ -24,6 +25,12 @@ public sealed class UpdateEngine(PackageService? packageService = null)
             state.Components.TryGetValue(component.Id, out var installed) && Version.TryParse(installed.Version, out var previousVersion) && previousVersion > incomingVersion))
             throw new InvalidDataException("An older component catalog cannot replace an installed newer catalog.");
         var plan = UpdatePlanner.Create(manifest, state, locations, policy);
+        if (apply && reviewInstallation is not null)
+        {
+            var warnings = InstallationWarnings.Inspect(plan, state);
+            if (warnings.Count > 0 && !reviewInstallation(locations, warnings))
+                throw new IOException("Installation cancelled. No files were changed by this operation. Review the existing mods and try again when ready.");
+        }
         if (!apply || !plan.HasUpdates) return new UpdateResult(plan, false, null);
         if (string.IsNullOrWhiteSpace(assetsBase)) throw new ArgumentException("assetsBase e obbligatorio per applicare un aggiornamento.");
         Directory.CreateDirectory(locations.LauncherDataRoot);
