@@ -37,6 +37,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Draft download failed.' }
           dotnet run --project launcher/src/KsrLauncher.Cli/KsrLauncher.Cli.csproj -c Release -- verify-release --directory release-output
           if ($LASTEXITCODE -ne 0) { throw 'Release authenticity verification failed.' }
+          $metadata = Get-Content release-output/ksr-launcher-update.json -Raw | ConvertFrom-Json
+          ./tools/Test-StandaloneStartup.ps1 -Executable (Join-Path (Resolve-Path release-output) $metadata.assetName)
           dotnet run --project launcher/src/KsrLauncher.Cli/KsrLauncher.Cli.csproj -c Release -- validate-manifest --manifest release-output/ksr-release.json
           if ($LASTEXITCODE -ne 0) { throw 'Manifest validation failed.' }
           # Signing is performed on the owner's PC; no private key is stored in GitHub.

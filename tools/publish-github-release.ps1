@@ -18,6 +18,9 @@ if (Test-Path -LiteralPath (Join-Path $AssetsDirectory 'ksr-release.json')) {
 if (@(Get-ChildItem -LiteralPath $AssetsDirectory -File -Filter 'KSR-Launcher-*.exe').Count -gt 0) {
     dotnet run --project $cli -c Release -- verify-release --directory $AssetsDirectory
     if ($LASTEXITCODE -ne 0) { throw 'Only locally signed and verified launcher releases can be uploaded.' }
+    foreach ($executable in Get-ChildItem -LiteralPath $AssetsDirectory -File -Filter 'KSR-Launcher-*.exe') {
+        & (Join-Path $PSScriptRoot 'Test-StandaloneStartup.ps1') -Executable $executable.FullName
+    }
 }
 $credentialInput = "protocol=https`nhost=github.com`n`n"
 $credentialLines = @($credentialInput | git credential fill)
