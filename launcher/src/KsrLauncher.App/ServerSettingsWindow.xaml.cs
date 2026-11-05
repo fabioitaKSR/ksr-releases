@@ -185,23 +185,7 @@ public partial class ServerSettingsWindow : Window
     private async void SendTestSave_Click(object sender, RoutedEventArgs e)
     {
         if (!CanSendBetaSupport || !await CheckAccessAsync() || !CanSendBetaSupport) return;
-        var supportRoot = _testKspRoot!;
-        try
-        {
-            var picker = new OpenFolderDialog
-            {
-                Title = "Select a save from the test installation",
-                InitialDirectory = TestGameSupportPaths.SavesRoot(supportRoot),
-                Multiselect = false
-            };
-            if (picker.ShowDialog(this) != true) return;
-            var save = TestGameSupportPaths.SaveFolder(supportRoot, picker.FolderName);
-            OpenTestSupportDialog(SupportReportType.Save, save, Path.GetFileName(save), true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
-        {
-            MessageBox.Show(exception.Message, "KSR Support", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
+        SaveFileSupportDialog.Open(this, _testKspRoot!, null);
     }
 
     private async void SendTestLog_Click(object sender, RoutedEventArgs e)

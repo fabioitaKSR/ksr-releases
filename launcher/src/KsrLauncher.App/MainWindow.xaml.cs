@@ -1511,19 +1511,9 @@ public partial class MainWindow : Window
     private void SendSave_Click(object sender, RoutedEventArgs e)
     {
         if (!EnsureKspRoot()) return;
-        var picker = new OpenFolderDialog
-        {
-            Title = "Select the KSP save folder to send",
-            InitialDirectory = Path.Combine(_kspRoot!, "saves"),
-            Multiselect = false
-        };
-        if (picker.ShowDialog(this) != true) return;
-        if (!File.Exists(Path.Combine(picker.FolderName, "persistent.sfs")))
-        {
-            MessageBox.Show("The selected folder is not a KSP save. persistent.sfs is missing.", "KSR Support", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-        OpenSupportDialog(SupportReportType.Save, picker.FolderName, Path.GetFileName(picker.FolderName));
+        var preferredSave = CampaignsList.SelectedItem is CampaignListItem campaign
+            ? CampaignSaveNaming.CreateStartFolderName(campaign.Name) : null;
+        SaveFileSupportDialog.Open(this, _kspRoot!, preferredSave);
     }
 
     private void OpenSupportDialog(SupportReportType type, string sourcePath, string? saveName)

@@ -14,14 +14,16 @@ public partial class SupportReportWindow : Window
     private readonly bool _persistentOnly;
     private readonly bool _useSelectedCampaign;
     private readonly string? _csvKspRoot;
+    private readonly string? _saveKspRoot;
     private bool _busy;
 
     public SupportReportWindow(SupportReportType type, string sourcePath, string? saveName,
-        bool persistentOnly = false, bool useSelectedCampaign = true, string? csvKspRoot = null)
+        bool persistentOnly = false, bool useSelectedCampaign = true, string? csvKspRoot = null, string? saveKspRoot = null)
     {
         InitializeComponent();
         _type = type;
         _csvKspRoot = csvKspRoot;
+        _saveKspRoot = saveKspRoot;
         _sourcePath = sourcePath;
         _saveName = saveName;
         _persistentOnly = persistentOnly;
@@ -37,6 +39,8 @@ public partial class SupportReportWindow : Window
             ? string.Join(" · ", LoggerCsvSupport.Files(csvKspRoot!, sourcePath).Select(Path.GetFileName)) + " · report.txt · manifest.json"
             : type == SupportReportType.Log
             ? "KSP.log · report.txt · manifest.json"
+            : saveKspRoot is not null
+                ? $"save/{Path.GetFileName(sourcePath)} (game: {saveName ?? "unnamed"}) · report.txt · manifest.json"
             : persistentOnly
                 ? $"save/persistent.sfs (selected save: {saveName ?? "unnamed"}) · report.txt · manifest.json"
                 : $"save/ (selected save: {saveName ?? "unnamed"}) · report.txt · manifest.json";
@@ -82,7 +86,8 @@ public partial class SupportReportWindow : Window
                 GetLauncherVersion(),
                 DetectKspVersion(_sourcePath),
                 _persistentOnly,
-                _csvKspRoot);
+                _csvKspRoot,
+                _saveKspRoot);
 
             package = await new SupportReportPackager().CreateAsync(request, queue);
             if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) || string.IsNullOrWhiteSpace(LauncherSession.AccessToken))

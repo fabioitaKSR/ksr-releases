@@ -7,6 +7,8 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Selected save files preserve original names and exclude other files", SaveFileSupportTests.Package),
+    ("Selected save files reject other installations, links and nested paths", SaveFileSupportTests.Boundaries),
     ("Installation warnings precede changes, distinguish managed installs and retain downgrade guard", InstallationWarningTests.ReviewBeforeChanges),
     ("CSV report discovers current files in one installation only", CsvSupportTests.Discovery),
     ("CSV package preserves sources and excludes unrelated files", CsvSupportTests.Package),

@@ -22,6 +22,19 @@ public static class TestGameSupportPaths
         return selected;
     }
 
+    public static string SaveFile(string kspRoot, string selectedFile)
+    {
+        var saves = SavesRoot(kspRoot);
+        var selected = Path.GetFullPath(selectedFile);
+        var folder = Path.GetDirectoryName(selected);
+        if (!string.Equals(Path.GetExtension(selected), ".sfs", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(Path.GetDirectoryName(folder), saves, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("Choose an .sfs file from a save in the selected installation.");
+        if (!File.Exists(selected)) throw new FileNotFoundException("The selected save file was not found.", selected);
+        SafePaths.RejectReparsePoints(kspRoot, selected);
+        return selected;
+    }
+
     public static string LogFile(string kspRoot)
     {
         var log = SafePaths.Under(kspRoot, "KSP.log");

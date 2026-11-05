@@ -24,7 +24,8 @@ public sealed record SupportReportRequest(
     string LauncherVersion,
     string KspVersion,
     bool PersistentOnly = false,
-    string? LoggerKspRoot = null);
+    string? LoggerKspRoot = null,
+    string? SaveKspRoot = null);
 
 public sealed record SupportReportPackage(
     string FilePath,
@@ -75,7 +76,13 @@ public sealed class SupportReportPackager
             else
             {
                 var saveDestination = Path.Combine(work, "save");
-                if (request.PersistentOnly)
+                if (request.SaveKspRoot is not null)
+                {
+                    var source = TestGameSupportPaths.SaveFile(request.SaveKspRoot, request.SourcePath);
+                    Directory.CreateDirectory(saveDestination);
+                    File.Copy(source, Path.Combine(saveDestination, Path.GetFileName(source)));
+                }
+                else if (request.PersistentOnly)
                 {
                     var source = Path.GetFullPath(request.SourcePath);
                     var persistent = SafePaths.Under(source, "persistent.sfs");
@@ -143,6 +150,11 @@ public sealed class SupportReportPackager
         }
         if (request.Type == SupportReportType.Save)
         {
+            if (request.SaveKspRoot is not null)
+            {
+                TestGameSupportPaths.SaveFile(request.SaveKspRoot, request.SourcePath);
+                return;
+            }
             if (!Directory.Exists(request.SourcePath)) throw new DirectoryNotFoundException("The selected save folder was not found.");
             if (!File.Exists(Path.Combine(request.SourcePath, "persistent.sfs")))
                 throw new InvalidDataException("The selected folder is not a KSP save: persistent.sfs is missing.");
