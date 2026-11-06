@@ -7,6 +7,8 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Retroactive cleanup retains settings, pending backups and current downloads", StorageCleanupTests.Retroactive),
+    ("Cleanup respects update locks and refuses linked cache trees", StorageCleanupTests.LocksAndLinks),
     ("Selected save files preserve original names and exclude other files", SaveFileSupportTests.Package),
     ("Selected save files reject other installations, links and nested paths", SaveFileSupportTests.Boundaries),
     ("Installation warnings precede changes, distinguish managed installs and retain downgrade guard", InstallationWarningTests.ReviewBeforeChanges),
@@ -41,8 +43,8 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Manifest blocca installMode sconosciuto", ManifestRejectsUnknownInstallMode),
     ("Manifest blocca assetUrl non sicuro", ManifestRejectsUnsafeAssetUrl),
     ("ZIP blocca path traversal", ZipRejectsTraversal),
-    ("Aggiornamento, preserve e rollback", UpdatePreserveRollback),
-    ("Overlay conserva la mod e supporta rollback", OverlayPreservesModAndRollsBack),
+    ("Aggiornamento, preserve e rollback", UpdatePreservesContentAndCleansCache),
+    ("Overlay conserva la mod e supporta rollback", OverlayPreservesModAndCleansCache),
     ("SHA errato non modifica installazione", WrongHashDoesNotModify),
     ("Errore nel gruppo ripristina componenti precedenti", GroupFailureRollsBack),
     ("GitHub seleziona release stabile e manifest", GitHubSelectsStableRelease),
@@ -141,7 +143,7 @@ static Task ZipRejectsTraversal()
     return Task.CompletedTask;
 }
 
-static async Task UpdatePreserveRollback()
+static async Task UpdatePreservesContentAndCleansCache()
 {
     using var scope = new TempScope();
     var ksp = CreateKsp(scope.Root);
@@ -165,13 +167,12 @@ static async Task UpdatePreserveRollback()
     Equal("new", await File.ReadAllTextAsync(Path.Combine(target, "new.txt")));
     Equal("local-value", await File.ReadAllTextAsync(Path.Combine(target, "PluginData", "local.cfg")));
     Equal("old", await File.ReadAllTextAsync(Path.Combine(target, "old.txt")));
-    True(result.BackupDirectory is not null, "Backup non creato.");
-    await UpdateEngine.RollbackAsync(result.BackupDirectory!, new LauncherLocations(ksp, launcherData), true);
-    Equal("old", await File.ReadAllTextAsync(Path.Combine(target, "old.txt")));
-    False(File.Exists(Path.Combine(target, "new.txt")), "Il rollback non ha rimosso il file nuovo.");
+    True(result.BackupDirectory is null, "Completed backup was retained.");
+    False(Directory.EnumerateDirectories(Path.Combine(launcherData, ".ksr-launcher", "work")).Any(), "Completed work remained.");
+    False(Directory.EnumerateDirectories(Path.Combine(launcherData, ".ksr-launcher", "backups")).Any(), "Completed backup remained.");
 }
 
-static async Task OverlayPreservesModAndRollsBack()
+static async Task OverlayPreservesModAndCleansCache()
 {
     using var scope = new TempScope();
     var ksp = CreateKsp(scope.Root);
@@ -205,10 +206,8 @@ static async Task OverlayPreservesModAndRollsBack()
 
     Equal("patched-dll", await File.ReadAllTextAsync(Path.Combine(target, "Plugins", "TarsierSpaceTech.dll")));
     Equal("chemcam-model", await File.ReadAllTextAsync(Path.Combine(target, "Parts", "ChemCam", "model.mu")));
-    True(result.BackupDirectory is not null, "Backup overlay non creato.");
-
-    await UpdateEngine.RollbackAsync(result.BackupDirectory!, new LauncherLocations(ksp, launcherData), true);
-    Equal("old-dll", await File.ReadAllTextAsync(Path.Combine(target, "Plugins", "TarsierSpaceTech.dll")));
+    True(result.BackupDirectory is null, "Completed overlay backup was retained.");
+    Equal("patched-dll", await File.ReadAllTextAsync(Path.Combine(target, "Plugins", "TarsierSpaceTech.dll")));
     Equal("chemcam-model", await File.ReadAllTextAsync(Path.Combine(target, "Parts", "ChemCam", "model.mu")));
 }
 

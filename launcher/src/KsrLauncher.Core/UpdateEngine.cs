@@ -20,6 +20,7 @@ public sealed class UpdateEngine(PackageService? packageService = null,
         if (manifest.Components.Any(component => !string.Equals(component.TargetKind, "launcherData", StringComparison.OrdinalIgnoreCase)))
             UpdatePlanner.ValidateKspRoot(locations.KspRoot);
 
+        using var updateLock = apply ? LauncherStorageCleanup.AcquireUpdateLock(locations.LauncherDataRoot) : null;
         var state = await StateStore.LoadAsync(locations.LauncherDataRoot, cancellationToken);
         if (Version.TryParse(manifest.Version, out var incomingVersion) && manifest.Components.Any(component =>
             state.Components.TryGetValue(component.Id, out var installed) && Version.TryParse(installed.Version, out var previousVersion) && previousVersion > incomingVersion))
@@ -31,7 +32,11 @@ public sealed class UpdateEngine(PackageService? packageService = null,
             if (warnings.Count > 0 && !reviewInstallation(locations, warnings))
                 throw new IOException("Installation cancelled. No files were changed by this operation. Review the existing mods and try again when ready.");
         }
-        if (!apply || !plan.HasUpdates) return new UpdateResult(plan, false, null);
+        if (!apply || !plan.HasUpdates)
+        {
+            if (apply) await CleanCompletedCacheAsync(locations.LauncherDataRoot, progress);
+            return new UpdateResult(plan, false, null);
+        }
         if (string.IsNullOrWhiteSpace(assetsBase)) throw new ArgumentException("assetsBase e obbligatorio per applicare un aggiornamento.");
         Directory.CreateDirectory(locations.LauncherDataRoot);
 
@@ -49,6 +54,7 @@ public sealed class UpdateEngine(PackageService? packageService = null,
 
         Directory.CreateDirectory(workRoot);
         Directory.CreateDirectory(backupRoot);
+        UpdateResult result;
         try
         {
             var prepared = await PrepareAsync(plan, assetsBase, workRoot, progress, cancellationToken);
@@ -83,7 +89,7 @@ public sealed class UpdateEngine(PackageService? packageService = null,
             }
             await StateStore.SaveAsync(locations.LauncherDataRoot, state, cancellationToken);
             await WriteJournalAsync(backupRoot, journal, cancellationToken);
-            return new UpdateResult(plan, true, backupRoot);
+            result = new UpdateResult(plan, true, backupRoot);
         }
         catch
         {
@@ -95,8 +101,19 @@ public sealed class UpdateEngine(PackageService? packageService = null,
         }
         finally
         {
-            FileTree.DeleteDirectory(workRoot);
+            try { FileTree.DeleteDirectory(workRoot); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         }
+        await CleanCompletedCacheAsync(locations.LauncherDataRoot, progress);
+        return Directory.Exists(backupRoot) ? result : result with { BackupDirectory = null };
+    }
+
+    private static async Task CleanCompletedCacheAsync(string root, IProgress<UpdateProgress>? progress)
+    {
+        var cleanupProgress = new Progress<StorageCleanupProgress>(item => progress?.Report(
+            new UpdateProgress("Completed update backups", 0, 0, item.Completed, item.Total, "CLEANING")));
+        try { await Task.Run(() => LauncherStorageCleanup.CleanCompletedUpdatesAsync(root, cleanupProgress)); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException or JsonException) { }
     }
 
     private async Task<List<PreparedComponent>> PrepareAsync(

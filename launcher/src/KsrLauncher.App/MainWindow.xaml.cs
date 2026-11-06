@@ -63,13 +63,13 @@ public partial class MainWindow : Window
         InitializeComponent();
         if (!string.IsNullOrWhiteSpace(_internalSignedCatalog))
         {
-            Title = "KSR Platform — INTERNAL SIGNED CATALOG TEST";
+            Title = "KSR Platform â€” INTERNAL SIGNED CATALOG TEST";
             LauncherVersionText.ToolTip = "Internal test using a locally stored signed catalog. Public launcher updates are suspended for this process.";
         }
         var version = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
         LauncherVersionText.Text = version is null
             ? "LAUNCHER"
-            : $"LAUNCHER  ·  v{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
+            : $"LAUNCHER  Â·  v{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}";
         CampaignsList.ItemsSource = _campaigns;
         AdminMembersList.ItemsSource = _adminMembers;
         IgnoredGameDataFoldersList.ItemsSource = _ignoredGameDataFolders;
@@ -110,7 +110,7 @@ public partial class MainWindow : Window
         Closed += (_, _) => BetaAccess.Changed -= UpdateBetaButton;
     }
 
-    private int ShowBlockingOperation(string title, string detail)
+    private int ShowBlockingOperation(string title, string detail, bool estimateDownload = true)
     {
         var generation = ++_blockingOperationGeneration;
         _blockingOperationInProgress = true;
@@ -123,10 +123,10 @@ public partial class MainWindow : Window
         ModUpdateDetailText.Text = detail;
         ModUpdateProgressBar.IsIndeterminate = true;
         ModUpdateProgressBar.Value = 0;
-        ModUpdateRemainingText.Text = "Preparing download...";
+        ModUpdateRemainingText.Text = estimateDownload ? "Preparing download..." : "Preparing storage cleanup...";
         ModUpdateOverlay.Visibility = Visibility.Visible;
         ModUpdateOverlay.Focus();
-        _downloadCountdownTimer.Start();
+        if (estimateDownload) _downloadCountdownTimer.Start();
         return generation;
     }
 
@@ -151,6 +151,7 @@ public partial class MainWindow : Window
         {
             ModUpdateRemainingText.Text = phase == "INSTALLING"
                 ? "Installing verified files..."
+                : phase == "CLEANING" ? "Removing completed update backups and old downloads..."
                 : "Verifying downloaded files...";
         }
     }
@@ -187,6 +188,22 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        var cleanupGeneration = ShowBlockingOperation("CLEANING LAUNCHER STORAGE", "Removing completed update backups and old downloads...", estimateDownload: false);
+        try
+        {
+            var progress = new Progress<StorageCleanupProgress>(item =>
+            {
+                var percent = item.Total == 0 ? 100 : 100d * item.Completed / item.Total;
+                ShowBlockingProgress(cleanupGeneration, "CLEANING", $"{item.Description} Â· {item.Completed}/{item.Total}",
+                    item.Completed, item.Total, percent);
+            });
+            await LauncherStorageCleanup.CleanApplicationAsync(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher"),
+                System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!, Environment.ProcessPath!, progress);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        { ShowAuthFeedback("Some old update files could not be cleaned. Cleanup will retry at the next launch."); }
+        finally { HideBlockingOperation(); }
         await RefreshServerStatusAsync();
         await TryRestoreSessionAsync();
         if (!TestInstallationPaths.IsSameKspRoot(_kspRoot, LauncherSettingsStore.LoadTestKspRoot()))
@@ -225,14 +242,14 @@ public partial class MainWindow : Window
         var launcherVersion = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
         var normalVersionText = launcherVersion is null
             ? "LAUNCHER"
-            : $"LAUNCHER  ·  v{launcherVersion.Major}.{launcherVersion.Minor}.{Math.Max(0, launcherVersion.Build)}";
+            : $"LAUNCHER  Â·  v{launcherVersion.Major}.{launcherVersion.Minor}.{Math.Max(0, launcherVersion.Build)}";
         try
         {
 			_installedKsrModsUpdateInProgress = true;
 			LaunchKspButton.IsEnabled = false;
             var overlayGeneration = ShowBlockingOperation("CHECKING INSTALLED KSR MODS",
                 "Reading the local installation and release manifest...");
-            LauncherVersionText.Text = $"{normalVersionText}  ·  CHECKING KSR MODS";
+            LauncherVersionText.Text = $"{normalVersionText}  Â·  CHECKING KSR MODS";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
 
             var release = await CreateComponentReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
@@ -262,9 +279,9 @@ public partial class MainWindow : Window
                     ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
                     : Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100);
                 var component = value.ComponentId.ToUpperInvariant();
-                ShowBlockingProgress(overlayGeneration, value.Phase, $"{component} · {value.ComponentsCompleted}/{value.TotalComponents} components · {percent:0}%",
+                ShowBlockingProgress(overlayGeneration, value.Phase, $"{component} Â· {value.ComponentsCompleted}/{value.TotalComponents} components Â· {percent:0}%",
                     value.BytesDownloaded, value.TotalBytes, percent);
-                LauncherVersionText.Text = $"{normalVersionText}  ·  {value.Phase} {component} {percent:0}%";
+                LauncherVersionText.Text = $"{normalVersionText}  Â·  {value.Phase} {component} {percent:0}%";
             });
             var locations = new LauncherLocations(_kspRoot!, launcherData);
             var engine = new UpdateEngine(reviewInstallation: InstallationWarningDialog.Review);
@@ -297,7 +314,7 @@ public partial class MainWindow : Window
             }
 
             LauncherVersionText.Text = applied
-                ? $"{normalVersionText}  ·  KSR MODS UPDATED"
+                ? $"{normalVersionText}  Â·  KSR MODS UPDATED"
                 : normalVersionText;
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource(
                 applied ? "GreenBrush" : "MutedBrush");
@@ -312,7 +329,7 @@ public partial class MainWindow : Window
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
-            LauncherVersionText.Text = $"{normalVersionText}  ·  MOD UPDATE FAILED";
+            LauncherVersionText.Text = $"{normalVersionText}  Â·  MOD UPDATE FAILED";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             ModUpdateProgressBar.IsIndeterminate = false;
             ModUpdatePhaseText.Text = "MOD UPDATE FAILED";
@@ -380,7 +397,7 @@ public partial class MainWindow : Window
                     ? Math.Clamp(value.BytesDownloaded * 100d / value.TotalBytes, 0, 100)
                     : 0;
                 ShowBlockingProgress(overlayGeneration, value.Phase,
-                    $"{label} · {value.ComponentId} · {percent:0}%",
+                    $"{label} Â· {value.ComponentId} Â· {percent:0}%",
                     value.BytesDownloaded, value.TotalBytes, percent);
             });
             var launcherData = Path.Combine(
@@ -426,7 +443,7 @@ public partial class MainWindow : Window
             if (update is null) return;
 
             var overlayGeneration = ShowBlockingOperation("UPDATING KSR LAUNCHER", $"Preparing {update.Tag}...");
-            LauncherVersionText.Text = $"LAUNCHER  ·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}  ·  UPDATING";
+            LauncherVersionText.Text = $"LAUNCHER  Â·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}  Â·  UPDATING";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
             var updateDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -435,13 +452,13 @@ public partial class MainWindow : Window
             {
                 if (overlayGeneration != _blockingOperationGeneration) return;
                 var percent = update.Size > 0 ? bytes * 100d / update.Size : 0;
-                ShowBlockingProgress(overlayGeneration, "DOWNLOADING", $"KSR Launcher {update.Tag} · {bytes / 1048576d:0.0} / {update.Size / 1048576d:0.0} MB",
+                ShowBlockingProgress(overlayGeneration, "DOWNLOADING", $"KSR Launcher {update.Tag} Â· {bytes / 1048576d:0.0} / {update.Size / 1048576d:0.0} MB",
                     bytes, update.Size, percent);
-                LauncherVersionText.Text = $"LAUNCHER  ·  DOWNLOADING {update.Tag}  ·  {percent:0}%";
+                LauncherVersionText.Text = $"LAUNCHER  Â·  DOWNLOADING {update.Tag}  Â·  {percent:0}%";
             });
             var downloaded = await service.DownloadAsync(update, updateDirectory, progress);
             HideBlockingOperation();
-            LauncherVersionText.Text = $"LAUNCHER  ·  {update.Tag} READY";
+            LauncherVersionText.Text = $"LAUNCHER  Â·  {update.Tag} READY";
             var restart = MessageBox.Show(
                 $"KSR Launcher {update.Tag} has been downloaded and verified.\n\nRestart now to install the update?",
                 "KSR Launcher Update Ready", MessageBoxButton.YesNo, MessageBoxImage.Information);
@@ -459,7 +476,7 @@ public partial class MainWindow : Window
         {
             if (_blockingOperationInProgress) HideBlockingOperation();
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
-            LauncherVersionText.Text = $"LAUNCHER  ·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}";
+            LauncherVersionText.Text = $"LAUNCHER  Â·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}";
         }
     }
 
@@ -521,7 +538,7 @@ public partial class MainWindow : Window
         LaunchAndLogsStatusText.Text = !validRoot
             ? "Select the KSP folder to check the required components."
             : ready
-                ? "LAUNCH & LOGS READY — all required components are installed and verified."
+                ? "LAUNCH & LOGS READY â€” all required components are installed and verified."
                 : "Required components are missing. Download and verify Launch & Logs before creating a race.";
         LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource(
             ready ? "GreenBrush" : validRoot ? "OrangeBrush" : "MutedBrush");
@@ -535,7 +552,7 @@ public partial class MainWindow : Window
         PlayerDownloadLaunchAndLogsButton.Visibility = ready ? Visibility.Collapsed : Visibility.Visible;
         PlayerDownloadLaunchAndLogsButton.IsEnabled = !_launchAndLogsInstallInProgress;
         PlayerDownloadLaunchAndLogsButton.Content = _launchAndLogsInstallInProgress
-            ? "DOWNLOADING & VERIFYING…"
+            ? "DOWNLOADING & VERIFYINGâ€¦"
             : "DOWNLOAD LAUNCH & LOGS";
         PlayerLaunchAndLogsProgressBar.Visibility = _launchAndLogsInstallInProgress || ready
             ? Visibility.Visible
@@ -543,7 +560,7 @@ public partial class MainWindow : Window
         if (_launchAndLogsInstallInProgress) return;
         PlayerLaunchAndLogsProgressBar.Value = ready ? 100 : 0;
         PlayerLaunchAndLogsStatusText.Text = ready
-            ? "LAUNCH & LOGS READY — required race mods are installed."
+            ? "LAUNCH & LOGS READY â€” required race mods are installed."
             : validRoot
                 ? "Required race mods are missing. Download Launch & Logs before checking the campaign."
                 : "Select your KSP folder, then download the required race mods.";
@@ -563,9 +580,9 @@ public partial class MainWindow : Window
         _launchAndLogsInstallInProgress = true;
         var overlayGeneration = ShowBlockingOperation("INSTALLING LAUNCH & LOGS", "Checking the official KSR release...");
         DownloadLaunchAndLogsButton.IsEnabled = false;
-        DownloadLaunchAndLogsButton.Content = "DOWNLOADING & VERIFYING…";
+        DownloadLaunchAndLogsButton.Content = "DOWNLOADING & VERIFYINGâ€¦";
         PlayerDownloadLaunchAndLogsButton.IsEnabled = false;
-        PlayerDownloadLaunchAndLogsButton.Content = "DOWNLOADING & VERIFYING…";
+        PlayerDownloadLaunchAndLogsButton.Content = "DOWNLOADING & VERIFYINGâ€¦";
         LaunchAndLogsProgressBar.IsIndeterminate = false;
         LaunchAndLogsProgressBar.Minimum = 0;
         LaunchAndLogsProgressBar.Maximum = 100;
@@ -575,8 +592,8 @@ public partial class MainWindow : Window
         PlayerLaunchAndLogsProgressBar.Value = 0;
         LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
         LaunchAndLogsStatusText.Text = automaticPlayerInstall
-            ? "Installing the campaign's required Launch & Logs components…"
-            : "Downloading verified components from the official KSR release…";
+            ? "Installing the campaign's required Launch & Logs componentsâ€¦"
+            : "Downloading verified components from the official KSR releaseâ€¦";
         PlayerLaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
         PlayerLaunchAndLogsStatusText.Text = LaunchAndLogsStatusText.Text;
         try
@@ -605,11 +622,11 @@ public partial class MainWindow : Window
                 var downloadedMb = value.BytesDownloaded / 1048576d;
                 var totalMb = value.TotalBytes / 1048576d;
                 ShowBlockingProgress(overlayGeneration, value.Phase,
-                    $"{value.ComponentId} · {downloadedMb:0.0} / {totalMb:0.0} MB · {percent:0}%",
+                    $"{value.ComponentId} Â· {downloadedMb:0.0} / {totalMb:0.0} MB Â· {percent:0}%",
                     value.BytesDownloaded, value.TotalBytes, percent);
                 LaunchAndLogsStatusText.Text = value.Phase == "DOWNLOADING" && value.TotalBytes > 0
-                    ? $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} — {percent:0}%  ·  {downloadedMb:0.0} / {totalMb:0.0} MB"
-                    : $"{value.Phase} {value.ComponentId.ToUpperInvariant()} — component {value.ComponentsCompleted + 1} of {value.TotalComponents}";
+                    ? $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} â€” {percent:0}%  Â·  {downloadedMb:0.0} / {totalMb:0.0} MB"
+                    : $"{value.Phase} {value.ComponentId.ToUpperInvariant()} â€” component {value.ComponentsCompleted + 1} of {value.TotalComponents}";
                 PlayerLaunchAndLogsStatusText.Text = LaunchAndLogsStatusText.Text;
             });
             var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
@@ -619,9 +636,9 @@ public partial class MainWindow : Window
             var missingFiles = LaunchAndLogsReadiness.MissingFiles(_kspRoot!);
             if (missingFiles.Count > 0)
                 throw new InvalidDataException($"Installation completed, but required files are missing: {string.Join(", ", missingFiles)}.");
-            LaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY — all required components are installed and verified.";
+            LaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY â€” all required components are installed and verified.";
             LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
-            PlayerLaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY — required race mods are installed.";
+            PlayerLaunchAndLogsStatusText.Text = "LAUNCH & LOGS READY â€” required race mods are installed.";
             PlayerLaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
             RefreshLaunchAndLogsSetupState();
             return true;
@@ -774,7 +791,7 @@ public partial class MainWindow : Window
             }
             catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
             {
-                rejected.Add($"{Path.GetFileName(selectedPath)} — {exception.Message}");
+                rejected.Add($"{Path.GetFileName(selectedPath)} â€” {exception.Message}");
             }
         }
 
@@ -835,7 +852,7 @@ public partial class MainWindow : Window
         AdminMembersPanel.Visibility = _adminCampaignPanelReady && activeAdminCampaign is not null
             ? Visibility.Visible : Visibility.Collapsed;
         AdminMembersCampaignText.Text = activeAdminCampaign is null ? "" :
-            $"{activeAdminCampaign.Name}  ·  {activeAdminCampaign.CampaignCode}";
+            $"{activeAdminCampaign.Name}  Â·  {activeAdminCampaign.CampaignCode}";
         if (!string.Equals(_adminMembersCampaignCode, activeAdminCampaign?.CampaignCode, StringComparison.OrdinalIgnoreCase))
         {
             _adminMembers.Clear();
@@ -846,9 +863,9 @@ public partial class MainWindow : Window
         var registrationBusy = _campaignRegistrationInProgress || _campaignCloseInProgress || _adminMembersRefreshInProgress;
         var registrationEnabled = LauncherSession.IsAuthenticated && activeAdminCampaign is not null && registrationKnown && !registrationBusy;
         RegistrationStatusText.Text = _campaignRegistrationInProgress ? "UPDATING REGISTRATION..."
-            : activeAdminCampaign?.RegistrationOpen is true ? "REGISTRATION OPEN — NEW PLAYERS CAN JOIN"
-            : activeAdminCampaign?.RegistrationOpen is false ? "REGISTRATION CLOSED — EXISTING PLAYERS CAN CONTINUE"
-            : "REGISTRATION STATUS UNAVAILABLE — REFRESH TO CHECK";
+            : activeAdminCampaign?.RegistrationOpen is true ? "REGISTRATION OPEN â€” NEW PLAYERS CAN JOIN"
+            : activeAdminCampaign?.RegistrationOpen is false ? "REGISTRATION CLOSED â€” EXISTING PLAYERS CAN CONTINUE"
+            : "REGISTRATION STATUS UNAVAILABLE â€” REFRESH TO CHECK";
         CloseRegistrationButton.IsEnabled = registrationEnabled && activeAdminCampaign!.RegistrationOpen is true;
         ReopenRegistrationButton.IsEnabled = registrationEnabled && activeAdminCampaign!.RegistrationOpen is false;
         AdminCloseCampaignButton.IsEnabled = activeAdminCampaign is not null && !_campaignRegistrationInProgress && !_campaignCloseInProgress;
@@ -862,11 +879,11 @@ public partial class MainWindow : Window
         CreateRaceButton.Visibility = blockingCampaign is null ? Visibility.Visible : Visibility.Collapsed;
         RetryCampaignUploadButton.Visibility = retryableDraft ? Visibility.Visible : Visibility.Collapsed;
         RetryCampaignUploadButton.IsEnabled = retryableDraft && LauncherSession.IsAuthenticated && !_campaignUploadInProgress;
-        RetryCampaignUploadButton.Content = _campaignUploadInProgress ? "UPLOADING CAMPAIGN…" : "RETRY CAMPAIGN UPLOAD";
+        RetryCampaignUploadButton.Content = _campaignUploadInProgress ? "UPLOADING CAMPAIGNâ€¦" : "RETRY CAMPAIGN UPLOAD";
         CloseCampaignButton.Visibility = blockingCampaign is null || _campaignUploadInProgress ? Visibility.Collapsed : Visibility.Visible;
         CloseCampaignButton.Content = blockingCampaign?.Status.Equals("DRAFT", StringComparison.OrdinalIgnoreCase) == true
             ? "DISCARD LOCAL DRAFT"
-            : _campaignCloseInProgress ? "CLOSING CAMPAIGN…" : "CLOSE CAMPAIGN";
+            : _campaignCloseInProgress ? "CLOSING CAMPAIGNâ€¦" : "CLOSE CAMPAIGN";
         CloseCampaignButton.IsEnabled = blockingCampaign is not null && LauncherSession.IsAuthenticated &&
             !_campaignCloseInProgress && !_campaignRegistrationInProgress && !_campaignUploadInProgress;
         CreateRaceButton.IsEnabled = campaignCreationAvailable &&
@@ -925,7 +942,7 @@ public partial class MainWindow : Window
                 _adminMembers.Add(new AdminMemberItem(member));
             AdminMembersStatusText.Text = members.Count == 0
                 ? "No participants have joined this race yet."
-                : $"{members.Count} participant{(members.Count == 1 ? "" : "s")} · Last connections shown in local time.";
+                : $"{members.Count} participant{(members.Count == 1 ? "" : "s")} Â· Last connections shown in local time.";
         }
         catch (Exception exception)
         {
@@ -1221,7 +1238,7 @@ public partial class MainWindow : Window
         CampaignsList.SelectedItem = draft;
         CampaignCreationStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
         CampaignCreationStatusText.Text = message;
-        SetBaselineActivity("> UPLOAD FAILED — DRAFT SAVED", message, "ErrorBrush");
+        SetBaselineActivity("> UPLOAD FAILED â€” DRAFT SAVED", message, "ErrorBrush");
     }
 
     private void ReplaceCampaignItem(CampaignListItem current, CampaignListItem replacement)
@@ -1324,7 +1341,7 @@ public partial class MainWindow : Window
         }
         _campaignRefreshInProgress = true;
         RefreshCampaignsButton.IsEnabled = false;
-        RefreshCampaignsButton.Content = "REFRESHING…";
+        RefreshCampaignsButton.Content = "REFRESHINGâ€¦";
         try
         {
             var selectedCode = (CampaignsList.SelectedItem as CampaignListItem)?.CampaignCode;
@@ -1393,7 +1410,7 @@ public partial class MainWindow : Window
         try
         {
             button.IsEnabled = false;
-            button.Content = "REMOVING…";
+            button.Content = "REMOVINGâ€¦";
             await _platformClient.DismissClosedCampaignAsync(
                 LauncherSession.ServerUrl ?? throw new InvalidOperationException("The KSR server is not configured."),
                 LauncherSession.AccessToken ?? throw new InvalidOperationException("Sign in before removing a campaign."),
@@ -1417,7 +1434,7 @@ public partial class MainWindow : Window
         ActiveCampaignText.Text = campaign?.Name?.ToUpperInvariant() ?? "NO CAMPAIGN SELECTED";
         SelectedCampaignText.Text = campaign is null
             ? "NO CAMPAIGN SELECTED"
-            : $"{campaign.Name}  ·  {campaign.Nation}  ·  {campaign.Role}";
+            : $"{campaign.Name}  Â·  {campaign.Nation}  Â·  {campaign.Role}";
         SelectedCampaignText.Foreground = (System.Windows.Media.Brush)FindResource(campaign is null ? "MutedBrush" : "ForegroundBrush");
         OpenCampaignButton.IsEnabled = isLaunchableCampaign;
         LeaderboardButton.IsEnabled = campaign is not null;
@@ -1587,7 +1604,7 @@ public partial class MainWindow : Window
         var savePath = CampaignSaveNaming.ResolveInstalledSavePath(_kspRoot!, campaign.Name);
         if (!File.Exists(Path.Combine(savePath, "persistent.sfs")))
         {
-            CampaignComplianceStatusText.Text = $"CAMPAIGN SAVE NOT FOUND — expected: {savePath}";
+            CampaignComplianceStatusText.Text = $"CAMPAIGN SAVE NOT FOUND â€” expected: {savePath}";
             CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             LaunchKspButton.IsEnabled = false;
             MessageBox.Show(
@@ -1619,7 +1636,7 @@ public partial class MainWindow : Window
         }
 
         DownloadMasterSaveButton.IsEnabled = false;
-        DownloadMasterSaveButton.Content = "DOWNLOADING…";
+        DownloadMasterSaveButton.Content = "DOWNLOADINGâ€¦";
         CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
         var progress = new Progress<string>(message => CampaignComplianceStatusText.Text = message);
         string? temporarySave = null;
@@ -1655,7 +1672,7 @@ public partial class MainWindow : Window
 
             _localBaselines[campaign.CampaignCode] = package;
             ApplyCampaignSelection(campaign);
-            DownloadMasterSaveButton.Content = "VERIFYING INSTALLATION…";
+            DownloadMasterSaveButton.Content = "VERIFYING INSTALLATIONâ€¦";
             CampaignComplianceStatusText.Text = $"Verified campaign save installed in: {installedSave}";
             await RunInstallationCheckAsync(campaign, package, installedSave);
         }
@@ -1695,14 +1712,14 @@ public partial class MainWindow : Window
             _kspRoot = KspCareerSaveLocator.Resolve(savePath).KspRoot;
             if (_lastCompliance.ReadyToLaunch)
             {
-                CampaignComplianceStatusText.Text = "READY TO LAUNCH — GameData mod folders and versions match. Campaign save files are ignored.";
+                CampaignComplianceStatusText.Text = "READY TO LAUNCH â€” GameData mod folders and versions match. Campaign save files are ignored.";
                 CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
                 LaunchKspButton.IsEnabled = !CampaignRules.IsTerminalStatus(campaign.Status);
             }
             else
             {
                 var modDifferences = _lastCompliance.Differences.Count(item => item.Area == BaselineDifferenceArea.GameData);
-                CampaignComplianceStatusText.Text = $"CAMPAIGN NOT READY — {modDifferences} GameData mod folder/version differences.";
+                CampaignComplianceStatusText.Text = $"CAMPAIGN NOT READY â€” {modDifferences} GameData mod folder/version differences.";
                 CampaignComplianceStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
                 LaunchKspButton.IsEnabled = false;
                 ShowComplianceDifferences(_lastCompliance);
@@ -1727,7 +1744,7 @@ public partial class MainWindow : Window
         var lines = result.Differences.Take(18).Select(item => item.Kind == BaselineDifferenceKind.ValueMismatch
             ? $"{item.DisplayName}: player '{item.Actual}' / campaign '{item.Expected}'"
             : $"{item.Kind.ToString().ToUpperInvariant()}: {item.Path}");
-        var more = result.Differences.Count > 18 ? $"\n…and {result.Differences.Count - 18} more differences." : string.Empty;
+        var more = result.Differences.Count > 18 ? $"\nâ€¦and {result.Differences.Count - 18} more differences." : string.Empty;
         MessageBox.Show(string.Join("\n", lines) + more, "Campaign Installation Differences",
             MessageBoxButton.OK, MessageBoxImage.Warning);
     }
@@ -1740,8 +1757,8 @@ public partial class MainWindow : Window
         var text = folders.Count == 0
             ? "This campaign does not ignore any GameData mod folders."
             : "These exact GameData folders are ignored by campaign installation checks:\n\n" +
-              string.Join("\n", folders.Select(folder => $"• {folder}"));
-        MessageBox.Show(text, "Campaign Ignored Mods — Read Only", MessageBoxButton.OK, MessageBoxImage.Information);
+              string.Join("\n", folders.Select(folder => $"â€¢ {folder}"));
+        MessageBox.Show(text, "Campaign Ignored Mods â€” Read Only", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void Minimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -1812,7 +1829,7 @@ public partial class MainWindow : Window
             return;
 
         HideAuthFeedback();
-        SetLoginBusy(true, "RESTORING…");
+        SetLoginBusy(true, "RESTORINGâ€¦");
         try
         {
             KsrLoginSession session;
@@ -1966,7 +1983,7 @@ public partial class MainWindow : Window
         campaign.BaselineSha256,
         campaign.RegistrationOpen);
 
-    private void SetLoginBusy(bool busy, string busyText = "SIGNING IN…")
+    private void SetLoginBusy(bool busy, string busyText = "SIGNING INâ€¦")
     {
         LoginUsernameTextBox.IsEnabled = !busy;
         LoginPasswordBox.IsEnabled = !busy;
@@ -2141,10 +2158,10 @@ public partial class MainWindow : Window
         var statusBrush = (System.Windows.Media.Brush)FindResource("OrangeBrush");
         ServerStatusDot.Foreground = statusBrush;
         ServerStatusText.Foreground = statusBrush;
-        ServerStatusText.Text = serverConfigured ? "CHECKING SERVER…" : "SERVER SETUP PENDING";
+        ServerStatusText.Text = serverConfigured ? "CHECKING SERVERâ€¦" : "SERVER SETUP PENDING";
         LoginServerStatusDot.Foreground = statusBrush;
         LoginServerStatusText.Foreground = statusBrush;
-        LoginServerStatusText.Text = serverConfigured ? "CHECKING…" : "SETUP PENDING";
+        LoginServerStatusText.Text = serverConfigured ? "CHECKINGâ€¦" : "SETUP PENDING";
     }
 
     private async Task RefreshServerStatusAsync()

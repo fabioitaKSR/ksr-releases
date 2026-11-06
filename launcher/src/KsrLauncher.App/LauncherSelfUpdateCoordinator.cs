@@ -65,6 +65,31 @@ if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) { exit 3 }
 if ((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -ne $ExpectedSha256) { exit 4 }
 Copy-Item -LiteralPath $sourcePath -Destination $destinationPath -Force
 if ((Get-FileHash -LiteralPath $destinationPath -Algorithm SHA256).Hash -ne $ExpectedSha256) { exit 5 }
-Start-Process -FilePath $destinationPath -WorkingDirectory ([System.IO.Path]::GetDirectoryName($destinationPath))
+$started = Start-Process -FilePath $destinationPath -WorkingDirectory ([System.IO.Path]::GetDirectoryName($destinationPath)) -PassThru
+try {
+    if (-not $started.WaitForInputIdle(30000)) { exit 6 }
+    if ($started.WaitForExit(3000)) { exit 7 }
+    $started.Refresh()
+    if ($started.HasExited -or $started.MainWindowHandle -eq 0) { exit 7 }
+    $updatesRoot = [IO.Path]::GetFullPath([IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'KSRLauncher', 'Updates'))
+    $folder = [IO.Path]::GetDirectoryName($sourcePath)
+    $tag = [IO.Path]::GetFileName($folder)
+    if ([IO.Path]::GetDirectoryName($folder) -ne $updatesRoot -or $tag -notmatch '^v[0-9]+[.][0-9]+[.][0-9]+$') { exit 8 }
+    if ([IO.Path]::GetFileName($sourcePath) -ne ('KSR-Launcher-' + $tag + '-win-x64.exe') -or
+        [IO.Path]::GetDirectoryName($PSCommandPath) -ne $folder -or
+        [IO.Path]::GetFileName($PSCommandPath) -ne 'apply-launcher-update.ps1') { exit 8 }
+    $path = $sourcePath
+    while ($path) {
+        if ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { exit 9 }
+        $path = [IO.Path]::GetDirectoryName($path)
+    }
+    Remove-Item -LiteralPath $sourcePath -Force
+    Remove-Item -LiteralPath $PSCommandPath -Force
+    if (-not (Get-ChildItem -LiteralPath $folder -Force | Select-Object -First 1)) {
+        Remove-Item -LiteralPath $folder
+    }
+} catch {
+    # A verified replacement may still run when cleanup is unavailable. Retry old downloads at the next startup.
+}
 """;
 }
