@@ -45,10 +45,35 @@ internal static class InstallationWarningTests
 
         var installed = state.Components[component.Id];
         installed.Version = "1.1.0";
+        await StateStore.SaveAsync(data, state);
+        var stateBefore = await File.ReadAllBytesAsync(StateStore.GetStatePath(data));
+        foreach (var policy in new[] { UpdatePolicy.ExistingOnly, UpdatePolicy.VerifyAllFiles })
+        {
+            var unchanged = UpdatePlanner.Create(manifest, state, locations, policy);
+            if (unchanged.HasUpdates || InstallationWarnings.Inspect(unchanged, state).Count != 0)
+                throw new Exception("A catalog-only change prompted or scheduled an identical package.");
+            var result = await engine.RunAsync(manifest, locations, "", true, policy);
+            if (result.Applied || reviews != 1 || !stateBefore.SequenceEqual(await File.ReadAllBytesAsync(StateStore.GetStatePath(data))))
+                throw new Exception("A catalog-only change downloaded, prompted or changed installed state.");
+        }
+        if (!UpdatePlanner.Create(manifest, state, locations, UpdatePolicy.ReinstallAll).HasUpdates)
+            throw new Exception("Explicit repair stopped reinstalling identical packages.");
+        installed.Target = "GameData/PreviousLocation";
+        var moved = UpdatePlanner.Create(manifest, state, locations);
+        if (!moved.HasUpdates || !InstallationWarnings.Inspect(moved, state).Any(x => x.Contains("location differs")))
+            throw new Exception("A real location change was ignored.");
+        installed.Target = component.Target;
+        installed.Sha256 = new string('b', 64);
+        if (!UpdatePlanner.Create(manifest, state, locations).HasUpdates)
+            throw new Exception("A changed package was ignored.");
         installed.ExpectedFiles.Add("missing.cfg");
         var warnings = InstallationWarnings.Inspect(UpdatePlanner.Create(manifest, state, locations), state);
         if (!warnings.Any(x => x.Contains("differs")) || !warnings.Any(x => x.Contains("missing.cfg")))
-            throw new Exception("Version/inventory inconsistencies were not reported.");
+            throw new Exception("Package/inventory inconsistencies were not reported.");
+        installed.Sha256 = component.Sha256;
+        var missingOnly = UpdatePlanner.Create(manifest, state, locations, UpdatePolicy.VerifyAllFiles);
+        if (!missingOnly.HasUpdates || !InstallationWarnings.Inspect(missingOnly, state).Any(x => x.Contains("missing.cfg")))
+            throw new Exception("Matching package with missing files was not repairable.");
         installed.Version = "1.3.0";
         await StateStore.SaveAsync(data, state);
         try

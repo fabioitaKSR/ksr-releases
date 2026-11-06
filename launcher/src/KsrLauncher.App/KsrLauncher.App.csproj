@@ -16,8 +16,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Version>0.7.29</Version>
-    <InformationalVersion>0.7.29</InformationalVersion>
+    <Version>0.7.30</Version>
+    <InformationalVersion>0.7.30</InformationalVersion>
     <!-- The updater distributes only the executable. WPF native libraries must travel with it. -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <ApplicationIcon>Assets\ksr-launcher.ico</ApplicationIcon>

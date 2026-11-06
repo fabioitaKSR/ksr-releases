@@ -15,8 +15,7 @@ public static class InstallationWarnings
             }
             else
             {
-                if (!string.Equals(installed.Version, plan.Manifest.Version, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(installed.Sha256, item.Component.Sha256, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(installed.Sha256, item.Component.Sha256, StringComparison.OrdinalIgnoreCase))
                     warnings.Add($"{label}: the registered package differs from the selected release (installed catalog {installed.Version}; selected catalog {plan.Manifest.Version}).");
                 if (!string.Equals(installed.Target, item.Component.Target, StringComparison.OrdinalIgnoreCase) ||
                     !string.Equals(installed.TargetKind, item.Component.TargetKind, StringComparison.OrdinalIgnoreCase))

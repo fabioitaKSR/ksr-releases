@@ -20,8 +20,9 @@ public static class UpdatePlanner
                 return File.Exists(requiredPath) || Directory.Exists(requiredPath);
             });
             var differs = installed is null ||
-                          !string.Equals(installed.Version, manifest.Version, StringComparison.OrdinalIgnoreCase) ||
                           !string.Equals(installed.Sha256, component.Sha256, StringComparison.OrdinalIgnoreCase) ||
+                          !string.Equals(installed.Target, component.Target, StringComparison.OrdinalIgnoreCase) ||
+                          !string.Equals(installed.TargetKind, component.TargetKind, StringComparison.OrdinalIgnoreCase) ||
                           !requiredFilesPresent;
             var missingInventory = policy == UpdatePolicy.VerifyAllFiles && exists &&
                 (installed?.ExpectedFiles is not { Count: > 0 } ||
