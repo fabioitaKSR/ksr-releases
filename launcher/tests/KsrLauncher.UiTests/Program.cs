@@ -23,7 +23,13 @@ class Probe
     [STAThread] static void Main(string[] args)
     {
         Output = Path.GetFullPath(args[0]);
-        var app = new App(); app.InitializeComponent(); app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        var credentialType = typeof(App).Assembly.GetType("KsrLauncher.App.LauncherCredentialStore")!;
+        var readCredential = credentialType.GetMethod("Load", BindingFlags.Public | BindingFlags.Static)!;
+        var credentialBefore = readCredential.Invoke(null, null);
+        var settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher", "settings.json");
+        var settingsBefore = File.Exists(settingsPath) ? File.ReadAllBytes(settingsPath) : [];
+        var app = new App(); app.InitializeComponent(); // The public setter rejects null. Suppress App.xaml's automatic real launcher startup in this test only.
+        typeof(Application).GetField("_startupUri", Private)!.SetValue(app, null); app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         UiThread = Environment.CurrentManagedThreadId;
         var window = new Window { Title = "KSR — SYNTHETIC LOCAL INSTALL TEST (NO NETWORK)", Width = 430, Height = 155,
             Background = new SolidColorBrush(Color.FromRgb(11, 16, 18)), WindowStartupLocation = WindowStartupLocation.CenterScreen };
@@ -39,7 +45,8 @@ class Probe
             timer.Start();
             try
             {
-                await RunScenario("success"); await RunScenario("cancel"); await RunScenario("error");
+                Check(app.StartupUri is null && app.Windows.Cast<Window>().All(w => ReferenceEquals(w, window)), "Real launcher startup escaped synthetic harness");
+                await RunScenario("success"); await RunScenario("cancel"); await RunScenario("error"); await RunScenario("cancel-last");
                 Orbit.IsActive = true; await Task.Delay(200);
                 Check(((RotateTransform)Orbit.FindName("InnerRotation")).HasAnimatedProperties, "No animation clock");
                 panel.Visibility = Visibility.Collapsed; await Task.Delay(100);
@@ -48,6 +55,9 @@ class Probe
                 Check(((RotateTransform)Orbit.FindName("InnerRotation")).HasAnimatedProperties, "Visible active indicator did not restart");
                 Orbit.IsActive = false;
                 RenderScreens();
+                Check(Equals(credentialBefore, readCredential.Invoke(null, null)), "Saved login changed");
+                Check(settingsBefore.SequenceEqual(File.Exists(settingsPath) ? File.ReadAllBytes(settingsPath) : []), "Saved settings changed");
+                Console.WriteLine("PASS saved login/settings unchanged; default real launcher startup suppressed.");
                 Console.WriteLine("PASS WPF: success/error/cancel, real worker extraction/install, responsive dispatcher and advancing orbit, review on UI thread, lock, rollback, idle/hidden clocks stopped; shared normal/Full/Probalism/future beta layouts. Synthetic local fixtures; no network or settings writes.");
             }
             catch (Exception e) { Console.WriteLine(e); exit = 1; }
@@ -97,6 +107,7 @@ class Probe
                         Check(Volatile.Read(ref MovingSamples) - beforeMoving >= 4, "Orbit stalled during installation"); checks++;
                         if (scenario == "cancel") cancel.Cancel();
                     }
+                    if (scenario == "cancel-last" && installs == 2) cancel.Cancel();
                     if (scenario == "error" && installs == 2) throw new IOException("Synthetic second component failure");
                 }
                 else
@@ -117,7 +128,7 @@ class Probe
             var result = await engine.RunAsync(manifest, new(game, data), assets, true, UpdatePolicy.InstallOrRepair, progress, cancel.Token);
             Check(scenario == "success" && result.Applied, "Expected scenario failure did not occur");
         }
-        catch (OperationCanceledException) when (scenario == "cancel") { }
+        catch (OperationCanceledException) when (scenario.StartsWith("cancel")) { }
         catch (IOException e) when (scenario == "error" && e.Message == "Synthetic second component failure") { }
         finally { Orbit.IsActive = false; }
         Check(reviews == 1 && checks == 1 && extracts == 2, "Missing scenario stages");
