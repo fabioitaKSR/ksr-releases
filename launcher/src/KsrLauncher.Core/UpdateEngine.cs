@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace KsrLauncher.Core;
 
@@ -25,10 +25,11 @@ public sealed class UpdateEngine(PackageService? packageService = null,
         if (Version.TryParse(manifest.Version, out var incomingVersion) && manifest.Components.Any(component =>
             state.Components.TryGetValue(component.Id, out var installed) && Version.TryParse(installed.Version, out var previousVersion) && previousVersion > incomingVersion))
             throw new InvalidDataException("An older component catalog cannot replace an installed newer catalog.");
-        var plan = UpdatePlanner.Create(manifest, state, locations, policy);
+        progress?.Report(new UpdateProgress("Installed components", 0, 0, 0, manifest.Components.Count, "CHECKING"));
+        var plan = await Task.Run(() => UpdatePlanner.Create(manifest, state, locations, policy), cancellationToken);
         if (apply && reviewInstallation is not null)
         {
-            var warnings = InstallationWarnings.Inspect(plan, state);
+            var warnings = await Task.Run(() => InstallationWarnings.Inspect(plan, state), cancellationToken);
             if (warnings.Count > 0 && !reviewInstallation(locations, warnings))
                 throw new IOException("Installation cancelled. No files were changed by this operation. Review the existing mods and try again when ready.");
         }
@@ -58,20 +59,24 @@ public sealed class UpdateEngine(PackageService? packageService = null,
         try
         {
             var prepared = await PrepareAsync(plan, assetsBase, workRoot, progress, cancellationToken);
-            var statePath = StateStore.GetStatePath(locations.LauncherDataRoot);
-            if (File.Exists(statePath)) File.Copy(statePath, Path.Combine(backupRoot, "installed-state.previous.json"), true);
-
-            foreach (var group in prepared.GroupBy(item => item.Plan.Component.TransactionGroup))
+            await Task.Run(() =>
             {
-                foreach (var item in group)
+                var statePath = StateStore.GetStatePath(locations.LauncherDataRoot);
+                if (File.Exists(statePath)) File.Copy(statePath, Path.Combine(backupRoot, "installed-state.previous.json"), true);
+
+                foreach (var group in prepared.GroupBy(item => item.Plan.Component.TransactionGroup))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var installIndex = prepared.IndexOf(item);
-                    progress?.Report(new UpdateProgress(
-                        item.Plan.Component.Id, 0, 0, installIndex, prepared.Count, "INSTALLING"));
-                    InstallComponent(item, manifest, locations, backupRoot, journal);
+                    foreach (var item in group)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var installIndex = prepared.IndexOf(item);
+                        progress?.Report(new UpdateProgress(
+                            item.Plan.Component.Id, 0, 0, installIndex, prepared.Count, "INSTALLING"));
+                        InstallComponent(item, manifest, locations, backupRoot, journal);
+                    }
                 }
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+            }, cancellationToken);
 
             state.Product = manifest.Product;
             state.UpdatedAtUtc = DateTimeOffset.UtcNow;
@@ -88,7 +93,7 @@ public sealed class UpdateEngine(PackageService? packageService = null,
                 };
             }
             await StateStore.SaveAsync(locations.LauncherDataRoot, state, cancellationToken);
-            await WriteJournalAsync(backupRoot, journal, cancellationToken);
+            await Task.Run(() => WriteJournalAsync(backupRoot, journal, cancellationToken), cancellationToken);
             result = new UpdateResult(plan, true, backupRoot);
         }
         catch
@@ -96,12 +101,15 @@ public sealed class UpdateEngine(PackageService? packageService = null,
             // Se la preparazione fallisce prima della prima sostituzione, l'installazione
             // e lo stato esistente non sono stati toccati e non devono essere ripristinati.
             if (journal.Entries.Count > 0)
-                await RollbackEntriesAsync(journal, locations, backupRoot, CancellationToken.None);
+            {
+                progress?.Report(new UpdateProgress("Previous installation", 0, 0, 0, journal.Entries.Count, "RESTORING"));
+                await Task.Run(() => RollbackEntriesAsync(journal, locations, backupRoot, CancellationToken.None));
+            }
             throw;
         }
         finally
         {
-            try { FileTree.DeleteDirectory(workRoot); }
+            try { await Task.Run(() => FileTree.DeleteDirectory(workRoot)); }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
         }
         await CleanCompletedCacheAsync(locations.LauncherDataRoot, progress);
@@ -139,25 +147,31 @@ public sealed class UpdateEngine(PackageService? packageService = null,
                 currentIndex,
                 pending.Count,
                 "DOWNLOADING")));
-            var zip = await _packages.AcquireAsync(
-                assetsBase, item.Component, Path.Combine(workRoot, "downloads"), cancellationToken, componentProgress);
+            var zip = await Task.Run(() => _packages.AcquireAsync(
+                assetsBase, item.Component, Path.Combine(workRoot, "downloads"), cancellationToken, componentProgress), cancellationToken);
             completedBytes += item.Component.Size > 0 ? item.Component.Size : new FileInfo(zip).Length;
             progress?.Report(new UpdateProgress(item.Component.Id, Math.Min(totalBytes, completedBytes), totalBytes, currentIndex + 1, pending.Count, "DOWNLOADING"));
-            var extractRoot = SafePaths.Under(workRoot, Path.Combine("extracted", Guid.NewGuid().ToString("N")));
-            PackageService.ExtractSafely(zip, extractRoot);
-            var source = SafePaths.Under(extractRoot, item.Component.Source);
-            if (!Directory.Exists(source)) throw new InvalidDataException($"{item.Component.Id}: source '{item.Component.Source}' assente nel pacchetto.");
-            foreach (var required in item.Component.RequiredFiles)
+            var prepared = await Task.Run(() =>
             {
-                var requiredPath = SafePaths.Under(source, required);
-                if (!File.Exists(requiredPath) && !Directory.Exists(requiredPath))
-                    throw new InvalidDataException($"{item.Component.Id}: file obbligatorio assente: {required}");
-            }
-            var expectedFiles = Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories)
-                .Select(path => SafePaths.ManifestPath(Path.GetRelativePath(source, path)))
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            result.Add(new PreparedComponent(item, source, expectedFiles));
+                cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(new UpdateProgress(item.Component.Id, 0, 0, currentIndex, pending.Count, "EXTRACTING"));
+                var extractRoot = SafePaths.Under(workRoot, Path.Combine("extracted", Guid.NewGuid().ToString("N")));
+                PackageService.ExtractSafely(zip, extractRoot);
+                var source = SafePaths.Under(extractRoot, item.Component.Source);
+                if (!Directory.Exists(source)) throw new InvalidDataException($"{item.Component.Id}: source '{item.Component.Source}' assente nel pacchetto.");
+                foreach (var required in item.Component.RequiredFiles)
+                {
+                    var requiredPath = SafePaths.Under(source, required);
+                    if (!File.Exists(requiredPath) && !Directory.Exists(requiredPath))
+                        throw new InvalidDataException($"{item.Component.Id}: file obbligatorio assente: {required}");
+                }
+                var expectedFiles = Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories)
+                    .Select(path => SafePaths.ManifestPath(Path.GetRelativePath(source, path)))
+                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                return new PreparedComponent(item, source, expectedFiles);
+            }, cancellationToken);
+            result.Add(prepared);
         }
         return result;
     }

@@ -1,0 +1,4 @@
+# WPF installation responsiveness regression
+
+Run on Windows with an interactive desktop: `dotnet run --project launcher/tests/KsrLauncher.UiTests -c Release -- <existing-output-directory>`.
+The harness opens one clearly labeled synthetic, network-free window, then closes it. It uses C: temporary fixtures, real UpdateEngine/package extraction/copy, and deterministic 900 ms test-only barriers to detect UI blocking and stalled orbit clocks. It checks success, cancellation, second-component failure/rollback, caller-thread review, update lock, preserved private/extra content, animation stop/visibility lifecycle, and renders normal/Full/Probalism/future-module controls. No main-window Loaded/Activated event, authentication refresh, real update, upload, or settings write is triggered. A 50 ms DispatcherTimer exists only in this test harness to measure responsiveness; production animation uses native WPF clocks.

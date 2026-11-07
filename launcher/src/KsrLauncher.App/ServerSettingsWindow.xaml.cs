@@ -242,6 +242,9 @@ public partial class ServerSettingsWindow : Window
         }
 
         _maintenanceInProgress = true;
+        TestActivityPanel.Visibility = Visibility.Visible;
+        TestActivityText.Text = "Checking beta updates...";
+        TestActivity.IsActive = true;
         BrowseTestKspButton.IsEnabled = false;
         ClearTestKspButton.IsEnabled = false;
         UpgradeTestKspButton.IsEnabled = false;
@@ -279,6 +282,7 @@ public partial class ServerSettingsWindow : Window
                 TestKspMaintenanceProgress.IsIndeterminate = false;
                 TestKspMaintenanceProgress.Value = percent;
                 TestKspMaintenanceStatus.Text = $"{value.Phase} {value.ComponentId}  {percent:0}%";
+                TestActivityText.Text = OperationPhaseText.Describe(value.Phase);
             });
             var launcherData = GetTestLauncherDataRoot(selectedRoot);
             var result = await new UpdateEngine(new PackageService(privateRelease.Http), InstallationWarningDialog.Review).RunAsync(release.Manifest,
@@ -301,6 +305,8 @@ public partial class ServerSettingsWindow : Window
         }
         finally
         {
+            TestActivity.IsActive = false;
+            TestActivityPanel.Visibility = Visibility.Collapsed;
             _maintenanceInProgress = false;
             BrowseTestKspButton.IsEnabled = true;
             ClearTestKspButton.IsEnabled = true;

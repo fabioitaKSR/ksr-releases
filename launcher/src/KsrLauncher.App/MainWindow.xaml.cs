@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Collections.ObjectModel;
 using System.Net.Http;
@@ -125,8 +125,9 @@ public partial class MainWindow : Window
         ModUpdateProgressBar.Value = 0;
         ModUpdateRemainingText.Text = estimateDownload ? "Preparing download..." : "Preparing storage cleanup...";
         ModUpdateOverlay.Visibility = Visibility.Visible;
+        UpdateActivityText.Text = "Working. Please keep the launcher open...";
+        UpdateActivity.IsActive = true;
         ModUpdateOverlay.Focus();
-        if (estimateDownload) _downloadCountdownTimer.Start();
         return generation;
     }
 
@@ -134,6 +135,7 @@ public partial class MainWindow : Window
     {
         if (!_blockingOperationInProgress || generation != _blockingOperationGeneration) return;
         ModUpdatePhaseText.Text = phase;
+        UpdateActivityText.Text = OperationPhaseText.Describe(phase);
         ModUpdateDetailText.Text = detail;
         ModUpdateProgressBar.IsIndeterminate = total <= 0 && phase == "DOWNLOADING";
         if (!ModUpdateProgressBar.IsIndeterminate)
@@ -141,6 +143,7 @@ public partial class MainWindow : Window
         _downloadPhase = phase == "DOWNLOADING";
         if (_downloadPhase)
         {
+            _downloadCountdownTimer.Start();
             if (total != _downloadTotal || bytes < _downloadBytes)
                 _downloadStopwatch.Restart();
             _downloadBytes = bytes;
@@ -149,10 +152,15 @@ public partial class MainWindow : Window
         }
         else
         {
-            ModUpdateRemainingText.Text = phase == "INSTALLING"
-                ? "Installing verified files..."
-                : phase == "CLEANING" ? "Removing completed update backups and old downloads..."
-                : "Verifying downloaded files...";
+            _downloadCountdownTimer.Stop();
+            ModUpdateRemainingText.Text = phase switch
+            {
+                "INSTALLING" => "Applying verified component packages...",
+                "EXTRACTING" => "Preparing files for installation...",
+                "RESTORING" => "Recovering files and installed-version state...",
+                "CLEANING" => "Removing completed update backups and old downloads...",
+                _ => "Verifying installed components..."
+            };
         }
     }
 
@@ -170,6 +178,7 @@ public partial class MainWindow : Window
         ++_blockingOperationGeneration;
         _downloadCountdownTimer.Stop();
         _downloadPhase = false;
+        UpdateActivity.IsActive = false;
         ModUpdateOverlay.Visibility = Visibility.Collapsed;
         _blockingOperationInProgress = false;
     }

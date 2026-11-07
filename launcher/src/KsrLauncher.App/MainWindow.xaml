@@ -1,6 +1,7 @@
 <Window x:Class="KsrLauncher.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KsrLauncher.App"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="KSR Platform" Icon="Assets/ksr-launcher.ico" Width="1280" Height="820" MinWidth="1080" MinHeight="720"
         MaxWidth="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Width}"
@@ -44,6 +45,11 @@
                                  Value="0" IsIndeterminate="True" Foreground="{StaticResource GreenBrush}" />
                     <TextBlock x:Name="ModUpdateRemainingText" Text="Preparing download..."
                                Foreground="{StaticResource ForegroundBrush}" FontSize="12" Margin="0,11,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                        <local:OrbitActivityIndicator x:Name="UpdateActivity" Width="44" Height="44" />
+                        <TextBlock x:Name="UpdateActivityText" Text="Working..." VerticalAlignment="Center"
+                                   TextWrapping="Wrap" MaxWidth="450" Margin="12,0,0,0" Foreground="{StaticResource ForegroundBrush}" />
+                    </StackPanel>
                     <TextBlock Text="Keep the launcher open until this operation finishes."
                                Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,13,0,0" />
                 </StackPanel>
