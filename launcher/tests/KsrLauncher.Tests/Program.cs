@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -7,6 +7,8 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Managed shared overlays avoid false warnings but verified unknown collisions still require review", SharedOverlayWarningTests.ManagedAndUnknownCollisions),
+    ("Overlay warning ownership preserves path, inventory and target-kind boundaries", SharedOverlayWarningTests.BoundariesRemainWarnings),
     ("Retroactive cleanup retains settings, pending backups and current downloads", StorageCleanupTests.Retroactive),
     ("Cleanup respects update locks and refuses linked cache trees", StorageCleanupTests.LocksAndLinks),
     ("Selected save files preserve original names and exclude other files", SaveFileSupportTests.Package),

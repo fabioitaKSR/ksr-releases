@@ -59,6 +59,13 @@ public sealed class UpdateEngine(PackageService? packageService = null,
         try
         {
             var prepared = await PrepareAsync(plan, assetsBase, workRoot, progress, cancellationToken);
+            if (reviewInstallation is not null)
+            {
+                var overlayWarnings = await Task.Run(() => prepared.SelectMany(item =>
+                    InstallationWarnings.InspectOverlayFiles(item.Plan, state, item.ExpectedFiles)).ToArray(), cancellationToken);
+                if (overlayWarnings.Length > 0 && !reviewInstallation(locations, overlayWarnings))
+                    throw new IOException("Installation cancelled. No files were changed by this operation. Review the existing mods and try again when ready.");
+            }
             await Task.Run(() =>
             {
                 var statePath = StateStore.GetStatePath(locations.LauncherDataRoot);

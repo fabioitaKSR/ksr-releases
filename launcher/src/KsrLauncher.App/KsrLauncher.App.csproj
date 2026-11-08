@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\KsrLauncher.Core\KsrLauncher.Core.csproj" />
@@ -16,8 +16,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <Version>0.7.31</Version>
-    <InformationalVersion>0.7.31</InformationalVersion>
+    <Version>0.7.32</Version>
+    <InformationalVersion>0.7.32</InformationalVersion>
     <!-- The updater distributes only the executable. WPF native libraries must travel with it. -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <ApplicationIcon>Assets\ksr-launcher.ico</ApplicationIcon>
