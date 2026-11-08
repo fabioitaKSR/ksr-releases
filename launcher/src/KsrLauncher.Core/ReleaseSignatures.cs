@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace KsrLauncher.Core;
@@ -33,7 +33,7 @@ public sealed class ReleaseSignatures(string? publicKeyBase64 = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
             throw new InvalidDataException("Release metadata requires HTTPS.");
-        using var response = await http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        using var response = await GitHubAssetDownloads.OpenAsync(http, url, cancellationToken);
         response.EnsureSuccessStatusCode();
         if ((response.RequestMessage?.RequestUri is Uri finalUri && finalUri.Scheme != Uri.UriSchemeHttps) || response.Content.Headers.ContentLength > maximumBytes)
             throw new InvalidDataException("Unsafe release metadata response.");

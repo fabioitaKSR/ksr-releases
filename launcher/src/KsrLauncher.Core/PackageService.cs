@@ -1,4 +1,4 @@
-using System.IO.Compression;
+﻿using System.IO.Compression;
 using System.Security.Cryptography;
 
 namespace KsrLauncher.Core;
@@ -47,7 +47,7 @@ public sealed class PackageService(HttpClient? httpClient = null)
 
         if (assetUri is not null)
         {
-            using var response = await _httpClient.GetAsync(assetUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await GitHubAssetDownloads.OpenAsync(_httpClient, assetUri.AbsoluteUri, cancellationToken);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength is long declared &&
                 (declared > limits.MaxArchiveBytes || (component.Size > 0 && declared != component.Size)))

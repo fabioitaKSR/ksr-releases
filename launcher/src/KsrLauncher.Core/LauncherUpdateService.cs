@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -98,8 +98,8 @@ public sealed class LauncherUpdateService
         var partial = destination + ".part";
         try
         {
-            using var response = await _httpClient.GetAsync(
-                release.AssetUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await GitHubAssetDownloads.OpenAsync(
+                _httpClient, release.AssetUrl, cancellationToken);
             response.EnsureSuccessStatusCode();
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
             await using (var output = new FileStream(partial, FileMode.Create, FileAccess.Write, FileShare.None, 81920,

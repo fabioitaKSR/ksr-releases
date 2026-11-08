@@ -7,6 +7,13 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("GitHub API fallback retains launcher signatures, size and SHA", GitHubFallbackTests.SignedLauncher),
+    ("GitHub fallback requires exact release, asset URL and identity", GitHubFallbackTests.ExactAssetBoundary),
+    ("Cancelled GitHub download does not start another request", GitHubFallbackTests.Cancellation),
+    ("GitHub package fallback enforces signed hash and size", GitHubFallbackTests.PackageHashAndSize),
+    ("GitHub fallback does not bypass auth, rate limits or private transports", GitHubFallbackTests.AuthAndHostBoundaries),
+    ("Healthy GitHub downloads make no extra API requests", GitHubFallbackTests.HealthyDirect),
+    ("GitHub fallback bounds metadata and attempts", GitHubFallbackTests.BudgetAndBoundedFailure),
     ("Managed shared overlays avoid false warnings but verified unknown collisions still require review", SharedOverlayWarningTests.ManagedAndUnknownCollisions),
     ("Overlay warning ownership preserves path, inventory and target-kind boundaries", SharedOverlayWarningTests.BoundariesRemainWarnings),
     ("Retroactive cleanup retains settings, pending backups and current downloads", StorageCleanupTests.Retroactive),
