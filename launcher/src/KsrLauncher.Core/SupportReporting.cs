@@ -25,7 +25,8 @@ public sealed record SupportReportRequest(
     string KspVersion,
     bool PersistentOnly = false,
     string? LoggerKspRoot = null,
-    string? SaveKspRoot = null);
+    string? SaveKspRoot = null,
+    string? PlayerLogPath = null);
 
 public sealed record SupportReportPackage(
     string FilePath,
@@ -50,7 +51,7 @@ public sealed class SupportReportPackager
         var created = (createdAtUtc ?? DateTimeOffset.UtcNow).ToUniversalTime();
         var username = SanitizeSegment(request.Username, "Player");
         var type = request.Type.ToString().ToUpperInvariant();
-        var csvUniqueSuffix = request.Type == SupportReportType.Csv ? "_" + Guid.NewGuid().ToString("N") : string.Empty;
+        var csvUniqueSuffix = request.Type == SupportReportType.Csv || request.PlayerLogPath is not null ? "_" + Guid.NewGuid().ToString("N") : string.Empty;
         var fileName = $"{created:yyyy-MM-dd_HHmmss}Z_{username}_{type}{csvUniqueSuffix}.zip";
         Directory.CreateDirectory(outputDirectory);
         var destination = Path.Combine(Path.GetFullPath(outputDirectory), fileName);
@@ -65,6 +66,12 @@ public sealed class SupportReportPackager
                 var logDestination = Path.Combine(work, "KSP.log");
                 File.Copy(Path.GetFullPath(request.SourcePath), logDestination, true);
                 includedFiles.Add(await DescribeAsync(logDestination, "KSP.log", cancellationToken));
+                if (request.PlayerLogPath is not null)
+                {
+                    var playerDestination = Path.Combine(work, "Player.log");
+                    await PlayerLogSupport.CopyAsync(request.PlayerLogPath, playerDestination, request.Username, cancellationToken);
+                    includedFiles.Add(await DescribeAsync(playerDestination, "Player.log", cancellationToken));
+                }
             }
             else if (request.Type == SupportReportType.Csv)
             {
@@ -134,6 +141,11 @@ public sealed class SupportReportPackager
 
     private static void Validate(SupportReportRequest request)
     {
+        if (request.PlayerLogPath is not null)
+        {
+            if (request.Type != SupportReportType.Log) throw new InvalidDataException("Player.log requires a log report.");
+            PlayerLogSupport.Validate(request.PlayerLogPath, request.Username);
+        }
         if (string.IsNullOrWhiteSpace(request.Description) || request.Description.Trim().Length < 10)
             throw new ArgumentException("Describe the problem using at least 10 characters.");
         if (string.IsNullOrWhiteSpace(request.Username)) throw new ArgumentException("A signed-in username is required.");
@@ -202,6 +214,8 @@ public sealed class SupportReportPackager
         Local save name: {NullIfWhiteSpace(request.LocalSaveName) ?? "Not selected"}
         Launcher version: {request.LauncherVersion}
         KSP version: {request.KspVersion}
+
+        Additional diagnostic: {(request.PlayerLogPath is null ? "None" : "Player.log from the last KSP session for this Windows user; shared across installations")}
 
         PLAYER DESCRIPTION
         {request.Description.Trim()}

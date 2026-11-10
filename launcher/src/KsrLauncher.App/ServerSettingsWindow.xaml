@@ -65,6 +65,7 @@
         <StackPanel x:Name="TestGameSupport" Grid.Row="13" Orientation="Horizontal">
             <Button x:Name="SendTestSaveButton" Content="SEND SAVE" MinWidth="115" Click="SendTestSave_Click" />
             <Button x:Name="SendTestLogButton" Content="SEND LOG" MinWidth="115" Margin="10,0,0,0" Click="SendTestLog_Click" />
+            <Button x:Name="SendTestPlayerLogButton" Content="SEND PLAYER.LOG" MinWidth="145" Margin="10,0,0,0" Visibility="Collapsed" Click="SendTestPlayerLog_Click" />
             <Button x:Name="SendTestCsvButton" Content="SEND CSV" MinWidth="115" Margin="10,0,0,0" Click="SendTestCsv_Click" />
         </StackPanel>
         <StackPanel Grid.Row="15">

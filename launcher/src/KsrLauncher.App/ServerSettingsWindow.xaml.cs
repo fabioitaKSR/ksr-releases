@@ -172,6 +172,9 @@ public partial class ServerSettingsWindow : Window
         RepairTestKspButton.IsEnabled = LaunchTestKspButton.IsEnabled;
         SendTestSaveButton.IsEnabled = CanSendBetaSupport;
         SendTestLogButton.IsEnabled = CanSendBetaSupport;
+        SendTestPlayerLogButton.Visibility = LauncherSession.IsAuthenticated && PlayerLogSupport.IsAllowed(LauncherSession.Username)
+            ? Visibility.Visible : Visibility.Collapsed;
+        SendTestPlayerLogButton.IsEnabled = CanSendBetaSupport;
         SendTestCsvButton.IsEnabled = CanSendBetaSupport;
         TestGameSupport.Visibility = HasModuleAccess ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -186,6 +189,12 @@ public partial class ServerSettingsWindow : Window
     {
         if (!CanSendBetaSupport || !await CheckAccessAsync() || !CanSendBetaSupport) return;
         SaveFileSupportDialog.Open(this, _testKspRoot!, null);
+    }
+
+    private async void SendTestPlayerLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (!PlayerLogSupport.IsAllowed(LauncherSession.Username) || !CanSendBetaSupport || !await CheckAccessAsync() || !CanSendBetaSupport) return;
+        PlayerLogSupportDialog.Open(this, _testKspRoot!, false);
     }
 
     private async void SendTestLog_Click(object sender, RoutedEventArgs e)
@@ -252,6 +261,7 @@ public partial class ServerSettingsWindow : Window
         LaunchTestKspButton.IsEnabled = false;
         SendTestSaveButton.IsEnabled = false;
         SendTestLogButton.IsEnabled = false;
+        SendTestPlayerLogButton.IsEnabled = false;
         SendTestCsvButton.IsEnabled = false;
         SaveButton.IsEnabled = false;
         CancelButton.IsEnabled = false;
@@ -401,3 +411,4 @@ public partial class ServerSettingsWindow : Window
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 }
+

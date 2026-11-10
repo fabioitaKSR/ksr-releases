@@ -15,12 +15,15 @@ public partial class SupportReportWindow : Window
     private readonly bool _useSelectedCampaign;
     private readonly string? _csvKspRoot;
     private readonly string? _saveKspRoot;
+    private readonly string? _playerLogPath;
     private bool _busy;
 
     public SupportReportWindow(SupportReportType type, string sourcePath, string? saveName,
-        bool persistentOnly = false, bool useSelectedCampaign = true, string? csvKspRoot = null, string? saveKspRoot = null)
+        bool persistentOnly = false, bool useSelectedCampaign = true, string? csvKspRoot = null, string? saveKspRoot = null, string? playerLogPath = null)
     {
+        if (playerLogPath is not null) PlayerLogSupport.Validate(playerLogPath, LauncherSession.Username);
         InitializeComponent();
+        _playerLogPath = playerLogPath;
         _type = type;
         _csvKspRoot = csvKspRoot;
         _saveKspRoot = saveKspRoot;
@@ -29,7 +32,7 @@ public partial class SupportReportWindow : Window
         _persistentOnly = persistentOnly;
         _useSelectedCampaign = useSelectedCampaign;
 
-        ReportTypeText.Text = type == SupportReportType.Csv ? "SEND LOGGER CSV" : type == SupportReportType.Log ? "SEND KSP LOG" : "SEND KSP SAVE";
+        ReportTypeText.Text = playerLogPath is not null ? "SEND PLAYER.LOG" : type == SupportReportType.Csv ? "SEND LOGGER CSV" : type == SupportReportType.Log ? "SEND KSP LOG" : "SEND KSP SAVE";
         PlayerText.Text = LauncherSession.Username;
         CampaignText.Text = !useSelectedCampaign || string.IsNullOrWhiteSpace(LauncherSession.CampaignCode)
             ? "No campaign selected"
@@ -47,6 +50,13 @@ public partial class SupportReportWindow : Window
         SaveWarningText.Visibility = type is SupportReportType.Save or SupportReportType.Csv ? Visibility.Visible : Visibility.Collapsed;
         if (type == SupportReportType.Csv)
             SaveWarningText.Text = "Return to the KSP main menu before sending CSV files, so the logger has finished writing. Original files are kept unchanged.";
+        if (playerLogPath is not null)
+        {
+            SourceText.Text = $"{sourcePath}\n{playerLogPath}\nPlayer.log last modified (local): {File.GetLastWriteTime(playerLogPath):yyyy-MM-dd HH:mm:ss}";
+            IncludedFilesText.Text = "KSP.log · Player.log · report.txt · manifest.json";
+            SaveWarningText.Visibility = Visibility.Visible;
+            SaveWarningText.Text = "Player.log belongs to the last KSP session for this Windows user and is shared across installations. Close KSP and send it before starting the game again. Check the path and date above before sending. It may contain local paths and diagnostic details.";
+        }
         DescriptionTextBox.Focus();
     }
 
@@ -87,9 +97,10 @@ public partial class SupportReportWindow : Window
                 DetectKspVersion(_sourcePath),
                 _persistentOnly,
                 _csvKspRoot,
-                _saveKspRoot);
+                _saveKspRoot,
+                _playerLogPath);
 
-            package = await new SupportReportPackager().CreateAsync(request, queue);
+            package = await Task.Run(() => new SupportReportPackager().CreateAsync(request, queue));
             if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl) || string.IsNullOrWhiteSpace(LauncherSession.AccessToken))
             {
                 MessageBox.Show(

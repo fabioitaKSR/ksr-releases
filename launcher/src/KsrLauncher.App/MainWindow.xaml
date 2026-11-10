@@ -729,8 +729,13 @@
                 </Grid.ColumnDefinitions>
                 <Button x:Name="LeaderboardButton" Content="LEADERBOARD" Style="{StaticResource GhostButton}"
                         MinWidth="150" VerticalAlignment="Center" IsEnabled="False" Click="Leaderboard_Click" />
-                <Button x:Name="SendLogButton" Grid.Column="2" Content="SEND LOG" Style="{StaticResource GhostButton}"
-                        MinWidth="105" VerticalAlignment="Center" Click="SendLog_Click" />
+                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                    <Button x:Name="SendLogButton" Content="SEND LOG" Style="{StaticResource GhostButton}"
+                            MinWidth="105" Click="SendLog_Click" />
+                    <Button x:Name="SendPlayerLogButton" Content="SEND PLAYER.LOG" Style="{StaticResource GhostButton}"
+                            FontSize="11" Padding="8,3" Visibility="Collapsed" Click="SendPlayerLog_Click"
+                            ToolTip="Send Player.log and KSP.log for crash diagnostics" />
+                </StackPanel>
                 <Button x:Name="SendSaveButton" Grid.Column="4" Content="SEND SAVE" Style="{StaticResource GhostButton}"
                         MinWidth="105" VerticalAlignment="Center" Click="SendSave_Click"
                         ToolTip="Choose the KSP save folder to include in the report" />

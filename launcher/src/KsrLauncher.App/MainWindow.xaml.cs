@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Collections.ObjectModel;
 using System.Net.Http;
@@ -1497,6 +1497,13 @@ public partial class MainWindow : Window
         LoggerCsvSupportDialog.Open(this, _kspRoot!, preferredSave);
     }
 
+    private void SendPlayerLog_Click(object sender, RoutedEventArgs e)
+    {
+        if (!LauncherSession.IsAuthenticated || !PlayerLogSupport.IsAllowed(LauncherSession.Username) ||
+            _blockingOperationInProgress || _installedKsrModsUpdateInProgress || !EnsureKspRoot()) return;
+        PlayerLogSupportDialog.Open(this, _kspRoot!, true);
+    }
+
     private void SendLog_Click(object sender, RoutedEventArgs e)
     {
         if (!EnsureKspRoot()) return;
@@ -2156,6 +2163,8 @@ public partial class MainWindow : Window
     {
         UpdateBetaButton();
         var signedIn = LauncherSession.IsAuthenticated;
+        SendPlayerLogButton.Visibility = signedIn && PlayerLogSupport.IsAllowed(LauncherSession.Username)
+            ? Visibility.Visible : Visibility.Collapsed;
         AccountPanel.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
         LoginPanel.Visibility = signedIn ? Visibility.Collapsed : Visibility.Visible;
         SignOutButton.Visibility = signedIn ? Visibility.Visible : Visibility.Collapsed;
@@ -2289,3 +2298,4 @@ internal sealed record AdminMemberItem(KsrCampaignMember Member)
         : Member.LastSeenAt.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm");
     public bool CanKick => Role == "PLAYER";
 }
+

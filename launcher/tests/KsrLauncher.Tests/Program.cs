@@ -1,4 +1,4 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -7,6 +7,7 @@ using KsrLauncher.Core;
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Player.log account gate, exact attachments and input limits", PlayerLogSupportTests.PackageAndGuards),
     ("GitHub API fallback retains launcher signatures, size and SHA", GitHubFallbackTests.SignedLauncher),
     ("GitHub fallback requires exact release, asset URL and identity", GitHubFallbackTests.ExactAssetBoundary),
     ("Cancelled GitHub download does not start another request", GitHubFallbackTests.Cancellation),
