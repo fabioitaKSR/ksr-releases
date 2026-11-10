@@ -1,4 +1,4 @@
-﻿using System.IO.Compression;
+using System.IO.Compression;
 using System.Security.Cryptography;
 
 namespace KsrLauncher.Core;
@@ -6,6 +6,7 @@ namespace KsrLauncher.Core;
 public sealed class PackageService(HttpClient? httpClient = null)
 {
     private readonly HttpClient _httpClient = httpClient ?? new HttpClient();
+    internal HttpClient Http => _httpClient;
     private static readonly uint[] CrcTable = CreateCrcTable();
 
     private static uint[] CreateCrcTable()

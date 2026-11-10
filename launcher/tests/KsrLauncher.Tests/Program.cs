@@ -5,8 +5,20 @@ using System.Text.Json;
 using System.Xml.Linq;
 using KsrLauncher.Core;
 
+if (args.Length == 2 && args[0] == "selective-crash-child")
+{
+    await SelectiveUpdateTests.CrashChild(args[1]);
+    return 0;
+}
+
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Selective shared overlays retain their established file replacement order", SelectiveUpdateTests.SharedOverlayOrder),
+    ("Selective GitHub gateway fallback retains the exact byte range", SelectiveUpdateTests.GitHubRangeFallback),
+    ("Killed updater subprocess recovers its durable journal without losing user data", SelectiveUpdateTests.ProcessInterruption),
+    ("Selective updates reuse unchanged bytes; repair downloads full package", SelectiveUpdateTests.SelectiveAndRepair),
+    ("Selective index, range, checksum and cancellation failures preserve installation", SelectiveUpdateTests.RejectionsAndCancellation),
+    ("Interrupted update journal recovers before applying the next update", SelectiveUpdateTests.DurableRecovery),
     ("Player.log account gate, exact attachments and input limits", PlayerLogSupportTests.PackageAndGuards),
     ("GitHub API fallback retains launcher signatures, size and SHA", GitHubFallbackTests.SignedLauncher),
     ("GitHub fallback requires exact release, asset URL and identity", GitHubFallbackTests.ExactAssetBoundary),

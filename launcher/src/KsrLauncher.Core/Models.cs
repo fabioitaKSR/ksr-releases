@@ -31,6 +31,7 @@ public sealed class ComponentManifest
     public string InstallMode { get; set; } = "replace";
     public bool Required { get; set; }
     public List<string> RequiredFiles { get; set; } = [];
+    public FileIndexReference? FileIndex { get; set; }
 }
 
 public sealed class KspCompatibility
@@ -81,6 +82,8 @@ public sealed record UpdatePlan(ReleaseManifest Manifest, IReadOnlyList<Componen
 
 public sealed class BackupJournal
 {
+    public bool InProgress { get; set; }
+    public List<StagedUpdateDirectory> StagingDirectories { get; set; } = [];
     public int SchemaVersion { get; set; } = 1;
     public string ReleaseVersion { get; set; } = "";
     public DateTimeOffset CreatedAtUtc { get; set; }
@@ -107,3 +110,25 @@ public sealed record UpdateProgress(
     int ComponentsCompleted,
     int TotalComponents,
     string Phase);
+
+public sealed class FileIndexReference
+{
+    public string Asset { get; set; } = "";
+    public string AssetUrl { get; set; } = "";
+    public long Size { get; set; }
+    public string Sha256 { get; set; } = "";
+}
+
+public sealed class PackageFileIndex
+{
+    public int SchemaVersion { get; set; } = 1;
+    public string ArchiveSha256 { get; set; } = "";
+    public long ArchiveSize { get; set; }
+    public string Source { get; set; } = "";
+    public List<IndexedPackageFile> Files { get; set; } = [];
+}
+
+public sealed record IndexedPackageFile(string Path, long Size, string Sha256,
+    long Offset, long CompressedSize, int Compression);
+
+public sealed record StagedUpdateDirectory(string TargetKind, string RelativePath);

@@ -57,6 +57,16 @@ public static partial class ManifestService
             if (!string.Equals(component.InstallMode, "replace", StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(component.InstallMode, "overlay", StringComparison.OrdinalIgnoreCase))
                 errors.Add($"{component.Id}: installMode deve essere replace o overlay");
+            if (component.FileIndex is { } index)
+            {
+                if (Path.GetFileName(index.Asset) != index.Asset || !index.Asset.EndsWith(".files.json.gz", StringComparison.Ordinal) || index.Size <= 0 || index.Size > SelectivePackageService.MaximumIndexBytes ||
+                    !Sha256Regex().IsMatch(index.Sha256)) errors.Add($"{component.Id}: invalid file index identity, size or checksum");
+                if (!string.IsNullOrWhiteSpace(index.AssetUrl) &&
+                    (!Uri.TryCreate(index.AssetUrl, UriKind.Absolute, out var indexUri) || indexUri.Scheme != Uri.UriSchemeHttps ||
+                     indexUri.UserInfo.Length != 0 || indexUri.Query.Length != 0 || indexUri.Fragment.Length != 0 ||
+                     !Uri.UnescapeDataString(indexUri.AbsolutePath).EndsWith('/' + index.Asset, StringComparison.Ordinal)))
+                    errors.Add($"{component.Id}: invalid file index URL");
+            }
             foreach (var required in component.RequiredFiles) ValidateRelative(required, $"{component.Id}: requiredFiles", errors);
         }
 

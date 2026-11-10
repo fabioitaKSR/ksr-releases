@@ -14,6 +14,9 @@ $cli = Join-Path (Split-Path -Parent $PSScriptRoot) 'launcher/src/KsrLauncher.Cl
 if (Test-Path -LiteralPath (Join-Path $AssetsDirectory 'ksr-release.json')) {
     dotnet run --project $cli -c Release -- verify-manifest --manifest (Join-Path $AssetsDirectory 'ksr-release.json')
     if ($LASTEXITCODE -ne 0) { throw 'A published component manifest must have a trusted signature.' }
+    dotnet run --project $cli -c Release -- verify-file-indexes --directory $AssetsDirectory
+    if ($LASTEXITCODE -ne 0) { throw 'All selective file indexes must match the signed catalog.' }
+
 }
 if (@(Get-ChildItem -LiteralPath $AssetsDirectory -File -Filter 'KSR-Launcher-*.exe').Count -gt 0) {
     dotnet run --project $cli -c Release -- verify-release --directory $AssetsDirectory

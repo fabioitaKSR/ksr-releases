@@ -19,6 +19,27 @@ internal static class LauncherCli
                     await ManifestService.LoadAsync(signedManifestPath);
                     Console.WriteLine("Component manifest signature verified.");
                     return 0;
+                case "verify-file-indexes":
+                    var indexDirectory = Path.GetFullPath(Required(options, "directory"));
+                    var catalogPath = Path.Combine(indexDirectory, "ksr-release.json");
+                    new ReleaseSignatures().Verify(await File.ReadAllBytesAsync(catalogPath), await File.ReadAllBytesAsync(catalogPath + ".sig"));
+                    var indexedCatalog = await ManifestService.LoadAsync(catalogPath);
+                    using (var indexHttp = new HttpClient())
+                    {
+                        foreach (var component in indexedCatalog.Components)
+                        {
+                            if (component.FileIndex is null)
+                            {
+                                if (new Version(indexedCatalog.MinimumLauncherVersion) >= new Version(0, 7, 35))
+                                    throw new InvalidDataException("A selective catalog requires every component file index.");
+                                continue;
+                            }
+                            if (File.Exists(Path.Combine(indexDirectory, component.FileIndex.Asset))) component.FileIndex.AssetUrl = "";
+                            await new SelectivePackageService(indexHttp).LoadIndexAsync(component, indexDirectory, CancellationToken.None);
+                        }
+                    }
+                    Console.WriteLine("Signed catalog and all referenced file indexes verified.");
+                    return 0;
                 case "verify-release":
                     var directory = Path.GetFullPath(Required(options, "directory"));
                     var verifier = new ReleaseSignatures();
@@ -107,6 +128,7 @@ internal static class LauncherCli
     private static void PrintHelp() => Console.WriteLine("""
         KSR Launcher Core - prototipo CLI
 
+        verify-file-indexes --directory <signed release assets>
         validate-manifest --manifest <ksr-release.json>
         plan   (--repo <owner/repo> [--channel stable|beta] | --manifest <file>) --ksp <cartella KSP> --launcher-data <cartella>
         update (--repo <owner/repo> [--channel stable|beta] | --manifest <file> --assets-base <URL o cartella>) --ksp <cartella KSP> --launcher-data <cartella> [--apply] [--install-missing]

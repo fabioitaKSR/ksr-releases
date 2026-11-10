@@ -21,7 +21,11 @@ public static class StateStore
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + ".tmp";
         await using (var stream = File.Create(temporary))
+        {
             await JsonSerializer.SerializeAsync(stream, state, ManifestService.JsonOptions, cancellationToken);
+            stream.Flush(true);
+        }
         File.Move(temporary, path, true);
     }
 }
+

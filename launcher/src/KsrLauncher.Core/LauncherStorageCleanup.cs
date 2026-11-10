@@ -84,6 +84,7 @@ public static class LauncherStorageCleanup
                 var proof = File.Exists(journalFile) ? journalFile : approval;
                 if (!File.Exists(proof)) { retained.Add(backup); continue; }
                 var journal = JsonSerializer.Deserialize<BackupJournal>(await File.ReadAllTextAsync(proof), ManifestService.JsonOptions);
+                if (journal?.InProgress == true) { retained.Add(backup); continue; }
                 if (journal is null || journal.SchemaVersion != 1 || journal.CreatedAtUtc == default
                     || state.UpdatedAtUtc < journal.CreatedAtUtc
                     || !string.Equals(Path.GetFullPath(journal.LauncherDataRoot).TrimEnd(Path.DirectorySeparatorChar),

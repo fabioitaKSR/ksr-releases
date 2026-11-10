@@ -7,18 +7,18 @@ namespace KsrLauncher.Core;
 
 internal static class GitHubAssetDownloads
 {
-    public static async Task<HttpResponseMessage> OpenAsync(HttpClient http, string url, CancellationToken cancellationToken)
+    public static async Task<HttpResponseMessage> OpenAsync(HttpClient http, string url, CancellationToken cancellationToken, RangeHeaderValue? range = null)
     {
         var route = PublicRoute(url);
         // Private beta transports and authenticated clients retain their existing scope.
         if (route is null || http.DefaultRequestHeaders.Authorization is not null)
-            return await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            return await GetAsync(http, url, range, cancellationToken);
 
         HttpResponseMessage? direct = null;
         using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
             deadline.CancelAfter(TimeSpan.FromSeconds(15));
-            try { direct = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, deadline.Token); }
+            try { direct = await GetAsync(http, url, range, deadline.Token); }
             catch (HttpRequestException) when (!cancellationToken.IsCancellationRequested) { }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && deadline.IsCancellationRequested) { }
         }
@@ -45,7 +45,17 @@ internal static class GitHubAssetDownloads
         var matches = release.Assets.Where(asset => asset is not null && asset.Name == route.Name && asset.BrowserUrl == url && asset.Id > 0).Take(2).ToArray();
         if (matches.Length != 1) throw new InvalidDataException("The GitHub API asset does not match the authorized download URL.");
         using var download = Request(route.AssetUrl(matches[0].Id), "application/octet-stream");
+        download.Headers.Range = range;
+        if (range is not null) download.Headers.AcceptEncoding.ParseAdd("identity");
         return await SendApiAsync(http, download, cancellationToken);
+    }
+
+    private static async Task<HttpResponseMessage> GetAsync(HttpClient http, string url, RangeHeaderValue? range, CancellationToken token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Range = range;
+        if (range is not null) request.Headers.AcceptEncoding.ParseAdd("identity");
+        return await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
     }
 
     private static HttpRequestMessage Request(string url, string mediaType)

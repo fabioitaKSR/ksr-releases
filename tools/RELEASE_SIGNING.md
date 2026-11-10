@@ -64,3 +64,21 @@ the signed catalog and component updater before publication; it does not
 establish that an older launcher discovers, downloads and installs the final
 public release. Rebuild and sign the final executable metadata after source
 changes, rather than reusing signatures for an earlier binary.
+
+## Selective game-component updates, launcher 0.7.35
+
+Automatic updates and UPGRADE reuse unchanged official file bytes. REPAIR acquires the complete immutable ZIP. A first installation into a missing component destination also uses the complete ZIP. Older catalogs without file indexes retain their ZIP transport while they are migrated. Launcher self-updates remain a single EXE.
+
+Before signing any new public or private component catalog, generate its file indexes from the exact official ZIPs. Use the Python 3 standard-library tool below, with an immutable HTTPS asset base for the release that will contain these indexes. Private-beta indexes must stay in the private release/storage for their own module. The authenticated beta client remaps all package and index URLs to that same module.
+
+```powershell
+python tools/build-selective-catalog.py --manifest input/ksr-release.json --packages official-zips --output release-assets --base-url https://github.com/OWNER/REPO/releases/download/TAG
+./tools/sign-release.ps1 -Path release-assets/ksr-release.json
+dotnet run --project launcher/src/KsrLauncher.Cli -c Release -- verify-file-indexes --directory release-assets
+```
+
+The builder checks each ZIP checksum, reads the original entry offsets and streams the file checksums. It writes deterministic gzip indexes and a catalog that binds each index's exact size/SHA-256. Sign only after this step. Publish all generated `.files.json.gz` assets along with the signed catalog. Keep all referenced ZIP assets available for REPAIR and old clients. `build-release.ps1` invokes the builder automatically. It accepts `-Python` and `-IndexAssetBaseUrl` for the build environment and private release destination. `publish-github-release.ps1` verifies the signed index bindings before uploading.
+
+The client requires exact HTTP 206 byte ranges and independently checks every downloaded file's signed size and SHA-256. A server returning the entire ZIP to a range request is rejected. For supported overlapping component paths, conflicting official variants are installed in catalog order. Other files, saves and existing preservation rules remain protected. Comparisons and decompression run on workers only during updates. No periodic file hashing is introduced.
+
+The updater saves and flushes the previous-state backup and an in-progress journal before replacement. Its journal also identifies generated staging directories. An interrupted transaction is restored before another applied update, and only recorded staging directories are removed. Completed backups are cleaned only after verified completion. Test simulated process termination, cancellation, bad ranges/checksums, ordinary and beta transports, existing-installation preservation and full REPAIR. Process-termination tests are distinct from physical power-loss testing.

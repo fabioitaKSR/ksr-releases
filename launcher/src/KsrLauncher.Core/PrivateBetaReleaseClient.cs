@@ -33,7 +33,11 @@ public sealed class PrivateBetaReleaseClient : IDisposable
         // Preserve all signed hashes, sizes and destinations. Transport is mapped
         // to the same authenticated module; signed upstream URLs are never used.
         foreach (var component in manifest.Components)
+        {
             component.AssetUrl = _baseUrl + Uri.EscapeDataString(component.Asset);
+            if (component.FileIndex is { } index)
+                index.AssetUrl = _baseUrl + Uri.EscapeDataString(index.Asset);
+        }
         return new ResolvedRelease(manifest, "private-" + manifest.Version, _baseUrl.TrimEnd('/'));
     }
 

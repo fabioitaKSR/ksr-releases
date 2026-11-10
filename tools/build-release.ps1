@@ -16,6 +16,10 @@ param(
     [ValidateSet('stable', 'beta')]
     [string]$Channel = 'stable',
 
+    [string]$IndexAssetBaseUrl = '',
+
+    [string]$Python = 'python',
+
     [switch]$DryRun,
 
     [switch]$Force
@@ -548,6 +552,14 @@ try {
 
     $manifestPath = Join-Path $releaseOutput 'ksr-release.json'
     $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    if ([string]::IsNullOrWhiteSpace($IndexAssetBaseUrl)) {
+        $IndexAssetBaseUrl = "https://github.com/fabioitaKSR/ksr-releases/releases/download/v$Version"
+    }
+    & $Python (Join-Path $PSScriptRoot 'build-selective-catalog.py') --manifest $manifestPath --packages $releaseOutput --output $releaseOutput --base-url $IndexAssetBaseUrl
+    if ($LASTEXITCODE -ne 0) { throw 'Selective file index generation failed. Do not sign or publish this catalog.' }
+    foreach ($indexFile in Get-ChildItem -LiteralPath $releaseOutput -Filter '*.files.json.gz' -File) {
+        $checksumLines.Add((Get-FileHash $indexFile.FullName).Hash.ToLowerInvariant() + '  ' + $indexFile.Name)
+    }
     $manifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     $checksumLines.Add("$manifestHash  ksr-release.json")
     $checksumLines | Set-Content -LiteralPath (Join-Path $releaseOutput 'SHA256SUMS.txt') -Encoding ascii
