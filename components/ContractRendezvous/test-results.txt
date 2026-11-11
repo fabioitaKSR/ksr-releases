@@ -1,0 +1,14 @@
+PASS independent craft in target orbit and range are accepted
+PASS a vessel around Iota cannot satisfy Gael rendezvous
+PASS a suborbital primary vessel is rejected
+PASS a non-orbiting target vessel is rejected
+PASS separated vessels from the same launch are rejected
+PASS overlapping docked launch lineage is rejected
+PASS unknown launch lineage cannot receive credit
+PASS the distance boundary is exclusive
+PASS craft outside range are rejected
+PASS orbital docking between independent launches is accepted
+PASS docking around the wrong body is rejected
+PASS redocking parts from the same launch is rejected
+PASS non-orbital docking is rejected
+TOTAL PASS 13
