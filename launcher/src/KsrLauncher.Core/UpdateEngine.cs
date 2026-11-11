@@ -399,6 +399,9 @@ public sealed class UpdateEngine(PackageService? packageService = null,
 
     private static async Task WriteJournalAsync(string backupRoot, BackupJournal journal, CancellationToken cancellationToken)
     {
+        // Legacy clients clean only schema-1 completed backups. An active journal
+        // uses schema 2 so an older launcher cannot mistake interrupted work for completion.
+        journal.SchemaVersion = journal.InProgress ? 2 : 1;
         var destination = Path.Combine(backupRoot, "backup-manifest.json");
         var temporary = destination + ".tmp";
         await using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))

@@ -62,7 +62,7 @@ internal static class SelectiveUpdateTests
         var copy = Path.Combine(backup, "components", "test"); Directory.CreateDirectory(copy);
         foreach (var file in Directory.EnumerateFiles(fixture.Target)) File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
         File.Copy(StateStore.GetStatePath(fixture.Data), Path.Combine(backup, "installed-state.previous.json"));
-        var journal = new BackupJournal { InProgress = true, KspRoot = fixture.Root, LauncherDataRoot = fixture.Data,
+        var journal = new BackupJournal { SchemaVersion = 2, InProgress = true, KspRoot = fixture.Root, LauncherDataRoot = fixture.Data,
             ReleaseVersion = "1.0.1", Entries = [new BackupEntry { ComponentId = "test", Target = "GameData/Test", TargetKind = "ksp", BackupRelativePath = "components/test", HadOriginal = true }] };
         var orphan = Path.Combine(fixture.Root, "GameData", "Test.ksr-new-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(orphan); File.WriteAllText(Path.Combine(orphan,"old.dll"),"uncommitted staged file");
@@ -156,7 +156,7 @@ internal static class SelectiveUpdateTests
             {
                 var journalFile = Directory.GetFiles(Path.Combine(root, "LauncherData", ".ksr-launcher", "backups"), "backup-manifest.json", SearchOption.AllDirectories).Single();
                 var journal = JsonSerializer.Deserialize<BackupJournal>(File.ReadAllText(journalFile), ManifestService.JsonOptions)!;
-                Check(journal.InProgress && journal.Entries.Count == 1, "No durable rollback journal before the next component");
+                Check(journal.SchemaVersion == 2 && journal.InProgress && journal.Entries.Count == 1, "No durable rollback journal before the next component");
                 File.WriteAllText(Path.Combine(root, "ready-to-kill"), "ready");
                 // Only the synthetic subprocess waits here. The parent kills it within 30 seconds.
                 Thread.Sleep(Timeout.Infinite);
