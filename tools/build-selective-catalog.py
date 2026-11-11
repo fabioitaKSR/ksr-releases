@@ -7,6 +7,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import posixpath
 import re
 import stat
 import struct
@@ -32,7 +33,7 @@ def build_index(component, archive):
     with archive.open('rb') as stream:
         if archive.stat().st_size != component['size'] or digest(stream) != component['sha256'].lower():
             raise ValueError('Official package checksum/size mismatch: ' + component['id'])
-    source = component['source'].rstrip('/') + '/'
+    source = posixpath.normpath(component['source'].replace('\\', '/')).rstrip('/') + '/'
     files, seen, total = [], set(), 0
     with zipfile.ZipFile(archive) as zipped, archive.open('rb') as raw:
         if len(zipped.infolist()) > 50000:
@@ -46,7 +47,7 @@ def build_index(component, archive):
             total += entry.file_size
             if total > 4 * 1024**3 or entry.file_size > 512 * 1024**2:
                 raise ValueError('Archive exceeds extraction limits')
-            if entry.is_dir() or not entry.filename.startswith(source):
+            if entry.is_dir() or entry.filename[:len(source)].casefold() != source.casefold():
                 continue
             relative = entry.filename[len(source):]
             if not safe_path(relative) or entry.flag_bits & 1 or entry.compress_type not in (0, 8):
