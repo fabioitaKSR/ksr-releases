@@ -29,6 +29,10 @@ var tests = new (string Name, Func<Task> Run)[]
     ("GitHub fallback bounds metadata and attempts", GitHubFallbackTests.BudgetAndBoundedFailure),
     ("Managed shared overlays avoid false warnings but verified unknown collisions still require review", SharedOverlayWarningTests.ManagedAndUnknownCollisions),
     ("Overlay warning ownership preserves path, inventory and target-kind boundaries", SharedOverlayWarningTests.BoundariesRemainWarnings),
+    ("Custom download cache retains settings, backups, personal files and pending launcher updates", StorageCleanupTests.CustomDownloadCache),
+    ("Selective upgrade uses the custom cache and retains user files", SelectiveUpdateTests.CustomDownloadCache),
+    ("Insufficient cache space blocks package bytes before selective update or repair", SelectiveUpdateTests.InsufficientCacheSpace),
+    ("Disk filling during a file range stops preparation and preserves installed state", SelectiveUpdateTests.CacheFillsDuringDownload),
     ("Retroactive cleanup retains settings, pending backups and current downloads", StorageCleanupTests.Retroactive),
     ("Cleanup respects update locks and refuses linked cache trees", StorageCleanupTests.LocksAndLinks),
     ("Selected save files preserve original names and exclude other files", SaveFileSupportTests.Package),
@@ -449,7 +453,7 @@ static async Task StartupUpdatesTestInstallationSeparately()
 {
     var startup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "MainWindow.xaml.cs"));
     True(startup.Contains("await UpdateAuthorizedBetasAsync();", StringComparison.Ordinal) &&
-        startup.Contains("true, UpdatePolicy.VerifyAllFiles, progress", StringComparison.Ordinal),
+        startup.Contains("release.AssetsBaseUrl, UpdatePolicy.VerifyAllFiles, progress", StringComparison.Ordinal),
         "Startup must check every file in the selected test installation.");
 
     using var scope = new TempScope();

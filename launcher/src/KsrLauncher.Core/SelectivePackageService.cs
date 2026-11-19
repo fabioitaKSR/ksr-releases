@@ -120,10 +120,11 @@ public sealed class SelectivePackageService(HttpClient http)
         }
         catch
         {
-            if (File.Exists(destination)) File.Delete(destination);
+            PackageService.TryDeleteFailedDownload(destination);
+            PackageService.TryDeleteFailedDownload(temporary);
             throw;
         }
-        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        File.Delete(temporary);
     }
 
     private async Task DownloadCompressedAsync(ComponentManifest component, IndexedPackageFile file, string assetsBase,

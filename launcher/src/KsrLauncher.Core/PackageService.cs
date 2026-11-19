@@ -26,12 +26,15 @@ public sealed class PackageService(HttpClient? httpClient = null)
         ComponentManifest component,
         string downloadDirectory,
         CancellationToken cancellationToken,
-        IProgress<long>? progress = null)
+        IProgress<long>? progress = null,
+        CacheDiskSpace? cacheDiskSpace = null,
+        bool downloadStarted = false)
     {
         var limits = PackageExtractionLimits.FromEnvironment();
         limits.Validate();
         if (component.Size < 0 || component.Size > limits.MaxArchiveBytes)
             throw new InvalidDataException("The package exceeds the permitted download size.");
+        cacheDiskSpace?.Require(component.Size, downloadStarted);
         Directory.CreateDirectory(downloadDirectory);
         var destination = SafePaths.Under(downloadDirectory, component.Asset);
         Uri? assetUri = null;
@@ -53,6 +56,7 @@ public sealed class PackageService(HttpClient? httpClient = null)
             if (response.Content.Headers.ContentLength is long declared &&
                 (declared > limits.MaxArchiveBytes || (component.Size > 0 && declared != component.Size)))
                 throw new InvalidDataException("The package response has an unexpected size.");
+            cacheDiskSpace?.Require(response.Content.Headers.ContentLength ?? component.Size, downloadStarted);
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
             await using var output = File.Create(destination);
             var buffer = new byte[81920];
@@ -75,6 +79,7 @@ public sealed class PackageService(HttpClient? httpClient = null)
             var size = new FileInfo(source).Length;
             if (size > limits.MaxArchiveBytes || (component.Size > 0 && size != component.Size))
                 throw new InvalidDataException("The package file has an unexpected size.");
+            cacheDiskSpace?.Require(size, downloadStarted);
             File.Copy(source, destination, true);
             progress?.Report(new FileInfo(destination).Length);
         }
@@ -90,6 +95,12 @@ public sealed class PackageService(HttpClient? httpClient = null)
         return destination;
     }
 
+    internal static void TryDeleteFailedDownload(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+    }
+
     public static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken = default)
     {
         await using var stream = File.OpenRead(path);
@@ -97,7 +108,7 @@ public sealed class PackageService(HttpClient? httpClient = null)
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
-    public static void ExtractSafely(string zipPath, string destination, PackageExtractionLimits? limits = null)
+    public static void ExtractSafely(string zipPath, string destination, PackageExtractionLimits? limits = null, CacheDiskSpace? cacheDiskSpace = null)
     {
         limits ??= PackageExtractionLimits.FromEnvironment();
         limits.Validate();
@@ -123,6 +134,7 @@ public sealed class PackageService(HttpClient? httpClient = null)
             SafePaths.RejectReparsePoints(destination, target);
             if (!targets.Add(target)) throw new InvalidDataException("The ZIP contains duplicate output paths.");
         }
+        cacheDiskSpace?.Require(declaredTotal, downloadStarted: true);
         Directory.CreateDirectory(destination);
         long totalWritten = 0;
         var buffer = new byte[81920];

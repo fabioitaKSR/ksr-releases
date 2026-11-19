@@ -199,6 +199,9 @@
                             <TextBlock Text="L3 ASK --" FontSize="13" Margin="0,0,0,8" Foreground="{StaticResource MutedBrush}"
                                        ToolTip="ASK: Are Still Kerbal" />
                         </WrapPanel>
+                        <Button x:Name="ConfirmCacheFolderButton" Content="CONFIRM CACHE FOLDER IN SETTINGS"
+                                Visibility="Collapsed" HorizontalAlignment="Left" Margin="0,0,0,8"
+                                Style="{StaticResource GhostButton}" Click="Settings_Click" />
                         <StackPanel x:Name="BetaVersionPanel" Visibility="Collapsed" Margin="0,4,0,0">
                             <TextBlock Text="YOUR BETAS · AVAILABLE VERSIONS" FontSize="10" FontWeight="SemiBold"
                                        Foreground="{StaticResource MutedBrush}" Margin="0,0,0,8" />

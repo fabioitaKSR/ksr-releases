@@ -84,6 +84,62 @@ internal static class StorageCleanupTests
         finally { if(Directory.Exists(root)) Directory.Delete(root,true); }
     }
 
+    public static Task CustomDownloadCache()
+    {
+        using var scope = new TempScope();
+        var data = Path.Combine(scope.Root, "launcher-data");
+        var settings = Path.Combine(data, "settings.json");
+        var beta = Path.Combine(scope.Root, "beta-destination");
+        LauncherSettingsStore.SaveBetaKspRoot("probalism", beta, settings);
+        if (LauncherSettingsStore.LoadCacheFolder(settings) is not null)
+            throw new Exception("An existing settings file implicitly confirmed the cache");
+
+        var selected = Path.Combine(scope.Root, "custom-drive");
+        Directory.CreateDirectory(selected);
+        var unrelated = Path.Combine(selected, "personal.dat");
+        File.WriteAllText(unrelated, "keep");
+        var cache = new LauncherDownloadCache(data, selected);
+        using var updateLock = cache.AcquireLock();
+        cache.VerifyWritable();
+        LauncherSettingsStore.SaveCacheFolder(selected, settings);
+        LauncherSettingsStore.SaveServerAndTestKspRoot("https://launcher.test", null, settings);
+        if (LauncherSettingsStore.LoadCacheFolder(settings) != selected ||
+            LauncherSettingsStore.LoadBetaKspRoot("probalism", settings) != beta)
+            throw new Exception("Saving cache or server settings discarded existing choices");
+
+        var work = Path.Combine(cache.WorkRoot, "20261119-123000-a1b2c3d4");
+        Directory.CreateDirectory(work);
+        File.WriteAllText(Path.Combine(work, "partial.zip"), "download");
+        var pending = cache.GetUpdateDirectory("v0.7.37");
+        Directory.CreateDirectory(pending);
+        File.WriteAllText(Path.Combine(pending, "apply-launcher-update.ps1"), "pending");
+        var ready = cache.GetUpdateDirectory("v0.7.36");
+        Directory.CreateDirectory(ready);
+        File.WriteAllText(Path.Combine(ready, "KSR-Launcher-v0.7.36-win-x64.exe"), "download");
+        var recovery = Path.Combine(data, ".ksr-launcher", "backups", "incomplete");
+        Directory.CreateDirectory(recovery);
+        File.WriteAllText(Path.Combine(recovery, "journal"), "preserve");
+        var result = cache.Clean(new Version(0, 7, 36), Path.Combine(scope.Root, "running.exe"), true);
+        if (result.Deleted.Count != 2 || result.Retained.Count != 1 ||
+            Directory.Exists(work) || Directory.Exists(ready) || !Directory.Exists(pending) ||
+            !Directory.Exists(recovery) || File.ReadAllText(unrelated) != "keep")
+            throw new Exception("Cache cleanup crossed the download boundary or left reusable space occupied");
+
+        var unowned = Path.Combine(scope.Root, "unowned");
+        var occupied = Path.Combine(unowned, "KSRLauncherCache");
+        Directory.CreateDirectory(occupied);
+        File.WriteAllText(Path.Combine(occupied, "family.txt"), "keep");
+        try
+        {
+            new LauncherDownloadCache(data, unowned).VerifyWritable();
+            throw new Exception("Existing unrelated directory was accepted as a cache");
+        }
+        catch (IOException) { }
+        if (File.ReadAllText(Path.Combine(occupied, "family.txt")) != "keep")
+            throw new Exception("Unrelated folder contents changed");
+        return Task.CompletedTask;
+    }
+
     private static async Task Backup(string root,string name,DateTimeOffset date)
     {
         var folder=Path.Combine(root,".ksr-launcher","backups",name); Directory.CreateDirectory(folder);

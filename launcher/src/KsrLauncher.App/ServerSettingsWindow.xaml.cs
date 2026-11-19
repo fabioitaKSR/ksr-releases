@@ -24,7 +24,9 @@ public partial class ServerSettingsWindow : Window
     private readonly System.Threading.CancellationTokenSource _operationCancellation = new();
     private string? _testKspRoot;
     private bool _maintenanceInProgress;
+    private bool _cacheCleanupInProgress;
     public string? ServerUrl { get; private set; }
+    internal bool CacheUpdated { get; private set; }
 
     public ServerSettingsWindow(string? currentServerUrl, KsrBetaModule? module = null)
     {
@@ -38,6 +40,7 @@ public partial class ServerSettingsWindow : Window
             ServerUrlLabel.Visibility = Visibility.Collapsed;
             ServerUrlTextBox.Visibility = Visibility.Collapsed;
             ServerDescription.Visibility = Visibility.Collapsed;
+            CacheSection.Visibility = Visibility.Collapsed;
             foreach (var row in new[] { ServerTitleRow, ServerTitleGapRow, ServerLabelRow,
                 ServerLabelGapRow, ServerUrlRow, ServerDescriptionRow, ServerBottomGapRow }) row.Height = new GridLength(0);
             TestGameTitle.Text = _module.Label.ToUpperInvariant();
@@ -50,7 +53,7 @@ public partial class ServerSettingsWindow : Window
         Closed += (_, _) => { BetaAccess.Changed -= AccessChanged; _operationCancellation.Cancel(); };
         if (!HasModuleAccess)
         {
-            Height = 380;
+            Height = _module is null ? 510 : 380;
             foreach (var row in new[] { TestGameTitleRow, TestGameTitleGapRow, TestGamePathRow,
                          TestGameDescriptionRow, TestGameMaintenanceRow, TestGameMaintenanceGapRow,
                          TestGameSupportRow, TestGameSupportGapRow, TestGameProgressRow, TestGameBottomGapRow })
@@ -64,9 +67,94 @@ public partial class ServerSettingsWindow : Window
         }
         RefreshTestKspPath();
         ServerUrlTextBox.Text = currentServerUrl ?? string.Empty;
-        if (_module is null) ServerUrlTextBox.Focus();
+        if (_module is null)
+        {
+            RefreshCacheSettings();
+            if (LauncherCache.IsConfirmed) ServerUrlTextBox.Focus();
+            else DefaultCacheButton.Focus();
+        }
         ServerUrlTextBox.CaretIndex = ServerUrlTextBox.Text.Length;
-        Closing += (_, e) => { if (_maintenanceInProgress && !_accessRevoked) e.Cancel = true; };
+        Closing += (_, e) => { if (_cacheCleanupInProgress || (_maintenanceInProgress && !_accessRevoked)) e.Cancel = true; };
+    }
+
+    private void RefreshCacheSettings(string? status = null)
+    {
+        var folder = LauncherCache.SelectedFolder ?? LauncherCache.DefaultFolder;
+        CacheFolderTextBox.Text = folder;
+        CacheFolderTextBox.ToolTip = folder;
+        ClearCacheButton.IsEnabled = LauncherCache.IsConfirmed;
+        CacheStatusText.Text = status ?? (LauncherCache.IsConfirmed
+            ? "Clear downloaded updates and temporary update files."
+            : LauncherCache.ConfirmationText);
+    }
+
+    private void UseDefaultCache_Click(object sender, RoutedEventArgs e) =>
+        SelectCacheFolder(LauncherCache.DefaultFolder);
+
+    private void BrowseCache_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new OpenFolderDialog { Title = "Choose a folder for KSRLauncherCache" };
+        if (Directory.Exists(LauncherCache.SelectedFolder)) picker.InitialDirectory = LauncherCache.SelectedFolder;
+        if (picker.ShowDialog(this) == true) SelectCacheFolder(picker.FolderName);
+    }
+
+    private void SelectCacheFolder(string folder)
+    {
+        try
+        {
+            LauncherCache.Select(folder);
+            CacheUpdated = true;
+            RefreshCacheSettings("Cache folder saved. Automatic updates can use this folder.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+            InvalidDataException or ArgumentException or System.Text.Json.JsonException)
+        {
+            LauncherDiagnosticLog.Write("Cache folder selection failed", exception);
+            RefreshCacheSettings($"Could not set the cache folder. {exception.Message}");
+        }
+    }
+
+    private async void ClearCache_Click(object sender, RoutedEventArgs e)
+    {
+        _cacheCleanupInProgress = true;
+        BrowseCacheButton.IsEnabled = DefaultCacheButton.IsEnabled = ClearCacheButton.IsEnabled = false;
+        CancelButton.IsEnabled = SaveButton.IsEnabled = false;
+        CacheStatusText.Text = "Clearing downloaded updates and temporary update files...";
+        LauncherDiagnosticLog.Write("Manual cache cleanup started");
+        try
+        {
+            var result = await Task.Run(() => LauncherCache.Clean(clearAll: true));
+            CacheUpdated = true;
+            RefreshCacheSettings(result.Retained.Count == 0 ? "Download cache cleared." :
+                "Cache cleared where possible. Some files could not be removed safely.");
+            LauncherDiagnosticLog.Write(result.Retained.Count == 0 ? "Manual cache cleanup finished" :
+                "Manual cache cleanup finished with retained files");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            LauncherDiagnosticLog.Write("Manual cache cleanup failed", exception);
+            RefreshCacheSettings($"Could not clear the cache. {exception.Message}");
+        }
+        finally
+        {
+            _cacheCleanupInProgress = false;
+            BrowseCacheButton.IsEnabled = DefaultCacheButton.IsEnabled = true;
+            CancelButton.IsEnabled = SaveButton.IsEnabled = true;
+        }
+    }
+
+    private void OpenLauncherLog_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            LauncherDiagnosticLog.Write("Launcher log opened from Settings");
+            Process.Start(new ProcessStartInfo(LauncherDiagnosticLog.FilePath) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+            System.ComponentModel.Win32Exception)
+        {
+            CacheStatusText.Text = $"Could not open the launcher log. {exception.Message}";
+        }
     }
 
     private void AccessChanged()
@@ -79,7 +167,7 @@ public partial class ServerSettingsWindow : Window
         if (_module is not null) Close();
         else
         {
-            Height = 380;
+            Height = 510;
             foreach (var row in new[] { TestGameTitleRow, TestGameTitleGapRow, TestGamePathRow,
                 TestGameDescriptionRow, TestGameMaintenanceRow, TestGameMaintenanceGapRow,
                 TestGameSupportRow, TestGameSupportGapRow, TestGameProgressRow, TestGameBottomGapRow })
@@ -235,6 +323,11 @@ public partial class ServerSettingsWindow : Window
     private async Task<bool> MaintainTestKspAsync(UpdatePolicy policy)
     {
         if (!HasModuleAccess || _maintenanceInProgress || !BetaInstallationUpdates.HasValidDestination(_testKspRoot) || !UpgradeTestKspButton.IsEnabled) return false;
+        if (!LauncherCache.IsConfirmed)
+        {
+            TestKspMaintenanceStatus.Text = LauncherCache.ConfirmationText;
+            return false;
+        }
         var selectedRoot = _testKspRoot!;
         if (!BetaInstallationUpdates.HasIndependentDestination(ModuleId, selectedRoot, LauncherSettingsStore.LoadKspRoot(),
             BetaAccess.Modules.Select(module => (module.Id, LauncherSettingsStore.LoadBetaKspRoot(module.Id)))))
@@ -274,6 +367,8 @@ public partial class ServerSettingsWindow : Window
             if (!await CheckAccessAsync() || !HasModuleAccess ||
                 !TestInstallationPaths.IsSameKspRoot(selectedRoot, _testKspRoot) ||
                 !BetaInstallationUpdates.HasValidDestination(selectedRoot) || Process.GetProcessesByName("KSP_x64").Length > 0) return false;
+            using var cache = await Task.Run(LauncherCache.BeginDownload);
+            LauncherDiagnosticLog.Write("Checking beta catalog");
             using var privateRelease = new PrivateBetaReleaseClient(ServerUrlTextBox.Text.Trim(), ModuleId, LauncherSession.AccessToken!);
             var release = await privateRelease.ResolveAsync(_operationCancellation.Token);
             release.Manifest.Components = release.Manifest.Components
@@ -282,8 +377,15 @@ public partial class ServerSettingsWindow : Window
             if (release.Manifest.Components.Count == 0)
                 throw new InvalidDataException("The official release has no KSP game components.");
 
+            string? loggedPhase = null;
             var progress = new Progress<UpdateProgress>(value =>
             {
+                var phase = $"{value.Phase} {value.ComponentId}";
+                if (loggedPhase != phase)
+                {
+                    loggedPhase = phase;
+                    LauncherDiagnosticLog.Write(phase);
+                }
                 var percent = value.Phase == "INSTALLING"
                     ? Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100)
                     : value.TotalBytes > 0
@@ -295,21 +397,23 @@ public partial class ServerSettingsWindow : Window
                 TestActivityText.Text = OperationPhaseText.Describe(value.Phase);
             });
             var launcherData = GetTestLauncherDataRoot(selectedRoot);
-            var result = await new UpdateEngine(new PackageService(privateRelease.Http), InstallationWarningDialog.Review).RunAsync(release.Manifest,
-                new LauncherLocations(selectedRoot, launcherData), release.AssetsBaseUrl,
-                true, policy, progress, _operationCancellation.Token);
+            var result = await cache.RunUpdateAsync(release.Manifest, new LauncherLocations(selectedRoot, launcherData),
+                release.AssetsBaseUrl, policy, progress, new PackageService(privateRelease.Http), _operationCancellation.Token);
             TestKspMaintenanceProgress.IsIndeterminate = false;
             TestKspMaintenanceProgress.Value = 100;
             TestKspMaintenanceStatus.Foreground = (Brush)FindResource("GreenBrush");
             TestKspMaintenanceStatus.Text = result.Applied
                 ? $"{(policy == UpdatePolicy.ReinstallAll ? "Repair" : "Upgrade")} complete: {result.Plan.Components.Count(item => item.NeedsUpdate)} components."
                 : "All KSR game components are up to date.";
+            LauncherDiagnosticLog.Write("Beta maintenance finished");
             return true;
         }
         catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException or OperationCanceledException)
         {
             TestKspMaintenanceProgress.IsIndeterminate = false;
             TestKspMaintenanceStatus.Foreground = (Brush)FindResource("ErrorBrush");
+            LauncherDiagnosticLog.Write("Beta maintenance failed", exception);
+            if (exception is CacheSpaceException space) LauncherCache.ShowSpaceWarning(this, space);
             TestKspMaintenanceStatus.Text = $"Operation failed: {exception.Message}";
             return false;
         }

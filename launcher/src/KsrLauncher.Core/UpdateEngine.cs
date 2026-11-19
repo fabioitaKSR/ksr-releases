@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace KsrLauncher.Core;
 
 public sealed class UpdateEngine(PackageService? packageService = null,
-    Func<LauncherLocations, IReadOnlyList<string>, bool>? reviewInstallation = null)
+    Func<LauncherLocations, IReadOnlyList<string>, bool>? reviewInstallation = null, string? cacheWorkRoot = null, CacheDiskSpace? cacheDiskSpace = null)
 {
     private readonly PackageService _packages = packageService ?? new PackageService();
 
@@ -44,7 +44,8 @@ public sealed class UpdateEngine(PackageService? packageService = null,
 
         var launcherRoot = Path.Combine(locations.LauncherDataRoot, ".ksr-launcher");
         var transactionId = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8];
-        var workRoot = Path.Combine(launcherRoot, "work", transactionId);
+        var workRoot = SafePaths.Under(cacheWorkRoot ?? Path.Combine(launcherRoot, "work"), transactionId);
+        SafePaths.RejectReparsePoints(Path.GetPathRoot(workRoot)!, workRoot);
         var backupRoot = Path.Combine(launcherRoot, "backups", transactionId);
         var journal = new BackupJournal
         {
@@ -55,12 +56,18 @@ public sealed class UpdateEngine(PackageService? packageService = null,
             InProgress = true
         };
 
-        Directory.CreateDirectory(workRoot);
-        Directory.CreateDirectory(backupRoot);
         UpdateResult result;
         try
         {
-            var prepared = await PrepareAsync(plan, assetsBase, workRoot, policy, progress, cancellationToken);
+            List<PreparedComponent> prepared;
+            try
+            {
+                prepared = await PrepareAsync(plan, assetsBase, workRoot, policy, progress, cancellationToken);
+            }
+            catch (IOException exception) when (cacheDiskSpace is not null && CacheDiskSpace.IsDiskFull(exception))
+            {
+                throw new CacheSpaceException("The download cache drive ran out of space.", diskFull: true, inner: exception);
+            }
             if (reviewInstallation is not null)
             {
                 var overlayWarnings = await Task.Run(() => prepared.SelectMany(item =>
@@ -70,6 +77,7 @@ public sealed class UpdateEngine(PackageService? packageService = null,
             }
             await Task.Run(() =>
             {
+                Directory.CreateDirectory(backupRoot);
                 var statePath = StateStore.GetStatePath(locations.LauncherDataRoot);
                 if (File.Exists(statePath)) File.Copy(statePath, Path.Combine(backupRoot, "installed-state.previous.json"), true);
 
@@ -152,6 +160,15 @@ public sealed class UpdateEngine(PackageService? packageService = null,
             : await Task.Run(() => SelectFilesAsync(pending, assetsBase, progress, cancellationToken), cancellationToken);
         var totalBytes = pending.Sum(item => selective.TryGetValue(item, out var selection)
             ? selection.Changed.Sum(file => file.CompressedSize) : Math.Max(0, item.Component.Size));
+        if (cacheDiskSpace is not null)
+        {
+            var changed = selective.Values.SelectMany(selection => selection.Changed).ToList();
+            var archives = pending.Where(item => !selective.ContainsKey(item)).Sum(item => Math.Max(0, item.Component.Size));
+            var scratch = changed.Count == 0 ? 0 : changed.Max(file => file.CompressedSize);
+            var required = checked(archives + changed.Sum(file => file.Size) + scratch);
+            await Task.Run(() => cacheDiskSpace.Require(required), cancellationToken);
+        }
+        Directory.CreateDirectory(workRoot);
         long completedBytes = 0;
         for (var index = 0; index < pending.Count; index++)
         {
@@ -168,6 +185,11 @@ public sealed class UpdateEngine(PackageService? packageService = null,
             if (selective.TryGetValue(item, out var selected))
             {
                 var source = SafePaths.Under(workRoot, Path.Combine("selected", item.Component.Id));
+                if (cacheDiskSpace is not null && selected.Changed.Count > 0)
+                {
+                    var required = checked(selected.Changed.Sum(file => file.Size) + selected.Changed.Max(file => file.CompressedSize));
+                    await Task.Run(() => cacheDiskSpace.Require(required, completedBytes > 0), cancellationToken);
+                }
                 Directory.CreateDirectory(source);
                 foreach (var file in selected.Changed)
                 {
@@ -184,7 +206,7 @@ public sealed class UpdateEngine(PackageService? packageService = null,
                 continue;
             }
             var zip = await Task.Run(() => _packages.AcquireAsync(
-                assetsBase, item.Component, Path.Combine(workRoot, "downloads"), cancellationToken, componentProgress), cancellationToken);
+                assetsBase, item.Component, Path.Combine(workRoot, "downloads"), cancellationToken, componentProgress, cacheDiskSpace, completedBytes > 0), cancellationToken);
             completedBytes += item.Component.Size > 0 ? item.Component.Size : new FileInfo(zip).Length;
             progress?.Report(new UpdateProgress(item.Component.Id, Math.Min(totalBytes, completedBytes), totalBytes, currentIndex + 1, pending.Count, "DOWNLOADING"));
             var prepared = await Task.Run(() =>
@@ -192,7 +214,7 @@ public sealed class UpdateEngine(PackageService? packageService = null,
                 cancellationToken.ThrowIfCancellationRequested();
                 progress?.Report(new UpdateProgress(item.Component.Id, 0, 0, currentIndex, pending.Count, "EXTRACTING"));
                 var extractRoot = SafePaths.Under(workRoot, Path.Combine("extracted", Guid.NewGuid().ToString("N")));
-                PackageService.ExtractSafely(zip, extractRoot);
+                PackageService.ExtractSafely(zip, extractRoot, cacheDiskSpace: cacheDiskSpace);
                 var source = SafePaths.Under(extractRoot, item.Component.Source);
                 if (!Directory.Exists(source)) throw new InvalidDataException($"{item.Component.Id}: source '{item.Component.Source}' assente nel pacchetto.");
                 foreach (var required in item.Component.RequiredFiles)

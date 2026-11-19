@@ -30,6 +30,76 @@ internal static class SelectiveUpdateTests
         Check(await File.ReadAllTextAsync(Path.Combine(fixture.Target, "personal.cfg")) == "PERSONAL", "Repair removed personal data");
     }
 
+    public static async Task CustomDownloadCache()
+    {
+        using var fixture = new Fixture();
+        var selected = Path.Combine(fixture.Root, "custom-cache");
+        Directory.CreateDirectory(selected);
+        var cache = new LauncherDownloadCache(fixture.Data, selected);
+        using var cacheLock = cache.AcquireLock();
+        cache.VerifyWritable();
+        var original = Path.Combine(fixture.Target, "personal.cfg");
+        var save = Path.Combine(fixture.Root, "saves", "Existing", "persistent.sfs");
+        Directory.CreateDirectory(Path.GetDirectoryName(save)!);
+        File.WriteAllText(save, "existing save");
+
+        using var http = new HttpClient(fixture.Handler);
+        var engine = new UpdateEngine(new PackageService(http), cacheWorkRoot: cache.WorkRoot);
+
+        var result = await engine.RunAsync(fixture.Manifest, new LauncherLocations(fixture.Root, fixture.Data),
+            "https://packages.test/files", true, UpdatePolicy.VerifyAllFiles);
+        Check(result.Applied && fixture.Handler.Ranges.Count == 1 && fixture.Handler.FullDownloads == 0,
+            "Custom cache changed the selective update policy");
+        Check(Directory.Exists(cache.WorkRoot) && !Directory.EnumerateDirectories(cache.WorkRoot).Any() &&
+            !Directory.Exists(Path.Combine(fixture.Data, ".ksr-launcher", "work")), "Unexpected update work directory");
+        Check(File.Exists(StateStore.GetStatePath(fixture.Data)) && File.ReadAllText(original) == "PERSONAL" &&
+            File.ReadAllText(save) == "existing save", "Custom cache changed protected data");
+    }
+
+    public static async Task InsufficientCacheSpace()
+    {
+        foreach (var policy in new[] { UpdatePolicy.VerifyAllFiles, UpdatePolicy.ReinstallAll })
+        {
+            using var fixture = new Fixture();
+            var selected = fixture.Index.Files.Single(file => file.Path == "main.dll");
+            var required = policy == UpdatePolicy.VerifyAllFiles ? selected.Size + selected.CompressedSize : fixture.Component.Size;
+            try
+            {
+                await fixture.Update(policy, new CacheDiskSpace(fixture.Data, _ => required - 1));
+                throw new Exception("Update accepted insufficient cache space");
+            }
+            catch (CacheSpaceException error)
+            {
+                Check(!error.DiskFull && error.Message.Contains("available"), "Missing preflight warning");
+            }
+            Check(fixture.Handler.Ranges.Count == 0 && fixture.Handler.FullDownloads == 0, "Package bytes were requested");
+            Check(File.ReadAllText(Path.Combine(fixture.Target, "main.dll")) == "OLD DLL", "Preflight changed the installation");
+        }
+    }
+
+    public static async Task CacheFillsDuringDownload()
+    {
+        using var fixture = new Fixture();
+        var work = Path.Combine(fixture.Data, "cache");
+        var statePath = StateStore.GetStatePath(fixture.Data);
+        var before = File.ReadAllBytes(statePath);
+        fixture.Handler.Failure = "disk-full";
+        try
+        {
+            await fixture.Update(UpdatePolicy.VerifyAllFiles, new CacheDiskSpace(fixture.Data, _ => long.MaxValue), work);
+            throw new Exception("Disk-full error was ignored");
+        }
+        catch (CacheSpaceException error)
+        {
+            Check(error.DiskFull && error.InnerException is IOException, "The interrupted download lost its disk-full error");
+        }
+        Check(fixture.Handler.Ranges.Count == 1, "The transfer did not reach the data phase");
+        Check(!Directory.EnumerateFileSystemEntries(work).Any(), "The interrupted transaction left partial files");
+        Check(before.SequenceEqual(File.ReadAllBytes(statePath)) &&
+            File.ReadAllText(Path.Combine(fixture.Target, "personal.cfg")) == "PERSONAL",
+            "Disk full changed existing files or installed state");
+    }
+
     public static async Task RejectionsAndCancellation()
     {
         foreach (var failure in new[] { "index", "hash", "ignored-range", "truncated", "cancel" })
@@ -219,10 +289,19 @@ internal static class SelectiveUpdateTests
             StateStore.SaveAsync(Data, new InstalledState { Components = new(StringComparer.OrdinalIgnoreCase) {
                 ["test"] = new InstalledComponent { Version = "1.0.0", Sha256 = new string('a',64), Target = "GameData/Test", TargetKind = "ksp", ExpectedFiles = ["main.dll", "large.bin"] } } }).GetAwaiter().GetResult();
         }
-        public Task<UpdateResult> Update(UpdatePolicy policy) => new UpdateEngine(new PackageService(new HttpClient(Handler))).RunAsync(
+        public Task<UpdateResult> Update(UpdatePolicy policy, CacheDiskSpace? space = null, string? work = null) =>
+            new UpdateEngine(new PackageService(new HttpClient(Handler)), cacheWorkRoot: work, cacheDiskSpace: space).RunAsync(
             Manifest, new LauncherLocations(Root, Data), "https://packages.test/files", true, policy);
         public void Dispose() { Directory.Delete(Root, true); }
         static int Find(byte[] data, byte[] name) { for (var i=30;i<data.Length-name.Length;i++) if(data.AsSpan(i,name.Length).SequenceEqual(name)) return i; throw new Exception("ZIP fixture header missing"); }
+    }
+
+    sealed class FailingRange(byte[] bytes) : MemoryStream(bytes)
+    {
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            Position == 0
+                ? base.ReadAsync(buffer[..1], cancellationToken)
+                : ValueTask.FromException<int>(new IOException("Simulated disk full", unchecked((int)0x80070070)));
     }
 
     sealed class Handler(byte[] zip, byte[] index) : HttpMessageHandler
@@ -252,7 +331,8 @@ internal static class SelectiveUpdateTests
             var bytes = payload.AsSpan((int)range.From!.Value, (int)(range.To!.Value-range.From.Value+1)).ToArray();
             if (Failure == "hash") bytes[0] ^= 0xff;
             if (Failure == "truncated") bytes = bytes[..^1];
-            var response = new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = new ByteArrayContent(bytes) };
+            HttpContent content = Failure == "disk-full" ? new StreamContent(new FailingRange(bytes)) : new ByteArrayContent(bytes);
+            var response = new HttpResponseMessage(HttpStatusCode.PartialContent) { Content = content };
             response.Content.Headers.ContentRange = new ContentRangeHeaderValue(range.From.Value, range.To.Value, payload.Length);
             return Task.FromResult(response);
         }

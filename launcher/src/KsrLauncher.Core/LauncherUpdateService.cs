@@ -125,7 +125,7 @@ public sealed class LauncherUpdateService
         }
         catch
         {
-            if (File.Exists(partial)) File.Delete(partial);
+            PackageService.TryDeleteFailedDownload(partial);
             throw;
         }
     }

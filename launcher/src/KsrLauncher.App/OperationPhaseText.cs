@@ -9,6 +9,7 @@ internal static class OperationPhaseText
         "INSTALLING" => "Installing files. This can take a few minutes...",
         "RESTORING" => "Restoring the previous installation...",
         "CLEANING" => "Cleaning completed update files...",
+        "CACHE CLEANUP" => "Removing temporary downloads from the full cache...",
         _ => "Checking the installation..."
     };
 }

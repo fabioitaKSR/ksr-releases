@@ -15,6 +15,20 @@ public static class LauncherSettingsStore
         return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
+    public static string? LoadCacheFolder(string? settingsPath = null)
+    {
+        var value = TryRead(settingsPath).CacheFolder;
+        return Path.IsPathFullyQualified(value ?? string.Empty) ? value : null;
+    }
+
+    public static void SaveCacheFolder(string cacheFolder, string? settingsPath = null)
+    {
+        using var settingsLock = LauncherStorageCleanup.AcquireUpdateLock(settingsPath ?? DefaultSettingsPath);
+        var settings = Read(settingsPath);
+        settings.CacheFolder = Path.GetFullPath(cacheFolder);
+        Write(settings, settingsPath);
+    }
+
     public static string? LoadKspRoot(string? settingsPath = null)
     {
         var value = TryRead(settingsPath).KspRoot;
@@ -29,6 +43,7 @@ public static class LauncherSettingsStore
 
     public static void SaveKspRoot(string kspRoot, string? settingsPath = null)
     {
+        using var settingsLock = LauncherStorageCleanup.AcquireUpdateLock(settingsPath ?? DefaultSettingsPath);
         var settings = Read(settingsPath);
         settings.KspRoot = Path.GetFullPath(kspRoot);
         Write(settings, settingsPath);
@@ -36,6 +51,7 @@ public static class LauncherSettingsStore
 
     public static void SaveServerAndTestKspRoot(string serverUrl, string? testKspRoot, string? settingsPath = null)
     {
+        using var settingsLock = LauncherStorageCleanup.AcquireUpdateLock(settingsPath ?? DefaultSettingsPath);
         var settings = Read(settingsPath);
         settings.ServerUrl = serverUrl;
         settings.TestKspRoot = testKspRoot is null ? null : Path.GetFullPath(testKspRoot);
@@ -52,6 +68,7 @@ public static class LauncherSettingsStore
     public static void SaveBetaKspRoot(string moduleId, string? root, string? settingsPath = null)
     {
         BetaModulesClient.ValidateId(moduleId);
+        using var settingsLock = LauncherStorageCleanup.AcquireUpdateLock(settingsPath ?? DefaultSettingsPath);
         var settings = Read(settingsPath);
         if (moduleId == "ksr-full") settings.TestKspRoot = root is null ? null : Path.GetFullPath(root);
         else if (root is null) settings.BetaKspRoots.Remove(moduleId);
@@ -88,6 +105,7 @@ public static class LauncherSettingsStore
         public Dictionary<string, string> BetaKspRoots { get; set; } = new();
         public string? ServerUrl { get; set; }
         public string? KspRoot { get; set; }
+        public string? CacheFolder { get; set; }
         public string? TestKspRoot { get; set; }
 
         [JsonExtensionData]

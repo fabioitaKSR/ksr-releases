@@ -6,7 +6,7 @@ namespace KsrLauncher.App;
 
 internal static class LauncherSelfUpdateCoordinator
 {
-    public static bool TrySchedule(string downloadedExecutable, string expectedSha256)
+    public static bool TrySchedule(string downloadedExecutable, string expectedSha256, string updatesRoot)
     {
         if (expectedSha256.Length != 64 || !expectedSha256.All(Uri.IsHexDigit)) return false;
         var source = Path.GetFullPath(downloadedExecutable);
@@ -42,6 +42,8 @@ internal static class LauncherSelfUpdateCoordinator
         startInfo.ArgumentList.Add(destination);
         startInfo.ArgumentList.Add("-ExpectedSha256");
         startInfo.ArgumentList.Add(expectedSha256);
+        startInfo.ArgumentList.Add("-UpdatesRoot");
+        startInfo.ArgumentList.Add(updatesRoot);
         Process.Start(startInfo);
         return true;
     }
@@ -51,7 +53,8 @@ param(
     [Parameter(Mandatory=$true)][int]$ProcessId,
     [Parameter(Mandatory=$true)][string]$Source,
     [Parameter(Mandatory=$true)][string]$Destination,
-    [Parameter(Mandatory=$true)][string]$ExpectedSha256
+    [Parameter(Mandatory=$true)][string]$ExpectedSha256,
+    [Parameter(Mandatory=$true)][string]$UpdatesRoot
 )
 $ErrorActionPreference = 'Stop'
 $sourcePath = [System.IO.Path]::GetFullPath($Source)
@@ -71,7 +74,7 @@ try {
     if ($started.WaitForExit(3000)) { exit 7 }
     $started.Refresh()
     if ($started.HasExited -or $started.MainWindowHandle -eq 0) { exit 7 }
-    $updatesRoot = [IO.Path]::GetFullPath([IO.Path]::Combine([Environment]::GetFolderPath('LocalApplicationData'), 'KSRLauncher', 'Updates'))
+    $updatesRoot = [IO.Path]::GetFullPath($UpdatesRoot)
     $folder = [IO.Path]::GetDirectoryName($sourcePath)
     $tag = [IO.Path]::GetFileName($folder)
     if ([IO.Path]::GetDirectoryName($folder) -ne $updatesRoot -or $tag -notmatch '^v[0-9]+[.][0-9]+[.][0-9]+$') { exit 8 }

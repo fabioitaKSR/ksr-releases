@@ -41,6 +41,11 @@ public partial class MainWindow : Window
     private int _authGeneration;
     private bool _ticketRefreshInProgress;
     private bool _initialLoadComplete;
+    private bool _startupUpdatesStarted;
+    private bool _startupUpdatesFinished;
+    private bool _automaticDownloadsPaused;
+    private bool _cacheSettingsOpen;
+    private string? _loggedUpdatePhase;
     private bool _betaUpdatesInProgress;
     private readonly Stopwatch _downloadStopwatch = new();
     private bool _blockingOperationInProgress;
@@ -91,6 +96,7 @@ public partial class MainWindow : Window
         UpdateSessionVisuals();
         RefreshCampaignState();
         RefreshIgnoredFolderControls();
+        RefreshCachePrompt();
         Loaded += MainWindow_Loaded;
         Activated += MainWindow_Activated;
         Closing += (_, args) => { if (_blockingOperationInProgress) args.Cancel = true; };
@@ -112,6 +118,8 @@ public partial class MainWindow : Window
 
     private int ShowBlockingOperation(string title, string detail, bool estimateDownload = true)
     {
+        LauncherDiagnosticLog.Write(title);
+        _loggedUpdatePhase = null;
         var generation = ++_blockingOperationGeneration;
         _blockingOperationInProgress = true;
         _downloadPhase = false;
@@ -131,9 +139,15 @@ public partial class MainWindow : Window
         return generation;
     }
 
-    private void ShowBlockingProgress(int generation, string phase, string detail, long bytes, long total, double percent)
+    private void ShowBlockingProgress(int generation, string phase, string detail, long bytes, long total, double percent, string? component = null)
     {
         if (!_blockingOperationInProgress || generation != _blockingOperationGeneration) return;
+        var logPhase = component is null ? phase : $"{phase} {component}";
+        if (_loggedUpdatePhase != logPhase)
+        {
+            _loggedUpdatePhase = logPhase;
+            LauncherDiagnosticLog.Write(logPhase);
+        }
         ModUpdatePhaseText.Text = phase;
         UpdateActivityText.Text = OperationPhaseText.Describe(phase);
         ModUpdateDetailText.Text = detail;
@@ -159,6 +173,7 @@ public partial class MainWindow : Window
                 "EXTRACTING" => "Preparing files for installation...",
                 "RESTORING" => "Recovering files and installed-version state...",
                 "CLEANING" => "Removing completed update backups and old downloads...",
+                "CACHE CLEANUP" => "Freeing space in the download cache...",
                 _ => "Verifying installed components..."
             };
         }
@@ -197,6 +212,30 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        Loaded -= MainWindow_Loaded;
+        LauncherDiagnosticLog.Write("Main window loaded");
+        await RefreshServerStatusAsync();
+        LauncherDiagnosticLog.Write("Restoring launcher session");
+        await TryRestoreSessionAsync();
+        LauncherDiagnosticLog.Write("Session restore finished");
+        _initialLoadComplete = true;
+        await RunStartupUpdatesAsync();
+    }
+
+    private void RefreshCachePrompt() => ConfirmCacheFolderButton.Visibility =
+        LauncherCache.IsConfirmed ? Visibility.Collapsed : Visibility.Visible;
+
+    private async Task RunStartupUpdatesAsync()
+    {
+        RefreshCachePrompt();
+        if (!_initialLoadComplete || _cacheSettingsOpen || _startupUpdatesStarted) return;
+        if (!LauncherCache.IsConfirmed)
+        {
+            LauncherDiagnosticLog.Write("Automatic updates waiting for cache confirmation");
+            return;
+        }
+
+        _startupUpdatesStarted = true;
         var cleanupGeneration = ShowBlockingOperation("CLEANING LAUNCHER STORAGE", "Removing completed update backups and old downloads...", estimateDownload: false);
         try
         {
@@ -209,31 +248,39 @@ public partial class MainWindow : Window
             await LauncherStorageCleanup.CleanApplicationAsync(
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher"),
                 System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!, Environment.ProcessPath!, progress);
+            await Task.Run(() => LauncherCache.Clean(clearAll: false));
+            LauncherDiagnosticLog.Write("Startup cleanup finished");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
-        { ShowAuthFeedback("Some old update files could not be cleaned. Cleanup will retry at the next launch."); }
+        {
+            LauncherDiagnosticLog.Write("Startup cleanup failed", exception);
+            ShowAuthFeedback("Some old update files could not be cleaned. Cleanup will retry at the next launch.");
+        }
         finally { HideBlockingOperation(); }
-        await RefreshServerStatusAsync();
-        await TryRestoreSessionAsync();
         if (!TestInstallationPaths.IsSameKspRoot(_kspRoot, LauncherSettingsStore.LoadTestKspRoot()))
             await UpdateInstalledKsrModsAsync();
         await UpdateAuthorizedBetasAsync();
-        if (LoggerVersionText.Text == "LOGGER --" || LaunchAndLogsVersionText.Text == "L&L --")
-            await RefreshReleaseComponentVersionsAsync();
-        await CheckForLauncherUpdateAsync();
-        _initialLoadComplete = true;
+        if (!_automaticDownloadsPaused)
+        {
+            if (LoggerVersionText.Text == "LOGGER --" || LaunchAndLogsVersionText.Text == "L&L --")
+                await RefreshReleaseComponentVersionsAsync();
+            await CheckForLauncherUpdateAsync();
+        }
+        _startupUpdatesFinished = true;
+        LauncherDiagnosticLog.Write("Startup update checks finished");
     }
 
     private async Task RefreshReleaseComponentVersionsAsync()
     {
         try
         {
+            LauncherDiagnosticLog.Write("Checking public component versions");
             var release = await CreateComponentReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
             ShowReleaseComponentVersions(release.Manifest);
         }
-        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or OperationCanceledException)
         {
-            // Keep the unknown-version placeholders while the release is unreachable.
+            LauncherDiagnosticLog.Write("Component version check failed", exception);
         }
     }
 
@@ -241,7 +288,7 @@ public partial class MainWindow : Window
 
     private async Task UpdateInstalledKsrModsAsync()
     {
-        if (!IsValidKspRoot(_kspRoot)) return;
+        if (!LauncherCache.IsConfirmed || !IsValidKspRoot(_kspRoot)) return;
 
         if (Process.GetProcessesByName("KSP_x64").Length > 0)
         {
@@ -261,6 +308,7 @@ public partial class MainWindow : Window
             LauncherVersionText.Text = $"{normalVersionText}  Â·  CHECKING KSR MODS";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
 
+            using var cache = await Task.Run(LauncherCache.BeginDownload);
             var release = await CreateComponentReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
             ShowReleaseComponentVersions(release.Manifest);
             var releaseComponents = release.Manifest.Components.ToList();
@@ -289,21 +337,19 @@ public partial class MainWindow : Window
                     : Math.Clamp(value.ComponentsCompleted * 100d / Math.Max(1, value.TotalComponents), 0, 100);
                 var component = value.ComponentId.ToUpperInvariant();
                 ShowBlockingProgress(overlayGeneration, value.Phase, $"{component} Â· {value.ComponentsCompleted}/{value.TotalComponents} components Â· {percent:0}%",
-                    value.BytesDownloaded, value.TotalBytes, percent);
+                    value.BytesDownloaded, value.TotalBytes, percent, value.ComponentId);
                 LauncherVersionText.Text = $"{normalVersionText}  Â·  {value.Phase} {component} {percent:0}%";
             });
             var locations = new LauncherLocations(_kspRoot!, launcherData);
-            var engine = new UpdateEngine(reviewInstallation: InstallationWarningDialog.Review);
             var applied = false;
 
             if (requiredComponents.Count > 0)
             {
                 release.Manifest.Components = requiredComponents;
-                var requiredResult = await engine.RunAsync(
+                var requiredResult = await cache.RunUpdateAsync(
                     release.Manifest,
                     locations,
                     release.AssetsBaseUrl,
-                    true,
                     UpdatePolicy.InstallOrRepair,
                     progress);
                 applied |= requiredResult.Applied;
@@ -312,11 +358,10 @@ public partial class MainWindow : Window
             if (optionalComponents.Count > 0)
             {
                 release.Manifest.Components = optionalComponents;
-                var optionalResult = await engine.RunAsync(
+                var optionalResult = await cache.RunUpdateAsync(
                     release.Manifest,
                     locations,
                     release.AssetsBaseUrl,
-                    true,
                     UpdatePolicy.ExistingOnly,
                     progress);
                 applied |= optionalResult.Applied;
@@ -329,6 +374,7 @@ public partial class MainWindow : Window
                 applied ? "GreenBrush" : "MutedBrush");
             ModUpdateProgressBar.IsIndeterminate = false;
             ModUpdateProgressBar.Value = 100;
+            LauncherDiagnosticLog.Write(applied ? "Installed component update finished" : "Installed components are current");
             ModUpdatePhaseText.Text = applied ? "UPDATE COMPLETED" : "KSR MODS UP TO DATE";
             ModUpdateDetailText.Text = applied
                 ? "Required KSR components are installed and ready."
@@ -336,8 +382,10 @@ public partial class MainWindow : Window
             await Task.Delay(700);
             RefreshLaunchAndLogsSetupState();
         }
-        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException or OperationCanceledException)
         {
+            LauncherDiagnosticLog.Write("Installed component update failed", exception);
+            WarnAboutAutomaticDownloadSpace(exception);
             LauncherVersionText.Text = $"{normalVersionText}  Â·  MOD UPDATE FAILED";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             ModUpdateProgressBar.IsIndeterminate = false;
@@ -357,7 +405,7 @@ public partial class MainWindow : Window
 
     internal async Task UpdateAuthorizedBetasAsync()
     {
-        if (_betaUpdatesInProgress || !LauncherSession.IsAuthenticated ||
+        if (_automaticDownloadsPaused || !LauncherCache.IsConfirmed || _betaUpdatesInProgress || _blockingOperationInProgress || !LauncherSession.IsAuthenticated ||
             Process.GetProcessesByName("KSP_x64").Length > 0) return;
         _betaUpdatesInProgress = true;
         var authGeneration = _authGeneration;
@@ -366,7 +414,7 @@ public partial class MainWindow : Window
             await BetaAccess.RefreshAsync();
             await BetaInstallationUpdates.RunAsync(BetaAccess.Modules,
                 id => LauncherSettingsStore.LoadBetaKspRoot(id),
-                () => LauncherSession.IsAuthenticated && authGeneration == _authGeneration &&
+                () => !_automaticDownloadsPaused && LauncherSession.IsAuthenticated && authGeneration == _authGeneration &&
                     Process.GetProcessesByName("KSP_x64").Length == 0,
                 UpdateBetaKspAsync,
                 (module, error) => ShowAuthFeedback($"{module.Label}: {error.Message}"),
@@ -388,6 +436,7 @@ public partial class MainWindow : Window
             if (await BetaAccess.RequireAsync(module.Id) is null ||
                 !TestInstallationPaths.IsSameKspRoot(testRoot, LauncherSettingsStore.LoadBetaKspRoot(module.Id)) ||
                 !BetaInstallationUpdates.HasValidDestination(testRoot) || Process.GetProcessesByName("KSP_x64").Length > 0) return;
+            using var cache = await Task.Run(LauncherCache.BeginDownload);
             using var privateRelease = new PrivateBetaReleaseClient(LauncherSession.ServerUrl!, module.Id, LauncherSession.AccessToken!);
             var release = await privateRelease.ResolveAsync();
             if (module.Id == "ksr-full") ShowReleaseComponentVersions(release.Manifest);
@@ -407,26 +456,28 @@ public partial class MainWindow : Window
                     : 0;
                 ShowBlockingProgress(overlayGeneration, value.Phase,
                     $"{label} Â· {value.ComponentId} Â· {percent:0}%",
-                    value.BytesDownloaded, value.TotalBytes, percent);
+                    value.BytesDownloaded, value.TotalBytes, percent, value.ComponentId);
             });
             var launcherData = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
             var dataRoot = BetaInstallationUpdates.GetLauncherDataRoot(
                 module.Id, testRoot, LauncherSettingsStore.LoadKspRoot(), launcherData);
-            var result = await new UpdateEngine(new PackageService(privateRelease.Http), InstallationWarningDialog.Review).RunAsync(release.Manifest,
-                new LauncherLocations(testRoot!, dataRoot), release.AssetsBaseUrl,
-                true, UpdatePolicy.VerifyAllFiles, progress);
+            var result = await cache.RunUpdateAsync(release.Manifest, new LauncherLocations(testRoot!, dataRoot),
+                release.AssetsBaseUrl, UpdatePolicy.VerifyAllFiles, progress, new PackageService(privateRelease.Http));
             ModUpdateProgressBar.IsIndeterminate = false;
             ModUpdateProgressBar.Value = 100;
+            LauncherDiagnosticLog.Write(result.Applied ? "Automatic beta update finished" : "Beta components are current");
             ModUpdatePhaseText.Text = result.Applied ? label + " UPDATED" : label + " UP TO DATE";
             ModUpdateDetailText.Text = result.Applied
                 ? "The selected test installation is ready."
                 : "No test game component requires an update.";
             await Task.Delay(700);
         }
-        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException or OperationCanceledException)
         {
             ModUpdateProgressBar.IsIndeterminate = false;
+            LauncherDiagnosticLog.Write("Automatic beta update failed", exception);
+            WarnAboutAutomaticDownloadSpace(exception);
             ModUpdatePhaseText.Text = label + " UPDATE FAILED";
             ModUpdatePhaseText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             ModUpdateDetailText.Text = exception.Message;
@@ -442,21 +493,26 @@ public partial class MainWindow : Window
 
     private async Task CheckForLauncherUpdateAsync()
     {
-        if (!string.IsNullOrWhiteSpace(_internalSignedCatalog)) return;
+        if (!LauncherCache.IsConfirmed || !string.IsNullOrWhiteSpace(_internalSignedCatalog)) return;
         var current = System.Reflection.Assembly.GetEntryAssembly()?.GetName().Version;
         if (current is null) return;
+        var overlayShown = false;
         try
         {
+            using var cache = await Task.Run(LauncherCache.BeginDownload);
+            LauncherDiagnosticLog.Write("Checking for a launcher update");
             var service = new LauncherUpdateService();
             var update = await service.CheckAsync("fabioitaKSR/ksr-releases", current);
-            if (update is null) return;
+            if (update is null)
+            {
+                LauncherDiagnosticLog.Write("Launcher update check finished");
+                return;
+            }
 
             var overlayGeneration = ShowBlockingOperation("UPDATING KSR LAUNCHER", $"Preparing {update.Tag}...");
+            overlayShown = true;
             LauncherVersionText.Text = $"LAUNCHER  Â·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}  Â·  UPDATING";
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("OrangeBrush");
-            var updateDirectory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "KSRLauncher", "Updates", update.Tag);
             var progress = new Progress<long>(bytes =>
             {
                 if (overlayGeneration != _blockingOperationGeneration) return;
@@ -465,25 +521,32 @@ public partial class MainWindow : Window
                     bytes, update.Size, percent);
                 LauncherVersionText.Text = $"LAUNCHER  Â·  DOWNLOADING {update.Tag}  Â·  {percent:0}%";
             });
-            var downloaded = await service.DownloadAsync(update, updateDirectory, progress);
+            LauncherDiagnosticLog.Write("Downloading launcher executable");
+            var downloaded = await cache.DownloadLauncherAsync(service, update, progress, () =>
+                ShowBlockingProgress(overlayGeneration, "CACHE CLEANUP", "The cache drive is full. Removing temporary downloads...", 0, 0, 0));
+            LauncherDiagnosticLog.Write("Launcher download verified");
             HideBlockingOperation();
+            overlayShown = false;
             LauncherVersionText.Text = $"LAUNCHER  Â·  {update.Tag} READY";
             var restart = MessageBox.Show(
                 $"KSR Launcher {update.Tag} has been downloaded and verified.\n\nRestart now to install the update?",
                 "KSR Launcher Update Ready", MessageBoxButton.YesNo, MessageBoxImage.Information);
             if (restart != MessageBoxResult.Yes) return;
-            if (!LauncherSelfUpdateCoordinator.TrySchedule(downloaded, update.Sha256))
+            if (!LauncherSelfUpdateCoordinator.TrySchedule(downloaded, update.Sha256, cache.Cache.UpdatesRoot))
             {
                 MessageBox.Show(
                     $"The update was downloaded but cannot replace this development launcher automatically.\n\nFile: {downloaded}",
                     "KSR Launcher Update", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
+            LauncherDiagnosticLog.Write("Launcher restart scheduled");
             Application.Current.Shutdown();
         }
-        catch
+        catch (Exception exception)
         {
-            if (_blockingOperationInProgress) HideBlockingOperation();
+            LauncherDiagnosticLog.Write("Launcher update failed", exception);
+            if (overlayShown) HideBlockingOperation();
+            WarnAboutAutomaticDownloadSpace(exception);
             LauncherVersionText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
             LauncherVersionText.Text = $"LAUNCHER  Â·  v{current.Major}.{current.Minor}.{Math.Max(0, current.Build)}";
         }
@@ -586,6 +649,12 @@ public partial class MainWindow : Window
             return true;
         }
 
+        if (!LauncherCache.IsConfirmed)
+        {
+            ShowCacheConfirmation();
+            return false;
+        }
+
         _launchAndLogsInstallInProgress = true;
         var overlayGeneration = ShowBlockingOperation("INSTALLING LAUNCH & LOGS", "Checking the official KSR release...");
         DownloadLaunchAndLogsButton.IsEnabled = false;
@@ -607,6 +676,7 @@ public partial class MainWindow : Window
         PlayerLaunchAndLogsStatusText.Text = LaunchAndLogsStatusText.Text;
         try
         {
+            using var cache = await Task.Run(LauncherCache.BeginDownload);
             var release = await CreateComponentReleaseClient().ResolveAsync("fabioitaKSR/ksr-releases");
             ShowReleaseComponentVersions(release.Manifest);
             var selected = release.Manifest.Components
@@ -632,16 +702,15 @@ public partial class MainWindow : Window
                 var totalMb = value.TotalBytes / 1048576d;
                 ShowBlockingProgress(overlayGeneration, value.Phase,
                     $"{value.ComponentId} Â· {downloadedMb:0.0} / {totalMb:0.0} MB Â· {percent:0}%",
-                    value.BytesDownloaded, value.TotalBytes, percent);
+                    value.BytesDownloaded, value.TotalBytes, percent, value.ComponentId);
                 LaunchAndLogsStatusText.Text = value.Phase == "DOWNLOADING" && value.TotalBytes > 0
                     ? $"DOWNLOADING {value.ComponentId.ToUpperInvariant()} â€” {percent:0}%  Â·  {downloadedMb:0.0} / {totalMb:0.0} MB"
                     : $"{value.Phase} {value.ComponentId.ToUpperInvariant()} â€” component {value.ComponentsCompleted + 1} of {value.TotalComponents}";
                 PlayerLaunchAndLogsStatusText.Text = LaunchAndLogsStatusText.Text;
             });
             var launcherData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher");
-            await new UpdateEngine(reviewInstallation: InstallationWarningDialog.Review).RunAsync(
-                release.Manifest, new LauncherLocations(_kspRoot!, launcherData), release.AssetsBaseUrl,
-                true, UpdatePolicy.InstallOrRepair, progress);
+            await cache.RunUpdateAsync(release.Manifest, new LauncherLocations(_kspRoot!, launcherData),
+                release.AssetsBaseUrl, UpdatePolicy.InstallOrRepair, progress);
             var missingFiles = LaunchAndLogsReadiness.MissingFiles(_kspRoot!);
             if (missingFiles.Count > 0)
                 throw new InvalidDataException($"Installation completed, but required files are missing: {string.Join(", ", missingFiles)}.");
@@ -652,13 +721,15 @@ public partial class MainWindow : Window
             RefreshLaunchAndLogsSetupState();
             return true;
         }
-        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is HttpRequestException or IOException or InvalidDataException or UnauthorizedAccessException or OperationCanceledException)
         {
+            LauncherDiagnosticLog.Write("Launch and Log installation failed", exception);
             LaunchAndLogsStatusText.Text = exception.Message;
             LaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
             PlayerLaunchAndLogsStatusText.Text = exception.Message;
             PlayerLaunchAndLogsStatusText.Foreground = (System.Windows.Media.Brush)FindResource("ErrorBrush");
-            if (automaticPlayerInstall)
+            if (exception is CacheSpaceException space) LauncherCache.ShowSpaceWarning(this, space);
+            else if (automaticPlayerInstall)
                 MessageBox.Show(exception.Message, "Launch & Logs Setup", MessageBoxButton.OK, MessageBoxImage.Warning);
             return false;
         }
@@ -1643,6 +1714,11 @@ public partial class MainWindow : Window
             return;
         }
         if (!EnsureKspRoot()) return;
+        if (!LauncherCache.IsConfirmed)
+        {
+            ShowCacheConfirmation();
+            return;
+        }
         if (!await InstallLaunchAndLogsAsync(true))
         {
             CampaignComplianceStatusText.Text = "Launch & Logs installation is required before downloading the campaign save.";
@@ -1800,6 +1876,7 @@ public partial class MainWindow : Window
 
         HideAuthFeedback();
         SetLoginBusy(true);
+        LauncherDiagnosticLog.Write("Sign-in started");
         try
         {
             var session = await _platformClient.LoginAsync(
@@ -1808,6 +1885,7 @@ public partial class MainWindow : Window
                 LoginPasswordBox.Password);
             LoginPasswordBox.Clear();
             await ApplySessionAsync(session);
+            LauncherDiagnosticLog.Write("Sign-in finished");
             if (RememberMeCheckBox.IsChecked == true)
             {
                 _rememberedSession = new RememberedSession(session.User.Username, LauncherSession.ServerUrl, session.RefreshToken);
@@ -1913,7 +1991,7 @@ public partial class MainWindow : Window
         _ticketRefreshTimer.Start();
         UpdateSessionVisuals();
         await RefreshServerStatusAsync();
-        if (_initialLoadComplete) await UpdateAuthorizedBetasAsync();
+        if (_startupUpdatesFinished) await UpdateAuthorizedBetasAsync();
     }
 
     private async Task RefreshGameTicketsAsync(string accessToken, long? userId = null)
@@ -2150,13 +2228,42 @@ public partial class MainWindow : Window
 
     private async void Settings_Click(object sender, RoutedEventArgs e)
     {
+        if (_blockingOperationInProgress) return;
         var dialog = new ServerSettingsWindow(LauncherSession.ServerUrl) { Owner = this };
-        if (dialog.ShowDialog() != true) return;
-        if (!string.Equals(LauncherSession.ServerUrl, dialog.ServerUrl, StringComparison.OrdinalIgnoreCase))
-            SignOut_Click(this, new RoutedEventArgs());
-        LauncherSession.ServerUrl = dialog.ServerUrl;
-        UpdateSessionVisuals();
-        await RefreshServerStatusAsync();
+        _cacheSettingsOpen = true;
+        bool? saveServer;
+        try { saveServer = dialog.ShowDialog(); }
+        finally { _cacheSettingsOpen = false; }
+        if (_automaticDownloadsPaused && dialog.CacheUpdated)
+        {
+            _automaticDownloadsPaused = false;
+            _startupUpdatesStarted = false;
+            _startupUpdatesFinished = false;
+        }
+        RefreshCachePrompt();
+        if (saveServer == true)
+        {
+            if (!string.Equals(LauncherSession.ServerUrl, dialog.ServerUrl, StringComparison.OrdinalIgnoreCase))
+                SignOut_Click(this, new RoutedEventArgs());
+            LauncherSession.ServerUrl = dialog.ServerUrl;
+            UpdateSessionVisuals();
+            await RefreshServerStatusAsync();
+        }
+        await RunStartupUpdatesAsync();
+    }
+
+    private void WarnAboutAutomaticDownloadSpace(Exception exception)
+    {
+        if (exception is not CacheSpaceException space) return;
+        _automaticDownloadsPaused = true;
+        LauncherCache.ShowSpaceWarning(this, space);
+    }
+
+    private void ShowCacheConfirmation()
+    {
+        RefreshCachePrompt();
+        MessageBox.Show(this, LauncherCache.ConfirmationText, "Download Cache",
+            MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void UpdateSessionVisuals()
@@ -2187,11 +2294,14 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(LauncherSession.ServerUrl)) return;
         try
         {
+            LauncherDiagnosticLog.Write("Checking server status");
             await _platformClient.GetHealthAsync(LauncherSession.ServerUrl);
+            LauncherDiagnosticLog.Write("Server is online");
             SetServerStatus("SERVER ONLINE", "ONLINE", "GreenBrush");
         }
-        catch
+        catch (Exception exception)
         {
+            LauncherDiagnosticLog.Write("Server status check failed", exception);
             SetServerStatus("SERVER OFFLINE", "OFFLINE", "MutedBrush");
         }
     }

@@ -25,7 +25,7 @@ class Probe
         Output = Path.GetFullPath(args[0]);
         var credentialType = typeof(App).Assembly.GetType("KsrLauncher.App.LauncherCredentialStore")!;
         var readCredential = credentialType.GetMethod("Load", BindingFlags.Public | BindingFlags.Static)!;
-        var credentialBefore = readCredential.Invoke(null, null);
+        var credentialBefore = ReadCredentialForComparison(readCredential);
         var settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher", "settings.json");
         var settingsBefore = File.Exists(settingsPath) ? File.ReadAllBytes(settingsPath) : [];
         var app = new App(); app.InitializeComponent(); // The public setter rejects null. Suppress App.xaml's automatic real launcher startup in this test only.
@@ -55,9 +55,9 @@ class Probe
                 Check(((RotateTransform)Orbit.FindName("InnerRotation")).HasAnimatedProperties, "Visible active indicator did not restart");
                 Orbit.IsActive = false;
                 RenderScreens();
-                Check(Equals(credentialBefore, readCredential.Invoke(null, null)), "Saved login changed");
+                Check(Equals(credentialBefore, ReadCredentialForComparison(readCredential)), "Saved login changed");
                 Check(settingsBefore.SequenceEqual(File.Exists(settingsPath) ? File.ReadAllBytes(settingsPath) : []), "Saved settings changed");
-                Console.WriteLine("PASS saved login/settings unchanged; default real launcher startup suppressed.");
+                Console.WriteLine("PASS saved settings unchanged; default real launcher startup suppressed.");
                 Console.WriteLine("PASS WPF: success/error/cancel, real worker extraction/install, responsive dispatcher and advancing orbit, review on UI thread, lock, rollback, idle/hidden clocks stopped; shared normal/Full/Probalism/future beta layouts. Synthetic local fixtures; no network or settings writes.");
             }
             catch (Exception e) { Console.WriteLine(e); exit = 1; }
@@ -65,6 +65,17 @@ class Probe
         };
         app.Run(window); Environment.ExitCode = exit;
     }
+    static object? ReadCredentialForComparison(MethodInfo readCredential)
+    {
+        try { return readCredential.Invoke(null, null); }
+        catch (TargetInvocationException exception) when (
+            exception.InnerException is System.ComponentModel.Win32Exception { NativeErrorCode: 5 })
+        {
+            Console.WriteLine("Windows Credential Manager is unavailable in this session.");
+            return null;
+        }
+    }
+
     static async Task RunScenario(string scenario)
     {
         var root = Path.Combine(Path.GetTempPath(), "ksr-orbit-ui-" + scenario + "-" + Guid.NewGuid().ToString("N"));
@@ -150,12 +161,22 @@ class Probe
     static void RenderScreens()
     {
         var main = new MainWindow();
+        var cacheConfirmed = LauncherSettingsStore.LoadCacheFolder() is { } folder && Directory.Exists(folder);
+        if (!cacheConfirmed)
+        {
+            Check(((Button)main.FindName("ConfirmCacheFolderButton")).Visibility == Visibility.Visible, "Missing cache prompt");
+            Render(main, "cache-confirm-header.png", 1080, 720);
+        }
+        var settings = new ServerSettingsWindow("https://synthetic.invalid");
+        Check(((Button)settings.FindName("ClearCacheButton")).IsEnabled == cacheConfirmed, "Incorrect cache clear availability");
+        Render(settings, "cache-settings.png", (int)settings.Width, (int)settings.Height);
+        settings.Close();
         var generation = (int)Invoke(main,"ShowBlockingOperation","INSTALLING", "Synthetic component 2 / 4",true)!;
-        Invoke(main,"ShowBlockingProgress",generation,"INSTALLING","Installing Example · 2 / 4",0L,0L,50d);
+        Invoke(main,"ShowBlockingProgress",generation,"INSTALLING","Installing Example · 2 / 4",0L,0L,50d,"Example");
         Check(((OrbitActivityIndicator)main.FindName("UpdateActivity")).IsActive, "Normal indicator inactive");
         Check(!((DispatcherTimer)main.GetType().GetField("_downloadCountdownTimer",Private)!.GetValue(main)!).IsEnabled,"Installation kept download polling");
         Render(main,"normal-install.png",1080,720);
-        Invoke(main,"ShowBlockingProgress",generation,"RESTORING","Restoring original files",0L,0L,0d);
+        Invoke(main,"ShowBlockingProgress",generation,"RESTORING","Restoring original files",0L,0L,0d,null!);
         Check(((TextBlock)main.FindName("UpdateActivityText")).Text.Contains("Restoring"),"Wrong rollback label");
         Invoke(main,"HideBlockingOperation"); Check(!((OrbitActivityIndicator)main.FindName("UpdateActivity")).IsActive,"Normal completion animation active"); main.Close();
         var session = typeof(MainWindow).Assembly.GetType("KsrLauncher.App.LauncherSession")!;
@@ -166,6 +187,7 @@ class Probe
             var module = new KsrBetaModule(id,id=="ksr-full"?"KSR Full Mode":id,"Synthetic test. No network.",0,"0.1.0","installation");
             session.GetProperty("CanAccessTestGame")!.SetValue(null,id=="ksr-full"); access.GetProperty("Modules")!.SetValue(null,new[]{module});
             var beta = new ServerSettingsWindow("https://synthetic.invalid",module);
+            Check(((StackPanel)beta.FindName("CacheSection")).Visibility == Visibility.Collapsed, "Global cache controls appeared in a beta dialog");
             Check(!((OrbitActivityIndicator)beta.FindName("TestActivity")).IsActive,"Idle beta animation");
             ((StackPanel)beta.FindName("TestActivityPanel")).Visibility = Visibility.Visible;
             ((OrbitActivityIndicator)beta.FindName("TestActivity")).IsActive = true;

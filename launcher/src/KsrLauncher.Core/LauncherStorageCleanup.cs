@@ -128,8 +128,8 @@ public static class LauncherStorageCleanup
         }
     }
 
-    private static void CleanLauncherDownloads(string dataRoot, Version runningVersion, string executable,
-        List<string> deleted, List<string> retained, IProgress<StorageCleanupProgress>? progress, int completed, int total)
+    internal static void CleanLauncherDownloads(string dataRoot, Version runningVersion, string executable,
+        List<string> deleted, List<string> retained, IProgress<StorageCleanupProgress>? progress, int completed, int total, bool clearAll = false)
     {
         var updates = SafePaths.Under(dataRoot, "Updates");
         if (!Directory.Exists(updates)) return;
@@ -139,12 +139,15 @@ public static class LauncherStorageCleanup
             progress?.Report(new("Removing old launcher downloads", completed, total));
             completed++;
             var tag = Path.GetFileName(folder);
-            if (!tag.StartsWith('v') || !Version.TryParse(tag[1..], out var version) || version >= runningVersion) continue;
+            if (!tag.StartsWith('v') || !Version.TryParse(tag[1..], out var version) ||
+                (!clearAll && version >= runningVersion)) continue;
             try
             {
                 SafePaths.RejectReparsePoints(updates, folder);
                 var files = Directory.EnumerateFiles(folder).ToArray();
-                if (Directory.EnumerateDirectories(folder).Any()
+                if ((clearAll && version >= runningVersion && files.Any(file =>
+                        Path.GetFileName(file).Equals("apply-launcher-update.ps1", StringComparison.OrdinalIgnoreCase))) ||
+                    Directory.EnumerateDirectories(folder).Any()
                     || files.Any(file => string.Equals(Path.GetFullPath(file), Path.GetFullPath(executable), StringComparison.OrdinalIgnoreCase)
                         || !IsLauncherCacheFile(Path.GetFileName(file), tag)))
                 { retained.Add(folder); continue; }
