@@ -140,6 +140,71 @@ internal static class StorageCleanupTests
         return Task.CompletedTask;
     }
 
+    public static async Task ExplicitCacheClear()
+    {
+        using var scope = new TempScope();
+        var data = Path.Combine(scope.Root, "launcher");
+        var custom = Path.Combine(scope.Root, "chosen");
+        var roots = new[] { data, Path.Combine(data, "test-installations", new string('A', 64)),
+            Path.Combine(data, "beta", "probalism", new string('B', 16)) };
+        var removable = new List<string>();
+        var protectedFiles = new List<string>();
+        foreach (var root in roots)
+        {
+            await StateStore.SaveAsync(root, new InstalledState());
+            protectedFiles.Add(StateStore.GetStatePath(root));
+            var pending = Place(root, ".ksr-launcher/backups/interrupted/backup-manifest.json", "{\"InProgress\":true}");
+            removable.Add(pending);
+            removable.Add(Place(root, ".ksr-launcher/backups/unknown/old.dll", "needed only for recovery"));
+            removable.Add(Place(root, ".ksr-launcher/work/abandoned/download.zip", "temporary"));
+            removable.Add(Place(root, ".ksr-launcher/cleanup/old.json", "marker"));
+        }
+        protectedFiles.Add(Place(data, "settings.json", "settings"));
+        protectedFiles.Add(Place(data, "launcher.log", "diagnostics"));
+        protectedFiles.Add(Place(data, "SupportQueue/unsent.zip", "support"));
+        protectedFiles.Add(Place(scope.Root, "game/saves/Existing/persistent.sfs", "save"));
+        protectedFiles.Add(Place(scope.Root, "game/GameData/Test/existing.dll", "installed part"));
+        protectedFiles.Add(Place(custom, "unrelated.txt", "personal file"));
+
+        var cache = new LauncherDownloadCache(data, custom);
+        cache.VerifyWritable();
+        removable.Add(Place(cache.WorkRoot, "20261119-134200-aabbcc11/partial.zip", "download"));
+        removable.Add(Place(cache.UpdatesRoot, "v0.7.38/KSR-Launcher-v0.7.38-win-x64.exe.part", "download"));
+        removable.Add(Place(data, "Updates/v0.7.36/KSR-Launcher-v0.7.36-win-x64.exe", "old download"));
+        protectedFiles.Add(Place(cache.UpdatesRoot, "v0.7.36/apply-launcher-update.ps1", "in use"));
+
+        var version = new Version(0, 7, 37);
+        var executable = Path.Combine(scope.Root, "running.exe");
+        using (LauncherStorageCleanup.AcquireUpdateLock(roots[^1]))
+        {
+            try
+            {
+                LauncherStorageCleanup.ClearUpdaterStorage(data, custom, version, executable);
+                throw new Exception("Clear proceeded despite an active beta updater");
+            }
+            catch (IOException) { }
+            if (removable.Any(path => !File.Exists(path))) throw new Exception("Busy storage was partially cleared");
+        }
+
+        var before = protectedFiles.ToDictionary(path => path, File.ReadAllBytes);
+        var progress = new List<StorageCleanupProgress>();
+        var result = LauncherStorageCleanup.ClearUpdaterStorage(data, custom, version, executable, new Capture(progress));
+        if (removable.Any(File.Exists) || result.Retained.Count != 1 ||
+            before.Any(file => !File.Exists(file.Key) || !file.Value.SequenceEqual(File.ReadAllBytes(file.Key))) ||
+            progress.Count == 0 || progress[^1].Completed != progress[^1].Total)
+            throw new Exception("Clear did not remove all updater backups or changed unrelated files");
+        if (LauncherStorageCleanup.ClearUpdaterStorage(data, custom, version, executable).Deleted.Count != 0)
+            throw new Exception("Clear is not idempotent");
+
+        static string Place(string root, string relative, string content)
+        {
+            var path = Path.Combine(root, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, content);
+            return path;
+        }
+    }
+
     private static async Task Backup(string root,string name,DateTimeOffset date)
     {
         var folder=Path.Combine(root,".ksr-launcher","backups",name); Directory.CreateDirectory(folder);

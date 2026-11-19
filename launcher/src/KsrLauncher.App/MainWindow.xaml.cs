@@ -248,7 +248,7 @@ public partial class MainWindow : Window
             await LauncherStorageCleanup.CleanApplicationAsync(
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KSRLauncher"),
                 System.Reflection.Assembly.GetExecutingAssembly().GetName().Version!, Environment.ProcessPath!, progress);
-            await Task.Run(() => LauncherCache.Clean(clearAll: false));
+            await Task.Run(LauncherCache.CleanStaleDownloads);
             LauncherDiagnosticLog.Write("Startup cleanup finished");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)

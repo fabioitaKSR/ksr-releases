@@ -82,9 +82,8 @@ public partial class ServerSettingsWindow : Window
         var folder = LauncherCache.SelectedFolder ?? LauncherCache.DefaultFolder;
         CacheFolderTextBox.Text = folder;
         CacheFolderTextBox.ToolTip = folder;
-        ClearCacheButton.IsEnabled = LauncherCache.IsConfirmed;
         CacheStatusText.Text = status ?? (LauncherCache.IsConfirmed
-            ? "Clear downloaded updates and temporary update files."
+            ? "Clear download files, temporary packages and updater backups."
             : LauncherCache.ConfirmationText);
     }
 
@@ -116,16 +115,27 @@ public partial class ServerSettingsWindow : Window
 
     private async void ClearCache_Click(object sender, RoutedEventArgs e)
     {
+        if (MessageBox.Show(this,
+            "Delete the launcher's cached downloads, temporary packages and all updater backups, including backups for interrupted updates?\n\n" +
+            "Deleting these backups removes the restore option for interrupted updates. Your installed game, saves and settings are kept.",
+            "Clear Launcher Cache", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
+            return;
+
+
         _cacheCleanupInProgress = true;
         BrowseCacheButton.IsEnabled = DefaultCacheButton.IsEnabled = ClearCacheButton.IsEnabled = false;
         CancelButton.IsEnabled = SaveButton.IsEnabled = false;
-        CacheStatusText.Text = "Clearing downloaded updates and temporary update files...";
+        CacheStatusText.Text = "Clearing cache files and updater backups...";
         LauncherDiagnosticLog.Write("Manual cache cleanup started");
         try
         {
-            var result = await Task.Run(() => LauncherCache.Clean(clearAll: true));
+            var progress = new Progress<StorageCleanupProgress>(item =>
+            {
+                if (_cacheCleanupInProgress) CacheStatusText.Text = item.Description;
+            });
+            var result = await Task.Run(() => LauncherCache.ClearManually(progress));
             CacheUpdated = true;
-            RefreshCacheSettings(result.Retained.Count == 0 ? "Download cache cleared." :
+            RefreshCacheSettings(result.Retained.Count == 0 ? "Cache and updater backups cleared." :
                 "Cache cleared where possible. Some files could not be removed safely.");
             LauncherDiagnosticLog.Write(result.Retained.Count == 0 ? "Manual cache cleanup finished" :
                 "Manual cache cleanup finished with retained files");
@@ -138,7 +148,7 @@ public partial class ServerSettingsWindow : Window
         finally
         {
             _cacheCleanupInProgress = false;
-            BrowseCacheButton.IsEnabled = DefaultCacheButton.IsEnabled = true;
+            BrowseCacheButton.IsEnabled = DefaultCacheButton.IsEnabled = ClearCacheButton.IsEnabled = true;
             CancelButton.IsEnabled = SaveButton.IsEnabled = true;
         }
     }

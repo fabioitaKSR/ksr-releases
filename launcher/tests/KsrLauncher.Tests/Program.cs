@@ -33,6 +33,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Selective upgrade uses the custom cache and retains user files", SelectiveUpdateTests.CustomDownloadCache),
     ("Insufficient cache space blocks package bytes before selective update or repair", SelectiveUpdateTests.InsufficientCacheSpace),
     ("Disk filling during a file range stops preparation and preserves installed state", SelectiveUpdateTests.CacheFillsDuringDownload),
+    ("Manual cache clear removes recovery backups and legacy work while retaining user data", StorageCleanupTests.ExplicitCacheClear),
     ("Retroactive cleanup retains settings, pending backups and current downloads", StorageCleanupTests.Retroactive),
     ("Cleanup respects update locks and refuses linked cache trees", StorageCleanupTests.LocksAndLinks),
     ("Selected save files preserve original names and exclude other files", SaveFileSupportTests.Package),

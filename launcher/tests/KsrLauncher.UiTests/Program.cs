@@ -168,7 +168,7 @@ class Probe
             Render(main, "cache-confirm-header.png", 1080, 720);
         }
         var settings = new ServerSettingsWindow("https://synthetic.invalid");
-        Check(((Button)settings.FindName("ClearCacheButton")).IsEnabled == cacheConfirmed, "Incorrect cache clear availability");
+        Check(((Button)settings.FindName("ClearCacheButton")).IsEnabled, "Manual cache clearance requires unexpected confirmation of the download path");
         Render(settings, "cache-settings.png", (int)settings.Width, (int)settings.Height);
         settings.Close();
         var generation = (int)Invoke(main,"ShowBlockingOperation","INSTALLING", "Synthetic component 2 / 4",true)!;

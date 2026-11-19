@@ -54,6 +54,88 @@ public static class LauncherStorageCleanup
         });
     }
 
+    public static StorageCleanupResult ClearUpdaterStorage(string dataRoot, string? selectedFolder, Version runningVersion,
+        string executable, IProgress<StorageCleanupProgress>? progress = null)
+    {
+        var roots = DataRoots(dataRoot).ToArray();
+        var defaultCache = new LauncherDownloadCache(dataRoot, dataRoot);
+        var selectedCache = new LauncherDownloadCache(dataRoot, selectedFolder ?? dataRoot);
+        var caches = defaultCache.Root.Equals(selectedCache.Root, StringComparison.OrdinalIgnoreCase)
+            ? new[] { defaultCache }
+            : new[] { defaultCache, selectedCache };
+        var locks = new List<FileStream>();
+        var deleted = new List<string>();
+        var retained = new List<string>();
+        var total = caches.Length + roots.Length;
+        var completed = 0;
+        try
+        {
+            // Wait for the next user attempt if a current or legacy updater owns any of these folders.
+            try
+            {
+                foreach (var cache in caches) locks.Add(cache.AcquireLock());
+                foreach (var root in roots) locks.Add(AcquireUpdateLock(root));
+            }
+            catch (IOException exception)
+            {
+                throw new IOException("An update or storage operation is active. Try again after it finishes.", exception);
+            }
+
+            foreach (var cache in caches)
+            {
+                progress?.Report(new("Removing launcher downloads and temporary packages...", completed++, total));
+                try
+                {
+                    if (!Directory.Exists(cache.Root))
+                    {
+                        if (cache != defaultCache && !Directory.Exists(Path.GetDirectoryName(cache.Root)))
+                            retained.Add(cache.Root);
+                        continue;
+                    }
+                    cache.VerifyWritable(probeWrite: false);
+                    var result = cache.Clean(runningVersion, executable, clearAll: true);
+                    deleted.AddRange(result.Deleted);
+                    retained.AddRange(result.Retained);
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+                {
+                    retained.Add(cache.Root);
+                }
+            }
+
+            foreach (var root in roots)
+            {
+                progress?.Report(new("Removing updater backups and temporary files...", completed++, total));
+                foreach (var relative in new[] { ".ksr-launcher/work", ".ksr-launcher/backups", ".ksr-launcher/cleanup" })
+                {
+                    var folder = SafePaths.Under(root, relative);
+                    if (!Directory.Exists(folder)) continue;
+                    try
+                    {
+                        if (Path.GetFullPath(executable).StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                        {
+                            retained.Add(folder);
+                            continue;
+                        }
+                        DeleteCacheTree(root, folder);
+                        deleted.Add(folder);
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+                    {
+                        retained.Add(folder);
+                    }
+                }
+            }
+
+            progress?.Report(new("Cleanup complete", total, total));
+            return new(deleted, retained);
+        }
+        finally
+        {
+            foreach (var updateLock in locks) updateLock.Dispose();
+        }
+    }
+
     internal static async Task<StorageCleanupResult> CleanCompletedUpdatesAsync(string dataRoot, IProgress<StorageCleanupProgress>? progress = null,
         int completed = 0, int total = 0)
     {
@@ -145,7 +227,7 @@ public static class LauncherStorageCleanup
             {
                 SafePaths.RejectReparsePoints(updates, folder);
                 var files = Directory.EnumerateFiles(folder).ToArray();
-                if ((clearAll && version >= runningVersion && files.Any(file =>
+                if ((clearAll && files.Any(file =>
                         Path.GetFileName(file).Equals("apply-launcher-update.ps1", StringComparison.OrdinalIgnoreCase))) ||
                     Directory.EnumerateDirectories(folder).Any()
                     || files.Any(file => string.Equals(Path.GetFullPath(file), Path.GetFullPath(executable), StringComparison.OrdinalIgnoreCase)

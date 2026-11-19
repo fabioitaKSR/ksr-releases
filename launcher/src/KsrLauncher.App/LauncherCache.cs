@@ -57,10 +57,17 @@ internal static class LauncherCache
         }
     }
 
-    public static StorageCleanupResult Clean(bool clearAll)
+    public static StorageCleanupResult CleanStaleDownloads()
     {
         using var session = BeginDownload();
-        return session.Cache.Clean(typeof(LauncherCache).Assembly.GetName().Version!, Environment.ProcessPath!, clearAll);
+        return session.Cache.Clean(typeof(LauncherCache).Assembly.GetName().Version!, Environment.ProcessPath!, clearAll: false);
+    }
+
+    public static StorageCleanupResult ClearManually(IProgress<StorageCleanupProgress> progress)
+    {
+        using var settingsLock = AcquireSettingsLock();
+        return LauncherStorageCleanup.ClearUpdaterStorage(DefaultFolder, SelectedFolder,
+            typeof(LauncherCache).Assembly.GetName().Version!, Environment.ProcessPath!, progress);
     }
 
     public static void ShowSpaceWarning(Window owner, CacheSpaceException exception) =>
