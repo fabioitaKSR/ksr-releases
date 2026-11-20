@@ -1,0 +1,8 @@
+PASS: ModuleManager 4.2.3 loaded KSR_SCANsat_HighIncludesLow.cfg.
+PASS: KSP reached the main menu and SCANsat initialized.
+PASS: 16 effective SCANsat scanner modules inspected in ModuleManager.ConfigCache.
+PASS: 2 high-resolution altimetry scanners include low-resolution altimetry.
+PASS: 3 high-resolution visual scanners include low-resolution visual coverage.
+PASS: 4 high-resolution resource scanners include low-resolution resource coverage.
+PASS: 0 high-resolution scanners are missing their corresponding low-resolution bit.
+LIMIT: Coverage progression was not observed during a gameplay mission.
