@@ -82,6 +82,7 @@ var tests = new (string Name, Func<Task> Run)[]
     ("Update ordinario ripara componente installato incompleto", ExistingOnlyRepairsIncompleteComponent),
     ("Installazione mancante richiede consenso esplicito", ExplicitInstallAddsMissing),
     ("Upgrade rileva ogni file mancante, Repair reinstalla tutto", UpgradeAndRepairPolicies),
+    ("Starter campaigns install automatically, preserve progress on upgrade and reset on repair", StarterCampaignPolicies),
     ("Avvio aggiorna la test installazione senza toccare quella principale", StartupUpdatesTestInstallationSeparately),
     ("Settings conserva i comandi della partita test", TestGameSettingsControlsRemainAvailable),
     ("Settings nasconde la partita test senza permesso server", TestGameSettingsRequireServerPermission),
@@ -448,6 +449,84 @@ static async Task UpgradeAndRepairPolicies()
     True(repair.Applied, "Repair deve reinstallare anche un componente gia aggiornato.");
     True(repair.Plan.Components.All(item => item.NeedsUpdate), "Repair deve includere ogni componente del manifest.");
     Equal("installed", await File.ReadAllTextAsync(Path.Combine(ksp, "GameData", "TestMod", "new.txt")));
+}
+
+static async Task StarterCampaignPolicies()
+{
+    using var scope = new TempScope();
+    var ksp = CreateKsp(Path.Combine(scope.Root, "test"));
+    var locations = new LauncherLocations(ksp, Path.Combine(scope.Root, "launcher"));
+    var assets = Path.Combine(scope.Root, "assets");
+    Directory.CreateDirectory(assets);
+    var manifest = CreateManifest(new string('a', 64));
+    manifest.Components.Clear();
+    manifest.Preserve.Add("saves/**");
+    foreach (var name in new[] { "FIRST CAMPAIGN", "SECOND CAMPAIGN" })
+    {
+        var id = name.Split(' ')[0].ToLowerInvariant();
+        var asset = id + ".zip";
+        var path = Path.Combine(assets, asset);
+        CreateZip(path, new Dictionary<string, string>
+        {
+            [$"saves/{name}/persistent.sfs"] = $"original {name}",
+            [$"saves/{name}/README.txt"] = "instructions"
+        });
+        manifest.Components.Add(new ComponentManifest
+        {
+            Id = id, Asset = asset, Source = $"saves/{name}", Target = $"saves/{name}",
+            Sha256 = await PackageService.ComputeSha256Async(path), Size = new FileInfo(path).Length,
+            InstallMode = ComponentManifest.StarterCampaignMode, RequiredFiles = ["persistent.sfs"]
+        });
+    }
+
+    var first = Path.Combine(ksp, "saves", "FIRST CAMPAIGN");
+    var second = Path.Combine(ksp, "saves", "SECOND CAMPAIGN");
+    var personal = Path.Combine(ksp, "saves", "Personal");
+    Directory.CreateDirectory(first);
+    Directory.CreateDirectory(personal);
+    await File.WriteAllTextAsync(Path.Combine(first, "persistent.sfs"), "existing progress");
+    await File.WriteAllTextAsync(Path.Combine(first, "quicksave.sfs"), "existing quicksave");
+    await File.WriteAllTextAsync(Path.Combine(personal, "persistent.sfs"), "personal progress");
+
+    var engine = new UpdateEngine();
+    var update = await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.VerifyAllFiles);
+    True(update.Plan.Components.Count(item => item.NeedsUpdate) == 1, "Only the missing campaign should be installed.");
+    Equal("existing progress", await File.ReadAllTextAsync(Path.Combine(first, "persistent.sfs")));
+    Equal("original SECOND CAMPAIGN", await File.ReadAllTextAsync(Path.Combine(second, "persistent.sfs")));
+    File.Delete(Path.Combine(first, "persistent.sfs"));
+    False((await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.VerifyAllFiles)).Applied,
+        "Upgrade must leave an existing starter campaign directory alone.");
+    False(File.Exists(Path.Combine(first, "persistent.sfs")), "Upgrade recreated a deleted campaign file.");
+
+    var repair = await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.ReinstallAll);
+    True(repair.Plan.Components.Count(item => item.NeedsUpdate) == 2, "Repair should reset both starter campaigns.");
+    Equal("original FIRST CAMPAIGN", await File.ReadAllTextAsync(Path.Combine(first, "persistent.sfs")));
+    Equal("instructions", await File.ReadAllTextAsync(Path.Combine(first, "README.txt")));
+    False(File.Exists(Path.Combine(first, "quicksave.sfs")), "Repair must reset the entire official campaign folder.");
+    Equal("personal progress", await File.ReadAllTextAsync(Path.Combine(personal, "persistent.sfs")));
+
+    await File.WriteAllTextAsync(Path.Combine(first, "persistent.sfs"), "progress before failed repair");
+    Directory.Delete(second, true);
+    await File.WriteAllTextAsync(second, "blocking file");
+    try
+    {
+        await engine.RunAsync(manifest, locations, assets, true, UpdatePolicy.ReinstallAll);
+        throw new Exception("Repair should reject files at campaign destinations.");
+    }
+    catch (IOException)
+    {
+        Equal("progress before failed repair", await File.ReadAllTextAsync(Path.Combine(first, "persistent.sfs")));
+        Equal("blocking file", await File.ReadAllTextAsync(second));
+        Equal("personal progress", await File.ReadAllTextAsync(Path.Combine(personal, "persistent.sfs")));
+    }
+
+    manifest.Components[0].Target = "saves";
+    try
+    {
+        ManifestService.Validate(manifest);
+        throw new Exception("A starter campaign must not target the entire saves directory.");
+    }
+    catch (InvalidDataException) { }
 }
 
 static async Task StartupUpdatesTestInstallationSeparately()

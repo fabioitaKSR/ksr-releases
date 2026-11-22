@@ -14,6 +14,14 @@ public static class UpdatePlanner
             var root = GetTargetRoot(component, locations);
             var target = SafePaths.Under(root, component.Target);
             var exists = Directory.Exists(target) || File.Exists(target);
+            if (component.IsStarterCampaign)
+            {
+                var repair = policy == UpdatePolicy.ReinstallAll;
+                var install = !exists && policy != UpdatePolicy.ExistingOnly;
+                return new ComponentPlan(component, installed?.Version, exists, repair || install,
+                    repair ? "Restore the original starter campaign" :
+                    install ? "Install the starter campaign" : "Keep the current starter campaign", target);
+            }
             var requiredFilesPresent = exists && component.RequiredFiles.All(required =>
             {
                 var requiredPath = SafePaths.Under(target, required);

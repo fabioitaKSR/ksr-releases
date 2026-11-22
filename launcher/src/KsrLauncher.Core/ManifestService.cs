@@ -55,8 +55,18 @@ public static partial class ManifestService
                 !string.Equals(component.TargetKind, "launcherData", StringComparison.OrdinalIgnoreCase))
                 errors.Add($"{component.Id}: targetKind deve essere ksp o launcherData");
             if (!string.Equals(component.InstallMode, "replace", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(component.InstallMode, "overlay", StringComparison.OrdinalIgnoreCase))
-                errors.Add($"{component.Id}: installMode deve essere replace o overlay");
+                !string.Equals(component.InstallMode, "overlay", StringComparison.OrdinalIgnoreCase) &&
+                !component.IsStarterCampaign)
+                errors.Add($"{component.Id}: unsupported install mode");
+            if (component.IsStarterCampaign)
+            {
+                var target = SafePaths.ManifestPath(component.Target).Split('/');
+                if (!string.Equals(component.TargetKind, "ksp", StringComparison.OrdinalIgnoreCase) ||
+                    target.Length != 2 || !string.Equals(target[0], "saves", StringComparison.OrdinalIgnoreCase) ||
+                    target[1] is "" or "." or ".." || target[1].EndsWith('.') || target[1].EndsWith(' ') ||
+                    !component.RequiredFiles.Contains("persistent.sfs", StringComparer.OrdinalIgnoreCase))
+                    errors.Add($"{component.Id}: a starter campaign must target one folder directly under saves and include persistent.sfs");
+            }
             if (component.FileIndex is { } index)
             {
                 if (Path.GetFileName(index.Asset) != index.Asset || !index.Asset.EndsWith(".files.json.gz", StringComparison.Ordinal) || index.Size <= 0 || index.Size > SelectivePackageService.MaximumIndexBytes ||

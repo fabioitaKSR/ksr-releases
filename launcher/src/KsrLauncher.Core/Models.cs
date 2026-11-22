@@ -18,6 +18,8 @@ public sealed class ReleaseManifest
 
 public sealed class ComponentManifest
 {
+    public const string StarterCampaignMode = "starterCampaign";
+
     public string Id { get; set; } = "";
     public string Version { get; set; } = "";
     public string TransactionGroup { get; set; } = "ksp-client";
@@ -32,6 +34,9 @@ public sealed class ComponentManifest
     public bool Required { get; set; }
     public List<string> RequiredFiles { get; set; } = [];
     public FileIndexReference? FileIndex { get; set; }
+
+    [JsonIgnore]
+    public bool IsStarterCampaign => string.Equals(InstallMode, StarterCampaignMode, StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class KspCompatibility

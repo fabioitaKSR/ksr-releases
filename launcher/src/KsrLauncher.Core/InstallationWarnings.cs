@@ -5,7 +5,7 @@ public static class InstallationWarnings
     public static IReadOnlyList<string> Inspect(UpdatePlan plan, InstalledState state)
     {
         var warnings = new List<string>();
-        foreach (var item in plan.Components.Where(item => item.IsPresent &&
+        foreach (var item in plan.Components.Where(item => item.IsPresent && !item.Component.IsStarterCampaign &&
             !string.Equals(item.Component.TargetKind, "launcherData", StringComparison.OrdinalIgnoreCase)))
         {
             var label = item.Component.Id;

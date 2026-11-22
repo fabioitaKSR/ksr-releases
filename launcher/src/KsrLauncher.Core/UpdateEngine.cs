@@ -90,7 +90,7 @@ public sealed class UpdateEngine(PackageService? packageService = null,
                         var installIndex = prepared.IndexOf(item);
                         progress?.Report(new UpdateProgress(
                             item.Plan.Component.Id, 0, 0, installIndex, prepared.Count, "INSTALLING"));
-                        InstallComponent(item, manifest, locations, backupRoot, journal, cancellationToken);
+                        InstallComponent(item, manifest, locations, backupRoot, journal, policy, cancellationToken);
                     }
                 }
                 cancellationToken.ThrowIfCancellationRequested();
@@ -299,12 +299,19 @@ public sealed class UpdateEngine(PackageService? packageService = null,
         }
     }
 
-    private static void InstallComponent(PreparedComponent prepared, ReleaseManifest manifest, LauncherLocations locations, string backupRoot, BackupJournal journal, CancellationToken token)
+    private static void InstallComponent(PreparedComponent prepared, ReleaseManifest manifest, LauncherLocations locations,
+        string backupRoot, BackupJournal journal, UpdatePolicy policy, CancellationToken token)
     {
         var component = prepared.Plan.Component;
         var root = UpdatePlanner.GetTargetRoot(component, locations);
         var target = SafePaths.Under(root, component.Target);
         SafePaths.RejectReparsePoints(root, target);
+        var hadOriginal = Directory.Exists(target);
+        if (component.IsStarterCampaign)
+        {
+            if (File.Exists(target)) throw new IOException($"A file occupies the starter campaign folder: {target}");
+            if (hadOriginal && policy != UpdatePolicy.ReinstallAll) return;
+        }
         if (prepared.ReusedFiles is not null)
             foreach (var file in prepared.ReusedFiles)
                 if (!SelectivePackageService.MatchesAsync(target, file, token).GetAwaiter().GetResult())
@@ -312,8 +319,6 @@ public sealed class UpdateEngine(PackageService? packageService = null,
         var replacement = target + ".ksr-new-" + Guid.NewGuid().ToString("N");
         var backupRelative = Path.Combine("components", component.Id);
         var backup = SafePaths.Under(backupRoot, backupRelative);
-        var hadOriginal = Directory.Exists(target);
-
         try
         {
             journal.StagingDirectories.Add(new StagedUpdateDirectory(component.TargetKind,
@@ -321,9 +326,9 @@ public sealed class UpdateEngine(PackageService? packageService = null,
             WriteJournalAsync(backupRoot, journal, CancellationToken.None).GetAwaiter().GetResult();
             // Updates preserve installed content absent from the incoming package.
             // Removal requires a separate, explicitly authorized operation.
-            if (hadOriginal) FileTree.CopyDirectory(target, replacement);
+            if (hadOriginal && !component.IsStarterCampaign) FileTree.CopyDirectory(target, replacement);
             FileTree.CopyDirectory(prepared.SourcePath, replacement);
-            if (hadOriginal) CopyPreservedFiles(target, replacement, root, manifest);
+            if (hadOriginal && !component.IsStarterCampaign) CopyPreservedFiles(target, replacement, root, manifest);
             if (hadOriginal)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(backup)!);

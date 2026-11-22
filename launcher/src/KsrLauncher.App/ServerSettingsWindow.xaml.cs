@@ -325,7 +325,7 @@ public partial class ServerSettingsWindow : Window
     private async void RepairTestKsp_Click(object sender, RoutedEventArgs e)
     {
         if (!HasModuleAccess) return;
-        if (MessageBox.Show("Reinstall all official KSR game components in the selected test installation?",
+        if (MessageBox.Show("Reinstall all official KSR game components in the selected test installation? Any included starter campaigns will be reset to their original state.",
                 "Repair test game", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) return;
         await MaintainTestKspAsync(UpdatePolicy.ReinstallAll);
     }
