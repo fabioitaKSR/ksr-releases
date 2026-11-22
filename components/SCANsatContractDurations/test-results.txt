@@ -1,0 +1,4 @@
+PASS: three SCANsat contract definitions verified (30-60 day offers; doubled deadlines).
+Verified each target against its installed ScanSatOfficial definition and its original deadline expression.
+The maintained source and live installation contain byte-identical patch files.
+ModuleManager startup and in-game timing were not tested.
